@@ -12,9 +12,11 @@ afterEach(async () => {
   await ctx.dispose();
 });
 
+// Plan "mitad": el primer pago matricula TODOS los cursos del diplomado (el mes a mes, curso a curso,
+// está en monthly-plan.test.ts).
 async function paidDiploma(email?: string) {
   const b = buyer();
-  const o = await createCheckout(ctx.d, { customer: email ? { ...b, email } : b, items: [{ productId: ctx.fx.diploma, modality: "ONLINE", planKind: "MONTHLY" }], paymentMethod: "PAYPAL" });
+  const o = await createCheckout(ctx.d, { customer: email ? { ...b, email } : b, items: [{ productId: ctx.fx.diploma, modality: "ONLINE", planKind: "HALF" }], paymentMethod: "PAYPAL" });
   const s = await startPaypalPayment(ctx.d, o.id);
   ctx.paypal.approve(s.paypalOrderId);
   await capturePaypalReturn(ctx.d, s.paypalOrderId);
@@ -22,12 +24,12 @@ async function paidDiploma(email?: string) {
 }
 
 describe("enrollment", () => {
-  it("diplomado: matricula en los 9 cursos con el primer pago (mes a mes) en una sola llamada", async () => {
+  it("diplomado: matricula en los 9 cursos con el primer pago (paga la mitad) en una sola llamada", async () => {
     const o = await paidDiploma();
     const after = await ctx.db.order.findUniqueOrThrow({ where: { id: o.id } });
     expect(after.status).toBe("ENROLLED");
-    expect(after.amountPaidCents).toBe(12500);
-    expect(after.balanceCents).toBe(100000 - 12500);
+    expect(after.amountPaidCents).toBe(47500);
+    expect(after.balanceCents).toBe(95000 - 47500);
     const rows = await ctx.db.enrollment.findMany({ where: { orderId: o.id } });
     expect(rows.map((r) => r.moodleCourseId).sort()).toEqual(ctx.fx.diplomaMoodleIds);
     expect(rows.every((r) => r.status === "ENROLLED")).toBe(true);
@@ -59,7 +61,7 @@ describe("enrollment", () => {
     let rows = await ctx.db.enrollment.findMany({ where: { orderId: o.id } });
     expect(rows.every((r) => r.status === "PENDING" && r.attempts === 1 && r.lastError?.includes("timeout"))).toBe(true);
     expect(rows[0].nextAttemptAt!.getTime() - ctx.clock.now().getTime()).toBe(60_000);
-    expect((await ctx.db.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("PARTIALLY_PAID"); // mes a mes: pagada la 1.ª cuota
+    expect((await ctx.db.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("PARTIALLY_PAID"); // mitad: queda saldo
     const cred = await ctx.db.emailOutbox.findFirstOrThrow({ where: { template: "platform_access" } });
     expect(cred.text).toContain("Contraseña temporal");
     expect(cred.text).toContain("se activarán en breve");

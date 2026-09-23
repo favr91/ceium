@@ -188,36 +188,40 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
   const total = quotes.reduce((a, x) => a + x.q.totalCents, 0);
   const dueNow = quotes.reduce((a, x) => a + x.q.dueNowCents, 0);
 
-  // Calendario de cuotas combinado (por secuencia).
-  const schedule = new Map<number, { amount: number; due: Date }>();
-  for (const { q } of quotes)
-    for (const ins of q.installments) {
-      const cur = schedule.get(ins.sequence);
-      schedule.set(ins.sequence, { amount: (cur?.amount ?? 0) + ins.amountCents, due: ins.dueDate });
-    }
+  // Calendario de cuotas: una fila por ítem y cuota, ordenadas por mes y luego por ítem (secuencia global).
+  // Las del mes 0 suman dueNow. Mes a mes: cada fila lleva el curso del diplomado que habilita.
+  const schedule = quotes
+    .flatMap(({ q }, itemIndex) => q.installments.map((ins, month) => ({ itemIndex, month, ins })))
+    .sort((a, b) => a.month - b.month || a.itemIndex - b.itemIndex);
 
   const orderId = await withTx(d, async (tx) => {
-    const cust = await tx.customer.upsert({
-      where: { email: customer.email },
-      create: {
-        email: customer.email,
-        firstName: customer.firstName,
-        lastName: customer.lastName,
-        cedula: customer.cedula ?? null,
-        phone: customer.phone ?? null,
-        specialty: customer.specialty ?? null,
-        city: customer.city ?? null,
-        country: customer.country ?? "VE",
-      },
-      update: {
-        firstName: customer.firstName,
-        lastName: customer.lastName,
-        ...(customer.cedula ? { cedula: customer.cedula } : {}),
-        ...(customer.phone ? { phone: customer.phone } : {}),
-        ...(customer.specialty ? { specialty: customer.specialty } : {}),
-        ...(customer.city ? { city: customer.city } : {}),
-      },
-    });
+    // El checkout no está autenticado: un correo existente NO permite cambiar el nombre (va a Moodle y al
+    // certificado). El nombre escrito queda en el pedido (buyerFirstName/LastName) y el cliente solo lo
+    // adopta si este pedido es su primera compra pagada (ver adoptBuyerName en payments.ts). Los demás
+    // datos de contacto solo completan campos vacíos.
+    const existing = await tx.customer.findUnique({ where: { email: customer.email } });
+    const cust = existing
+      ? await tx.customer.update({
+          where: { id: existing.id },
+          data: {
+            ...(!existing.cedula && customer.cedula ? { cedula: customer.cedula } : {}),
+            ...(!existing.phone && customer.phone ? { phone: customer.phone } : {}),
+            ...(!existing.specialty && customer.specialty ? { specialty: customer.specialty } : {}),
+            ...(!existing.city && customer.city ? { city: customer.city } : {}),
+          },
+        })
+      : await tx.customer.create({
+          data: {
+            email: customer.email,
+            firstName: customer.firstName,
+            lastName: customer.lastName,
+            cedula: customer.cedula ?? null,
+            phone: customer.phone ?? null,
+            specialty: customer.specialty ?? null,
+            city: customer.city ?? null,
+            country: customer.country ?? "VE",
+          },
+        });
     const number = await nextOrderNumber(tx);
     const order = await tx.order.create({
       data: {
@@ -233,11 +237,14 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
         dueNowCents: dueNow,
         amountPaidCents: 0,
         balanceCents: total,
+        buyerFirstName: customer.firstName,
+        buyerLastName: customer.lastName,
         customerNote: input.customerNote ?? null,
         expiresAt,
         placedAt: now,
       },
     });
+    const itemIds: string[] = [];
     for (const { q, item } of quotes) {
       const oi = await tx.orderItem.create({
         data: {
@@ -259,10 +266,21 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
           dueNowCents: q.dueNowCents,
         },
       });
+      itemIds.push(oi.id);
       if (item.modality === "SEMIPRESENCIAL") await reserveSeat(tx, { cohortId: item.cohortId!, orderId: order.id, orderItemId: oi.id, ttlMs: ttl, now });
     }
-    for (const [sequence, s] of [...schedule.entries()].sort((a, b) => a[0] - b[0])) {
-      await tx.installment.create({ data: { orderId: order.id, sequence, amountCents: s.amount, dueDate: s.due } });
+    for (const [i, s] of schedule.entries()) {
+      await tx.installment.create({
+        data: {
+          orderId: order.id,
+          orderItemId: itemIds[s.itemIndex],
+          sequence: i + 1,
+          amountCents: s.ins.amountCents,
+          dueDate: s.ins.dueDate,
+          courseId: s.ins.course?.productId ?? null,
+          moodleCourseId: s.ins.course?.moodleCourseId ?? null,
+        },
+      });
     }
     await addOrderEvent(tx, order.id, "CREATED", { type: "CUSTOMER", id: cust.id }, `Pedido #${number} creado (${input.paymentMethod})`, {
       totalCents: total,
@@ -279,7 +297,7 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
 export async function getOrder(d: Pick<Deps, "db">, orderId: string) {
   return d.db.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { customer: true, items: { include: { reservation: true, cohort: true, sede: true } }, installments: { orderBy: { sequence: "asc" } }, payments: true },
+    include: { customer: true, items: { include: { reservation: true, cohort: true, sede: true } }, installments: { orderBy: { sequence: "asc" }, include: { course: { select: { id: true, title: true } } } }, payments: true },
   });
 }
 

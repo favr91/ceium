@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 describe("pricing.quote", () => {
-  it("diplomado semipresencial Barquisimeto: FULL 10% / HALF 5% / MONTHLY 7×180+160", async () => {
+  it("diplomado semipresencial Barquisimeto: FULL 10% / HALF 5% / MONTHLY 9 cursos × $180", async () => {
     const base = { productId: ctx.fx.diploma, modality: "SEMIPRESENCIAL" as const, sedeId: ctx.fx.sedes.bqto };
     const full = await quote(ctx.db, { ...base, planKind: "FULL" }, ctx.clock.now());
     expect([full.listCents, full.discountCents, full.totalCents, full.dueNowCents]).toEqual([142000, 14200, 127800, 127800]);
@@ -24,9 +24,14 @@ describe("pricing.quote", () => {
     expect(half.planLabel).toBe("Paga la midad (5% de descuento)");
     const monthly = await quote(ctx.db, { ...base, planKind: "MONTHLY" }, ctx.clock.now());
     expect(monthly.dueNowCents).toBe(18000);
-    expect(monthly.installments).toHaveLength(8);
-    expect(monthly.totalCents).toBe(142000);
-    expect(monthly.installments[7].amountCents).toBe(16000);
+    // SPEC: una cuota por curso del diplomado (9), cada una al precio publicado de "Paga mes a mes".
+    expect(monthly.installments).toHaveLength(9);
+    expect(monthly.installments.every((i) => i.amountCents === 18000)).toBe(true);
+    expect(monthly.totalCents).toBe(9 * 18000);
+    expect([monthly.listCents, monthly.discountCents]).toEqual([9 * 18000, 0]);
+    // cuota k ↔ curso k del diplomado, en orden
+    expect(monthly.installments.map((i) => i.course?.productId)).toEqual(ctx.fx.diplomaCourses);
+    expect(monthly.installments.map((i) => i.course?.moodleCourseId)).toEqual(ctx.fx.diplomaMoodleIds);
     expect(monthly.installments[1].dueDate.toISOString().slice(0, 10)).toBe("2026-10-01");
   });
 

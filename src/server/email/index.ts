@@ -15,7 +15,8 @@ export type EmailTemplate =
   | "platform_access"
   | "cohort_details"
   | "certificate_issued"
-  | "refund_issued";
+  | "refund_issued"
+  | "installment_reminder";
 
 /**
  * Marcador que sustituye a la contraseña temporal de Moodle en el HTML/texto que se GUARDA.

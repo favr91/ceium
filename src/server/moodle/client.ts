@@ -82,6 +82,20 @@ export function generateTempPassword(length = 12): string {
   return chars.join("");
 }
 
+/**
+ * Username válido para Moodle derivado del email: minúsculas, sin acentos y solo [a-z0-9_.@-]
+ * (lo que Moodle acepta con extendedusernamechars desactivado, su valor por defecto). Máx. 100 caracteres.
+ */
+export function usernameFromEmail(email: string): string {
+  return email
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^-.@_a-z0-9]/g, "_")
+    .slice(0, 100);
+}
+
 export class MoodleClient {
   readonly baseUrl: string;
   private readonly token: string;
@@ -169,17 +183,22 @@ export class MoodleClient {
   }
 
   /**
-   * Busca por username (= email en minúsculas) y luego por email; si no existe, crea la cuenta
-   * (auth manual). Idempotente y a prueba de carreras: si la creación falla por duplicado,
-   * vuelve a buscar y devuelve la cuenta existente. Si la cuenta existe suspendida, la reactiva.
+   * Busca la cuenta del cliente y, si no existe, la crea (auth manual). Idempotente y a prueba de carreras.
+   *  1. Por email (autoritativo; se prueban el email tal cual y en minúsculas).
+   *  2. Por username derivado del email (usernameFromEmail): Moodle solo admite [a-z0-9_.@-], así que
+   *     medico+ceium@gmail.com → medico_ceium@gmail.com. Una cuenta con ese username solo se acepta si
+   *     es del mismo email (o si el username ES el email sin transformar, como las cuentas creadas a mano
+   *     con username = email); si es de OTRA persona se prueba medico_ceium@gmail.com-2, -3…
+   * Si la cuenta existe suspendida, la reactiva. Email inválido → MoodleError "validation" (no reintentable).
    */
   async findOrCreateUser(input: NewUserInput): Promise<FindOrCreateUserResult> {
     const email = input.email.trim();
-    const username = email.toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error(`Email inválido: ${input.email}`);
-
-    const existing = await this.lookupUser(username, email);
-    if (existing) return this.ensureActive(existing);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new MoodleError({ kind: "validation", wsfunction: "core_user_create_users", message: `email inválido: ${input.email}` });
+    }
+    const found = await this.lookupUser(email);
+    if (found.user) return this.ensureActive(found.user);
+    const username = found.freeUsername;
 
     const user: Record<string, ParamValue> = {
       username,
@@ -207,22 +226,29 @@ export class MoodleClient {
         tempPassword,
       };
     } catch (e) {
-      // Carrera (otra petición la creó) o email ya usado con otro username: Moodle devuelve
-      // invalidparameter y, sin debug, no dice por qué → volver a buscar.
+      // Carrera (otra petición la creó) o email ya usado: Moodle devuelve invalidparameter y, sin debug,
+      // no dice por qué → volver a buscar.
       if (e instanceof MoodleError && e.errorcode === "invalidparameter") {
-        const again = await this.lookupUser(username, email);
-        if (again) return this.ensureActive(again);
+        const again = await this.lookupUser(email);
+        if (again.user) return this.ensureActive(again.user);
       }
       throw e;
     }
   }
 
-  private async lookupUser(username: string, email: string): Promise<MoodleUser | null> {
-    const byUsername = await this.getUsersByField("username", [username]);
-    if (byUsername[0]) return byUsername[0];
-    const candidates = email === username ? [email] : [email, username];
-    const byEmail = await this.getUsersByField("email", candidates);
-    return byEmail[0] ?? null;
+  /** Cuenta existente del email, o el primer username derivado libre para crearla. */
+  private async lookupUser(email: string): Promise<{ user: MoodleUser | null; freeUsername: string }> {
+    const lower = email.toLowerCase();
+    const byEmail = await this.getUsersByField("email", [...new Set([email, lower])]);
+    const base = usernameFromEmail(email);
+    if (byEmail[0]) return { user: byEmail[0], freeUsername: base };
+    for (let i = 1; i <= 20; i++) {
+      const candidate = i === 1 ? base : `${base.slice(0, 96)}-${i}`;
+      const [u] = await this.getUsersByField("username", [candidate]);
+      if (!u) return { user: null, freeUsername: candidate };
+      if (u.email?.toLowerCase() === lower || (i === 1 && candidate === lower)) return { user: u, freeUsername: candidate };
+    }
+    throw new MoodleError({ kind: "validation", wsfunction: "core_user_create_users", message: `no hay un username libre para ${email}` });
   }
 
   private async ensureActive(user: MoodleUser): Promise<FindOrCreateUserResult> {

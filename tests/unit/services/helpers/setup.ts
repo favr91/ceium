@@ -73,7 +73,7 @@ export async function seedFixture(db: PrismaClient): Promise<Fixture> {
     data: [
       { productId: diploma.id, kind: "FULL", label: "Paga todo el diplomado (10% de descuento)", discountPct: 10, installments: 1, position: 0 },
       { productId: diploma.id, kind: "HALF", label: "Paga la midad (5% de descuento)", discountPct: 5, installments: 2, position: 1 },
-      { productId: diploma.id, kind: "MONTHLY", label: "Paga mes a mes", discountPct: 0, installments: 8, position: 2 },
+      { productId: diploma.id, kind: "MONTHLY", label: "Paga mes a mes", discountPct: 0, installments: 9, position: 2 },
     ],
   });
   const diplomaCohort = await db.cohort.create({

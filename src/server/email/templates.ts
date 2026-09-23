@@ -298,3 +298,51 @@ export function refundIssued(v: OrderView, r: { amountCents: number; methodLabel
   const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${stripTags(how)}\n\nPedido: ${v.statusUrl}`;
   return { subject, html, text };
 }
+
+export interface InstallmentReminderView {
+  firstName: string;
+  orderNumber: number;
+  sequence: number;
+  totalInstallments: number;
+  /** Diplomado / programa del ítem. */
+  programTitle?: string | null;
+  /** Mes a mes: curso que habilita esta cuota. */
+  courseTitle?: string | null;
+  amountCents: number;
+  dueDate?: Date | null;
+  overdue: boolean;
+  balanceCents: number;
+  paypalUrl: string;
+  manualUrl: string;
+  /** Método manual elegido en el pedido (p.ej. "Pago móvil"); null → texto genérico. */
+  manualLabel?: string | null;
+  statusUrl: string;
+}
+
+export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
+  const subject = r.overdue
+    ? `Cuota vencida — Pedido #${r.orderNumber}${r.courseTitle ? `: ${r.courseTitle}` : ""}`
+    : r.courseTitle
+      ? `Paga tu próximo curso: ${r.courseTitle}`
+      : `Recordatorio de pago — Pedido #${r.orderNumber}`;
+  const when = r.dueDate ? (r.overdue ? `venció el <strong>${esc(formatDate(r.dueDate))}</strong>` : `vence el <strong>${esc(formatDate(r.dueDate))}</strong>`) : "está pendiente";
+  const intro = `Hola ${esc(r.firstName)}, la cuota ${r.sequence} de ${r.totalInstallments}${r.programTitle ? ` del <strong>${esc(r.programTitle)}</strong>` : ""} ${when}.`;
+  const unlock = r.courseTitle
+    ? p(`Al confirmarse el pago te matricularemos en <strong>${esc(r.courseTitle)}</strong> en la plataforma y te avisaremos por correo.`)
+    : "";
+  const rows: [string, string][] = [
+    ["Pedido", `#${r.orderNumber}`],
+    ["Cuota", `${r.sequence} de ${r.totalInstallments}`],
+  ];
+  if (r.courseTitle) rows.push(["Curso", r.courseTitle]);
+  rows.push(["Monto", formatUSD(r.amountCents)]);
+  if (r.dueDate) rows.push([r.overdue ? "Venció" : "Vence", formatDate(r.dueDate)]);
+  rows.push(["Saldo total pendiente", formatUSD(r.balanceCents)]);
+  const manualLabel = r.manualLabel ?? "pago móvil o transferencia";
+  const buttons =
+    button(r.paypalUrl, `Pagar ${formatUSD(r.amountCents)} con PayPal`) +
+    p(`¿Prefieres pagar con ${esc(manualLabel)}? <a href="${esc(r.manualUrl)}" style="color:${TEAL};font-weight:600;">Registra tu pago aquí</a> y nuestro equipo lo verificará.`);
+  const html = layout(subject, stripTags(`Cuota ${r.sequence} de ${r.totalInstallments}: ${formatUSD(r.amountCents)}`), p(intro) + kv(rows) + unlock + buttons);
+  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n${r.courseTitle ? `\nAl confirmarse el pago te matricularemos en ${r.courseTitle}.\n` : ""}\nPagar con PayPal: ${r.paypalUrl}\nPagar con ${manualLabel}: ${r.manualUrl}\n\nPedido: ${r.statusUrl}`;
+  return { subject, html, text };
+}

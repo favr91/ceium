@@ -6,10 +6,14 @@ import { retryDueEnrollments } from "@/server/enrollment";
 import { runCertificateSweep } from "@/server/certificates";
 import { retryFailedEmails } from "@/server/email";
 import { reconcilePaypalPayments } from "@/server/payments";
+import { runInstallmentReminders } from "@/server/installments";
 
-export type JobName = "paypal" | "expire" | "enrollments" | "certificates" | "emails";
-/** Orden importante: "paypal" (capturar aprobados sin retorno) antes de "expire" (liberar cupos). */
-export const ALL_JOBS: JobName[] = ["paypal", "expire", "enrollments", "certificates", "emails"];
+export type JobName = "paypal" | "expire" | "enrollments" | "installments" | "certificates" | "emails";
+/**
+ * Orden importante: "paypal" (capturar aprobados sin retorno) antes de "expire" (liberar cupos).
+ * "installments": marca cuotas vencidas y envía el recordatorio de la siguiente cuota con enlace de pago.
+ */
+export const ALL_JOBS: JobName[] = ["paypal", "expire", "enrollments", "installments", "certificates", "emails"];
 
 export async function runJobs(d: Deps, which: JobName[] = ALL_JOBS) {
   const out: Record<string, unknown> = {};
@@ -25,6 +29,7 @@ export async function runJobs(d: Deps, which: JobName[] = ALL_JOBS) {
   await run("paypal", () => reconcilePaypalPayments(d));
   await run("expire", async () => ({ orders: await expireStaleOrders(d), reservations: await expireStaleReservations(d) }));
   await run("enrollments", () => retryDueEnrollments(d));
+  await run("installments", () => runInstallmentReminders(d));
   await run("certificates", () => runCertificateSweep(d));
   await run("emails", async () => ({ sent: await retryFailedEmails(d) }));
   return out;

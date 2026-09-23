@@ -165,11 +165,10 @@ async function main() {
     // Planes de pago (etiquetas reales)
     const planLabels = iPay >= 0 ? p.options[iPay].values : [];
     const plans = planLabels.length ? planLabels.map((label) => ({ label, ...planKindFromLabel(label) })) : [{ label: "Pago único", kind: "FULL" as PlanKind, discountPct: 0 }];
-    // MONTHLY: 8 cuotas. ref/products.json solo publica la cuota (180/230/150) y el precio de lista
-    // (1420/1770/1210); con 8 cuotas y la última absorbiendo el residuo, la última queda en $160 en las
-    // tres modalidades (7×180+160=1420, 7×230+160=1770, 7×150+160=1210) → el total mes a mes coincide con
-    // el precio de lista (sin recargo). 8 es la única cantidad que da esa regularidad. Configurable en el panel.
-    const MONTHLY_INSTALLMENTS = 8;
+    // MONTHLY (solo diplomados, SPEC): una cuota por curso del diplomado (9), cada una al precio publicado
+    // de la variante "Paga mes a mes" (180/230/150). quote() usa siempre el nº real de cursos; este valor
+    // queda como referencia visible en el panel.
+    const MONTHLY_INSTALLMENTS = (colls[`cursos-del-${p.handle}`] ?? []).length;
     for (const [pi, pl] of plans.entries()) {
       await prisma.paymentPlan.create({
         data: { productId: product.id, kind: pl.kind, label: pl.label, discountPct: pl.discountPct, position: pi,
@@ -210,6 +209,7 @@ async function main() {
       for (const v of iPay >= 0 ? g.vs : []) {
         const pl = plans.find((x) => x.label === val(v, iPay))!;
         const amounts = computePlanAmounts({ priceCents: list, installmentCents: installment }, { ...pl, installments: pl.kind === "HALF" ? 2 : pl.kind === "MONTHLY" ? MONTHLY_INSTALLMENTS : 1 });
+        if (pl.kind === "MONTHLY" && MONTHLY_INSTALLMENTS < 2) warnings.push(`${p.handle}: plan mes a mes sin cursos de diplomado`);
         if (amounts.dueNowCents !== cents(v.price)) warnings.push(`${p.handle} ${g.modality}/${g.sedeId ? "sede" : "-"} ${pl.label}: calculado ${amounts.dueNowCents} ≠ real ${cents(v.price)}`);
       }
     }
@@ -297,6 +297,7 @@ async function main() {
     [SETTING_KEYS.exchangeRate, { vesPerUsd: 100, source: "TODO: actualizar con la tasa oficial BCV", updatedAt: new Date().toISOString() }, "Tasa de cambio Bs/USD para pagos en bolívares"],
     [SETTING_KEYS.orderNextNumber, { next: 1001 }, "Siguiente número visible de orden"],
     [SETTING_KEYS.enrollmentRetry, { maxAttempts: 8, baseDelaySeconds: 60 }, "Reintentos con backoff exponencial de la matrícula en Moodle"],
+    [SETTING_KEYS.installmentReminders, { daysBefore: 3, overdueGraceDays: 0, overdueEveryDays: 7, maxOverdueReminders: 3 }, "Recordatorios por correo de la siguiente cuota (días antes del vencimiento, gracia y frecuencia de recordatorios vencidos)"],
     [SETTING_KEYS.certificateJob, { intervalMinutes: 60 }, "Frecuencia del job que revisa finalización en Moodle y emite certificados"],
     [SETTING_KEYS.certificatePolicy, { requireFullPayment: true }, "El certificado del diplomado se emite solo con el saldo del pedido en 0 (además de completar todos los cursos en Moodle)"],
     [SETTING_KEYS.storeContact, { phones: ["+58 412-0840407", "+58 412-5250748"], emails: ["registroceium@gmail.com", "roacar@gmail.com"], whatsapp: "+584120840718", instagram: "https://instagram.com/ceiumoficial" }, "Datos de contacto (de ceium.net/pages/contacto)"],

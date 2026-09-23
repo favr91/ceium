@@ -37,7 +37,7 @@ enum Modality {
 enum PlanKind {
   FULL // Paga todo (con discountPct)
   HALF // Paga la mitad ahora (con discountPct), resto después
-  MONTHLY // Mes a mes: `installments` cuotas de PriceEntry.installmentCents
+  MONTHLY // Mes a mes (solo diplomados): una cuota de PriceEntry.installmentCents por CURSO del diplomado
 }
 
 enum CohortStatus {
@@ -205,6 +205,7 @@ model Product {
   orderItems            OrderItem[]
   enrollments           Enrollment[]
   certificates          Certificate[]
+  installmentsForCourse Installment[]       @relation("InstallmentCourse")
 }
 
 model ProductImage {
@@ -309,7 +310,8 @@ model PriceEntry {
 /// Planes de pago por producto.
 ///  FULL:    total = price*(1-d);          se cobra todo ahora.
 ///  HALF:    total = price*(1-d);          ahora = total/2 (installments=2).
-///  MONTHLY: total = installmentCents*N;   ahora = 1 cuota (installments=N).
+///  MONTHLY: N = nº de cursos del diplomado (autoritativo; `installments` es solo informativo),
+///           total = installmentCents*N; ahora = 1 cuota; cada cuota matricula el siguiente curso.
 model PaymentPlan {
   id           String   @id @default(cuid())
   productId    String
@@ -417,6 +419,10 @@ model Order {
   dueNowCents     Int // primer pago (lo que habilita la matrícula)
   amountPaidCents Int            @default(0)
   balanceCents    Int            @default(0) // totalCents - amountPaidCents ± ajustes
+  /// Nombre tal como se escribió en ESTE checkout (sin autenticación). El Customer solo lo adopta cuando
+  /// este pedido confirma su primer pago y el cliente aún no tenía compras pagadas ni cuenta Moodle.
+  buyerFirstName  String?
+  buyerLastName   String?
   customerNote    String?
   internalNote    String?
   expiresAt       DateTime? // vencimiento de la reserva / pago pendiente
@@ -468,6 +474,7 @@ model OrderItem {
   reservation  SeatReservation?
   enrollments  Enrollment[]
   certificates Certificate[]
+  installments Installment[]
 
   @@index([orderId])
 }
@@ -526,23 +533,34 @@ model Refund {
   completedAt      DateTime?
 }
 
-/// Cuotas / saldo pendiente. Se generan al crear la orden según el plan.
+/// Cuotas / saldo pendiente. Se generan al crear la orden según el plan, UNA fila por ítem y cuota
+/// (secuencia global del pedido: primero todas las cuotas del mes 0, luego las del mes 1…).
+/// Mes a mes (diplomados): cuota k ↔ curso k del diplomado (courseId/moodleCourseId). Pagar la cuota
+/// matricula SOLO ese curso.
 model Installment {
-  id          String            @id @default(cuid())
-  orderId     String
-  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  sequence    Int // 1..N
-  dueDate     DateTime?
-  amountCents Int
-  paidCents   Int               @default(0)
-  status      InstallmentStatus @default(PENDING)
-  paidAt      DateTime?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id             String            @id @default(cuid())
+  orderId        String
+  order          Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItemId    String?
+  orderItem      OrderItem?        @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  /// Curso del diplomado que habilita esta cuota (solo plan MONTHLY).
+  courseId       String?
+  course         Product?          @relation("InstallmentCourse", fields: [courseId], references: [id], onDelete: SetNull)
+  moodleCourseId Int?
+  sequence       Int // 1..N
+  dueDate        DateTime?
+  amountCents    Int
+  paidCents      Int               @default(0)
+  status         InstallmentStatus @default(PENDING)
+  paidAt         DateTime?
+  overdueAt      DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   payments Payment[]
 
   @@unique([orderId, sequence])
+  @@index([status, dueDate])
 }
 
 /// Corrección manual de saldo (positivo = aumenta lo que se debe; negativo = condona).
@@ -623,7 +641,7 @@ model Certificate {
 
 model EmailOutbox {
   id         String      @id @default(cuid())
-  template   String // order_confirmation | payment_pending_verification | payment_approved | payment_rejected | platform_access | cohort_details | certificate_issued | ...
+  template   String // order_confirmation | payment_under_verification | payment_approved | payment_rejected | platform_access | cohort_details | certificate_issued | installment_reminder | refund_issued
   to         String
   cc         String?
   subject    String

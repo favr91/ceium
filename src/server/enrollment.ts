@@ -4,6 +4,10 @@
 //    gana el reclamo llama a Moodle para ese curso.
 //  - Si Moodle falla: reintentos inmediatos cortos y luego backoff exponencial persistido
 //    (nextAttemptAt); el job retryDueEnrollments() los retoma. Tras maxAttempts → FAILED (visible en el panel).
+//    Un error PERMANENTE (MoodleError.retryable === false: datos inválidos, token inválido…) pasa a FAILED
+//    de inmediato y deja un evento ATTENTION: reintentar no lo arregla.
+//  - Qué cursos otorga cada ítem: curso suelto / opción, o los cursos del diplomado. En el plan MES A MES
+//    solo los cursos cuya cuota está pagada (Installment.courseId): cada cuota habilita el siguiente curso.
 import type { Deps } from "@/server/deps";
 import { MINUTE, readSetting, withTx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
@@ -27,6 +31,14 @@ interface DesiredCourse {
   moodleCourseId: number;
   orderItemId: string;
   title: string;
+  /** Texto para el correo de acceso ("Curso X — Diplomado Y"). */
+  label: string;
+}
+
+/** Error que no se arregla reintentando (MoodleError.retryable === false). */
+export function isPermanentError(e: unknown): boolean {
+  const r = (e as { retryable?: unknown } | null)?.retryable;
+  return typeof r === "boolean" && !r;
 }
 
 async function loadOrderForEnrollment(d: Deps, orderId: string) {
@@ -38,6 +50,7 @@ async function loadOrderForEnrollment(d: Deps, orderId: string) {
         include: {
           reservation: true,
           choice: true,
+          installments: { select: { courseId: true, status: true } },
           product: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } },
         },
       },
@@ -47,34 +60,47 @@ async function loadOrderForEnrollment(d: Deps, orderId: string) {
 
 type CourseLike = { id: string; title: string; moodleCourseId: number | null };
 interface ItemLike {
+  id?: string;
   productTitle: string;
+  planKind?: string | null;
   product: CourseLike & { type: string; diplomaCourses: { course: CourseLike }[] };
   choice?: { moodleCourseIds: unknown } | null;
+  /** Necesario en diplomados mes a mes: qué cursos tienen su cuota pagada. */
+  installments?: { courseId: string | null; status: string }[];
 }
 
 /**
  * Cursos Moodle que otorga un ítem: los del diplomado, los de la opción elegida (p.ej. "Nivel 1" del
- * taller transfontanelar) o el curso del producto.
+ * taller transfontanelar) o el curso del producto. Diplomado MES A MES: solo los cursos con su cuota
+ * pagada (o condonada), salvo `all` (p.ej. para desmatricular todo lo que otorgó el pedido).
  */
-export function itemMoodleCourses(it: ItemLike): { productId: string; moodleCourseId: number | null; title: string }[] {
-  if (it.product.type === "DIPLOMA") return it.product.diplomaCourses.map((dc) => ({ productId: dc.course.id, moodleCourseId: dc.course.moodleCourseId, title: dc.course.title }));
+export function itemMoodleCourses(it: ItemLike, opts: { all?: boolean } = {}): { productId: string; moodleCourseId: number | null; title: string }[] {
+  if (it.product.type === "DIPLOMA") {
+    let courses = it.product.diplomaCourses.map((dc) => ({ productId: dc.course.id, moodleCourseId: dc.course.moodleCourseId, title: dc.course.title }));
+    if (!opts.all && it.planKind === "MONTHLY") {
+      const paid = new Set((it.installments ?? []).filter((i) => i.courseId && (i.status === "PAID" || i.status === "WAIVED")).map((i) => i.courseId));
+      courses = courses.filter((c) => paid.has(c.productId));
+    }
+    return courses;
+  }
   const ids = Array.isArray(it.choice?.moodleCourseIds) ? (it.choice!.moodleCourseIds as unknown[]).filter((x): x is number => Number.isInteger(x)) : [];
   if (ids.length) return ids.map((id) => ({ productId: it.product.id, moodleCourseId: id, title: it.productTitle }));
   return [{ productId: it.product.id, moodleCourseId: it.product.moodleCourseId, title: it.product.title }];
 }
 
 /** Cursos Moodle que otorga cada ítem del pedido (sin repetir). */
-function desiredCourses(order: NonNullable<Awaited<ReturnType<typeof loadOrderForEnrollment>>>): DesiredCourse[] {
+function desiredCourses(order: NonNullable<Awaited<ReturnType<typeof loadOrderForEnrollment>>>, opts: { all?: boolean } = {}): DesiredCourse[] {
   const out: DesiredCourse[] = [];
   const seen = new Set<number>();
   for (const it of order.items) {
-    const courses = itemMoodleCourses(it);
-    if (it.product.type === "DIPLOMA" && courses.length === 0) throw new DomainError("VALIDATION", `El diplomado «${it.productTitle}» no tiene cursos configurados.`);
+    if (it.product.type === "DIPLOMA" && it.product.diplomaCourses.length === 0) throw new DomainError("VALIDATION", `El diplomado «${it.productTitle}» no tiene cursos configurados.`);
+    const courses = itemMoodleCourses(it, opts);
     for (const c of courses) {
       if (c.moodleCourseId == null) throw new DomainError("VALIDATION", `El curso «${c.title}» no tiene curso de Moodle asociado.`);
       if (seen.has(c.moodleCourseId)) continue;
       seen.add(c.moodleCourseId);
-      out.push({ productId: c.productId, moodleCourseId: c.moodleCourseId, orderItemId: it.id, title: c.title });
+      const label = it.product.type === "DIPLOMA" ? `${c.title} — ${it.productTitle}` : it.choice ? `${it.productTitle} — ${it.choice.label}` : it.productTitle;
+      out.push({ productId: c.productId, moodleCourseId: c.moodleCourseId, orderItemId: it.id, title: c.title, label });
     }
   }
   return out;
@@ -102,6 +128,7 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
     await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "ENROLLMENT_FAILED", actor, (e as Error).message));
     return { status: "FAILED", reason: (e as Error).message, ...empty };
   }
+  if (desired.length === 0) return { status: "SKIPPED", reason: "No hay cursos pagados para matricular", ...empty };
 
   // 1) Asegurar filas Enrollment (una por cliente+curso).
   for (const c of desired) {
@@ -159,7 +186,7 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
         break;
       } catch (e) {
         error = e;
-        if (attempt >= d.config.enrollInlineRetries) break;
+        if (isPermanentError(e) || attempt >= d.config.enrollInlineRetries) break;
         await d.sleep(d.config.enrollInlineDelayMs * 2 ** attempt);
       }
     }
@@ -168,11 +195,12 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
   }
 
   if (error) {
-    const msg = String((error as Error)?.message ?? error).slice(0, 500);
+    const msg = String((error as { short?: string })?.short ?? (error as Error)?.message ?? error).slice(0, 500);
+    const permanent = isPermanentError(error);
     let worst: "PENDING" | "FAILED" = "PENDING";
     for (const r of claimed) {
       const attempts = r.attempts + 1;
-      const failed = attempts >= policy.maxAttempts;
+      const failed = permanent || attempts >= policy.maxAttempts;
       if (failed) worst = "FAILED";
       await d.db.enrollment.update({
         where: { id: r.id },
@@ -185,9 +213,23 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
         },
       });
     }
-    await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "ENROLLMENT_FAILED", actor, `Moodle: ${msg}`, { courseIds, final: worst === "FAILED" }));
+    await d.db.$transaction(async (tx) => {
+      await addOrderEvent(tx, orderId, "ENROLLMENT_FAILED", actor, `Moodle: ${msg}`, { courseIds, final: worst === "FAILED", permanent });
+      if (worst === "FAILED") {
+        await addOrderEvent(
+          tx,
+          orderId,
+          "ATTENTION",
+          SYSTEM,
+          permanent
+            ? `Moodle rechazó la matrícula (${msg}). Reintentar no lo resuelve: corrige los datos (usuario/correo del cliente, curso) y usa «Rematricular».`
+            : `La matrícula en Moodle falló ${policy.maxAttempts} veces (${msg}). Revisa Moodle y usa «Rematricular».`,
+          { courseIds },
+        );
+      }
+    });
     // Si la cuenta se creó ahora, la contraseña temporal no se puede volver a obtener: enviarla ya.
-    if (created && tempPassword) await sendAccessEmail(d, orderId, userId!, tempPassword, true, `platform_credentials:${order.customerId}`);
+    if (created && tempPassword) await sendAccessEmail(d, orderId, userId!, tempPassword, true, `platform_credentials:${order.customerId}`, desired.map((c) => c.label));
     return { status: worst === "FAILED" ? "FAILED" : "RETRY_SCHEDULED", reason: msg, enrolledCourseIds: [], pendingCourseIds: courseIds, createdMoodleUser: created };
   }
 
@@ -196,11 +238,21 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
     data: { status: "ENROLLED", enrolledAt: now, moodleUserId: userId!, lastError: null, nextAttemptAt: null, attempts: { increment: 1 } },
   });
   await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "ENROLLMENT", actor, `Matriculado en ${courseIds.length} curso(s) de Moodle`, { courseIds, moodleUserId: userId }));
-  return finalize(d, orderId, order.customerId, desired, actor, { userId: userId!, tempPassword });
+  return finalize(d, orderId, order.customerId, desired, actor, { userId: userId!, tempPassword, newlyEnrolled: courseIds });
 }
 
-/** Si todas las matrículas del pedido están hechas: pedido → ENROLLED y correos de acceso/cohorte. */
-async function finalize(d: Deps, orderId: string, customerId: string, desired: DesiredCourse[], actor: Actor, fresh?: { userId: number; tempPassword?: string }): Promise<EnrollOrderResult> {
+/**
+ * Si todas las matrículas del pedido están hechas: pedido → ENROLLED y correos de acceso/cohorte. Si el
+ * pedido ya estaba ENROLLED (mes a mes: se pagó la cuota del siguiente curso), avisa del curso nuevo.
+ */
+async function finalize(
+  d: Deps,
+  orderId: string,
+  customerId: string,
+  desired: DesiredCourse[],
+  actor: Actor,
+  fresh?: { userId: number; tempPassword?: string; newlyEnrolled?: number[] },
+): Promise<EnrollOrderResult> {
   const rows = await d.db.enrollment.findMany({ where: { customerId, moodleCourseId: { in: desired.map((c) => c.moodleCourseId) } } });
   const enrolled = rows.filter((r) => r.status === "ENROLLED").map((r) => r.moodleCourseId);
   const pending = desired.map((c) => c.moodleCourseId).filter((id) => !enrolled.includes(id));
@@ -217,26 +269,27 @@ async function finalize(d: Deps, orderId: string, customerId: string, desired: D
     }
     return false;
   });
+  const customer = await d.db.customer.findUniqueOrThrow({ where: { id: customerId } });
   if (transitioned) {
-    const customer = await d.db.customer.findUniqueOrThrow({ where: { id: customerId } });
-    await sendAccessEmail(d, orderId, fresh?.userId ?? customer.moodleUserId!, fresh?.tempPassword, false, `platform_access:${orderId}`);
+    await sendAccessEmail(d, orderId, fresh?.userId ?? customer.moodleUserId!, fresh?.tempPassword, false, `platform_access:${orderId}`, desired.map((c) => c.label));
     await sendCohortEmails(d, orderId);
+  } else if (fresh?.newlyEnrolled?.length) {
+    const ids = [...fresh.newlyEnrolled].sort((a, b) => a - b);
+    const labels = desired.filter((c) => ids.includes(c.moodleCourseId)).map((c) => c.label);
+    await sendAccessEmail(d, orderId, fresh.userId, fresh.tempPassword, false, `course_access:${orderId}:${ids.join(",")}`, labels);
   }
   return { status: "ENROLLED", enrolledCourseIds: enrolled, pendingCourseIds: [] };
 }
 
-async function sendAccessEmail(d: Deps, orderId: string, userId: number, tempPassword: string | undefined, activationPending: boolean, dedupeKey: string) {
+async function sendAccessEmail(d: Deps, orderId: string, userId: number, tempPassword: string | undefined, activationPending: boolean, dedupeKey: string, courses: string[]) {
   await safeNotify(d, "platform_access", async () => {
-    const order = await d.db.order.findUniqueOrThrow({ where: { id: orderId }, include: { customer: true, items: { include: { choice: true, product: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } } } } } });
-    const courses = order.items.flatMap((it) =>
-      it.product.type === "DIPLOMA" ? [`${it.productTitle}:`, ...it.product.diplomaCourses.map((dc) => `  ${dc.course.title}`)] : [it.choice ? `${it.productTitle} — ${it.choice.label}` : it.productTitle],
-    );
+    const order = await d.db.order.findUniqueOrThrow({ where: { id: orderId }, include: { customer: true } });
     const rendered = T.platformAccess({
       firstName: order.customer.firstName,
       username: order.customer.moodleUsername ?? order.customer.email,
       loginUrl: d.config.moodleLoginUrl,
       tempPassword,
-      courses: courses.map((c) => c.trim()),
+      courses,
       activationPending,
     });
     // La contraseña temporal solo viaja en el correo: la bandeja guarda un marcador (ver sendEmail).
@@ -285,7 +338,17 @@ export async function retryDueEnrollments(d: Deps): Promise<{ orders: number; en
   const now = d.now();
   const due = await d.db.enrollment.findMany({ where: { status: "PENDING", OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }], orderId: { not: null } }, select: { orderId: true }, distinct: ["orderId"] });
   const orphan = await d.db.order.findMany({ where: { status: { in: ["PAID", "PARTIALLY_PAID"] }, enrollments: { none: {} } }, select: { id: true } });
-  const ids = [...new Set([...due.map((r) => r.orderId!), ...orphan.map((o) => o.id)])];
+  // Mes a mes: cuotas pagadas cuyo curso aún no tiene fila de matrícula (p.ej. el proceso se cortó).
+  const paidIns = await d.db.installment.findMany({
+    where: { status: { in: ["PAID", "WAIVED"] }, moodleCourseId: { not: null }, order: { status: { in: [...PAID_STATES] } } },
+    select: { orderId: true, moodleCourseId: true, order: { select: { customerId: true } } },
+  });
+  const unlocked: string[] = [];
+  for (const i of paidIns) {
+    const enr = await d.db.enrollment.findUnique({ where: { customerId_moodleCourseId: { customerId: i.order.customerId, moodleCourseId: i.moodleCourseId! } }, select: { status: true } });
+    if (!enr || enr.status === "UNENROLLED") unlocked.push(i.orderId);
+  }
+  const ids = [...new Set([...due.map((r) => r.orderId!), ...orphan.map((o) => o.id), ...unlocked])];
   let enrolled = 0;
   for (const id of ids) {
     try {
@@ -309,10 +372,10 @@ export async function reenrollOrder(d: Deps, orderId: string, adminId: string) {
 export async function unenrollOrder(d: Deps, orderId: string, actor: Actor = SYSTEM): Promise<{ unenrolledCourseIds: number[]; keptCourseIds: number[] }> {
   const order = await loadOrderForEnrollment(d, orderId);
   if (!order) throw new DomainError("NOT_FOUND", "El pedido no existe.");
-  const courses = desiredCourses(order).map((c) => c.moodleCourseId);
+  const courses = desiredCourses(order, { all: true }).map((c) => c.moodleCourseId);
   const others = await d.db.order.findMany({
     where: { customerId: order.customerId, id: { not: orderId }, status: { in: [...PAID_STATES] } },
-    include: { items: { include: { choice: true, product: { include: { diplomaCourses: { include: { course: true } } } } } } },
+    include: { items: { include: { choice: true, installments: { select: { courseId: true, status: true } }, product: { include: { diplomaCourses: { include: { course: true } } } } } } },
   });
   const keep = new Set<number>();
   for (const o of others)

@@ -1,9 +1,11 @@
 // Cálculo de montos por plan de pago. Toda cifra en centavos enteros (USD).
-// Reglas (derivadas de las variantes reales de ceium.net, ver prisma/seed.ts):
+// Reglas (SPEC.md "Planes de pago", variantes reales de ceium.net):
 //   FULL:    total = price·(1−d)                   dueNow = total
 //   HALF:    total = price·(1−d)                   dueNow = ⌈total/2⌉, resto = 1 cuota
-//   MONTHLY: total = price (sin recargo)            dueNow = installmentCents, N−1 cuotas iguales y la
-//            última absorbe el residuo (si no hay installmentCents: price/N redondeado)
+//   MONTHLY: (solo diplomados) N = nº de cursos del diplomado, cada cuota = installmentCents (el precio
+//            publicado de la variante "Paga mes a mes": 180/230/150), total = N·cuota, sin tope al precio
+//            de lista. listCents = total (el plan no tiene descuento). Sin installmentCents configurado:
+//            price/N redondeado y la última cuota absorbe el residuo.
 export type PlanKindLike = "FULL" | "HALF" | "MONTHLY";
 
 export interface PlanInput {
@@ -22,19 +24,20 @@ export interface PlanAmounts {
   discountCents: number;
   totalCents: number;
   dueNowCents: number;
-  /** Montos de cada cuota (incluye la primera = dueNow). Suma = totalCents. */
+  /** Montos de cada cuota (incluye la primera = dueNow). Suma = totalCents. MONTHLY: una por curso. */
   schedule: number[];
 }
 
 export function computePlanAmounts(price: PriceInput, plan: PlanInput): PlanAmounts {
   const list = price.priceCents;
   if (plan.kind === "MONTHLY") {
-    // Sin recargo: el total mes a mes es el precio de lista. N−1 cuotas iguales y la última absorbe el
-    // residuo (con la cuota real de ceium.net y N=8 la última queda en $160: 7×180+160 = 1420).
-    let n = Math.max(1, plan.installments);
-    const each = price.installmentCents && price.installmentCents > 0 ? Math.min(price.installmentCents, list) : Math.round(list / n);
-    // Si la cuota configurada es tan alta que N cuotas superan el precio, se usan menos cuotas.
-    if (each * (n - 1) >= list) n = Math.max(1, Math.ceil(list / each));
+    const n = Math.max(1, Math.trunc(plan.installments));
+    if (price.installmentCents && price.installmentCents > 0) {
+      const schedule = Array.from({ length: n }, () => price.installmentCents!);
+      const total = price.installmentCents * n;
+      return { listCents: total, discountCents: 0, totalCents: total, dueNowCents: schedule[0], schedule };
+    }
+    const each = Math.round(list / n);
     const schedule = Array.from({ length: n }, () => each);
     schedule[n - 1] = list - each * (n - 1);
     return { listCents: list, discountCents: 0, totalCents: list, dueNowCents: schedule[0], schedule };

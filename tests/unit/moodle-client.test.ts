@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createMoodleMock } from "../../mocks/moodle/server.mjs";
-import { MoodleClient, MoodleError, encodeMoodleParams, generateTempPassword } from "@/server/moodle";
+import { MoodleClient, MoodleError, encodeMoodleParams, generateTempPassword, usernameFromEmail } from "@/server/moodle";
 
 const TOKEN = "t-client";
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "moodle-client-"));
@@ -72,6 +72,33 @@ describe("findOrCreateUser", () => {
     const r = await client.findOrCreateUser({ ...ana, email: "ana.perez@example.com" });
     expect(r.created).toBe(false);
     expect(r.user.username).toBe("aperez");
+  });
+
+  it("email con '+' (u otros caracteres que Moodle rechaza en usernames) → username válido derivado", async () => {
+    const r = await client.findOrCreateUser({ email: "Medico+CEIUM@gmail.com", firstname: "Médico", lastname: "Prueba" });
+    expect(r.created).toBe(true);
+    expect(r.user.username).toBe("medico_ceium@gmail.com");
+    expect(r.user.email).toBe("Medico+CEIUM@gmail.com");
+    // La segunda vez se encuentra por email (no se duplica).
+    const again = await client.findOrCreateUser({ email: "medico+ceium@gmail.com", firstname: "Médico", lastname: "Prueba" });
+    expect([again.created, again.user.id]).toEqual([false, r.user.id]);
+    expect(usernameFromEmail("José.Núñez+x@correo.com")).toBe("jose.nunez_x@correo.com");
+  });
+
+  it("si el username derivado es de OTRA persona, no la toma: usa un sufijo libre", async () => {
+    await client.call("core_user_create_users", {
+      users: [{ username: "medico_ceium@gmail.com", password: "Xx#12345", firstname: "Otra", lastname: "Persona", email: "otra@example.com" }],
+    });
+    const r = await client.findOrCreateUser({ email: "medico+ceium@gmail.com", firstname: "Médico", lastname: "Prueba" });
+    expect(r.created).toBe(true);
+    expect(r.user.username).toBe("medico_ceium@gmail.com-2");
+    expect(r.user.firstname).toBe("Médico");
+  });
+
+  it("email inválido → MoodleError no reintentable (kind validation)", async () => {
+    const e = await client.findOrCreateUser({ email: "no-es-un-correo", firstname: "A", lastname: "B" }).catch((x) => x);
+    expect(e).toBeInstanceOf(MoodleError);
+    expect([e.kind, e.retryable]).toEqual(["validation", false]);
   });
 
   it("reactiva una cuenta suspendida", async () => {

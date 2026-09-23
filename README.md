@@ -13,6 +13,16 @@ npm run dev                 # http://localhost:3000   · panel: /admin (admin@ce
 ```
 Otros: `build`, `start`, `test` (vitest, `tests/unit`), `test:e2e` (playwright, `tests/e2e`, levanta mocks + app en :3100),
 `typecheck`, `lint`, `db:reset`, `db:studio`, `catalog:extract` (re-extrae fichas de ceium.net → `prisma/seed-data/product-details.json`).
+`jobs` (`scripts/cron.ts`): pagos PayPal sin retorno, vencimientos, reintentos de matrícula, **cuotas** (vencidas + recordatorio
+de la siguiente cuota con enlace de pago), certificados y reintento de correos.
+
+### Base de datos limpia (verificación / agentes)
+`db:reset` usa `prisma db push --force-reset`, que Prisma 7 bloquea cuando lo ejecuta un agente de IA sin consentimiento
+explícito del usuario. Para verificar desde cero **no** se resetea `dev.db`: se apunta a una BD nueva y vacía.
+```bash
+DATABASE_URL="file:/tmp/ceium-check.db" npx prisma db push && DATABASE_URL="file:/tmp/ceium-check.db" npm run db:seed
+```
+Los tests (`npm test`) ya crean una BD SQLite aislada por archivo de test; no tocan `dev.db`.
 
 ## Estructura
 ```
@@ -32,6 +42,8 @@ var/                 (no versionado) correos .eml, comprobantes, certificados, c
   Enums/tipos: `import { OrderStatus, type Order } from "@/server/db"`.
 - Dinero en **centavos enteros** (`*Cents`), USD base. `PriceEntry.priceCents` = precio de lista total; planes en `PaymentPlan`
   (`computePlanAmounts` reproduce exactamente los precios de todas las variantes reales; el seed lo verifica).
+- **Mes a mes** (solo diplomados): una cuota por curso del diplomado (9 × 180/230/150), `Installment.courseId` = curso que
+  habilita; cada cuota confirmada matricula SOLO ese curso. Cuotas se imputan con `reallocateInstallments` (pagos y reembolsos).
 - ONLINE ⇒ `sedeId = null`. Cohortes solo semipresencial. Cupo con contadores `seatsHeld/seatsConfirmed` y UPDATE condicional.
 - Cohortes sembradas = **datos de ejemplo** (`Cohort.isSample`, Setting `seed.sampleData`). Datos bancarios = `TODO` (Setting `payments.manualMethods`).
 - Todo texto de UI en español (Venezuela). Nada de catálogo hardcodeado: todo sale de la BD.

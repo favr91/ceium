@@ -19,6 +19,8 @@ export interface QuoteInstallment {
   amountCents: number;
   /** Vencimiento sugerido: la 1.ª hoy, luego cada mes. */
   dueDate: Date;
+  /** MONTHLY: curso del diplomado que habilita esta cuota (en el orden del diplomado). */
+  course?: { productId: string; moodleCourseId: number | null; title: string } | null;
 }
 
 export interface Quote {
@@ -51,7 +53,10 @@ export function addMonths(date: Date, n: number): Date {
 }
 
 export async function quote(db: Db | Tx, input: QuoteInput, now: Date = new Date()): Promise<Quote> {
-  const product = await db.product.findUnique({ where: { id: input.productId }, include: { choices: true } });
+  const product = await db.product.findUnique({
+    where: { id: input.productId },
+    include: { choices: true, diplomaCourses: { orderBy: { position: "asc" }, include: { course: { select: { id: true, title: true, moodleCourseId: true } } } } },
+  });
   if (!product || !product.published) throw new DomainError("NOT_FOUND", "El programa no existe o no está disponible.");
   if (input.modality === "ONLINE" && !product.offersOnline) throw new DomainError("VALIDATION", "Este programa no se ofrece en modalidad online.");
   if (input.modality === "SEMIPRESENCIAL" && !product.offersSemipresencial) throw new DomainError("VALIDATION", "Este programa no se ofrece en modalidad semipresencial.");
@@ -71,11 +76,16 @@ export async function quote(db: Db | Tx, input: QuoteInput, now: Date = new Date
 
   const plan = await db.paymentPlan.findFirst({ where: { productId: product.id, kind: input.planKind, active: true } });
   if (!plan) throw new DomainError("VALIDATION", "El plan de pago seleccionado no está disponible para este programa.");
-  if (plan.kind === "MONTHLY" && plan.installments < 2) throw new DomainError("VALIDATION", "El plan mes a mes está mal configurado (cuotas < 2).");
+  // Mes a mes (SPEC, confirmado por el cliente): solo diplomados, una cuota por curso y en su orden.
+  const monthlyCourses = plan.kind === "MONTHLY" ? product.diplomaCourses.map((dc) => dc.course) : [];
+  if (plan.kind === "MONTHLY") {
+    if (product.type !== "DIPLOMA") throw new DomainError("VALIDATION", "El pago mes a mes solo está disponible para diplomados.");
+    if (monthlyCourses.length < 2) throw new DomainError("VALIDATION", "El plan mes a mes está mal configurado: el diplomado necesita al menos 2 cursos.");
+  }
 
   const amounts = computePlanAmounts(
     { priceCents: price.priceCents, installmentCents: price.installmentCents },
-    { kind: plan.kind, discountPct: plan.discountPct, installments: plan.installments },
+    { kind: plan.kind, discountPct: plan.discountPct, installments: plan.kind === "MONTHLY" ? monthlyCourses.length : plan.installments },
   );
 
   return {
@@ -94,6 +104,11 @@ export async function quote(db: Db | Tx, input: QuoteInput, now: Date = new Date
     discountCents: amounts.discountCents,
     totalCents: amounts.totalCents,
     dueNowCents: amounts.dueNowCents,
-    installments: amounts.schedule.map((amountCents, i) => ({ sequence: i + 1, amountCents, dueDate: addMonths(now, i) })),
+    installments: amounts.schedule.map((amountCents, i) => ({
+      sequence: i + 1,
+      amountCents,
+      dueDate: addMonths(now, i),
+      course: plan.kind === "MONTHLY" ? { productId: monthlyCourses[i].id, moodleCourseId: monthlyCourses[i].moodleCourseId, title: monthlyCourses[i].title } : null,
+    })),
   };
 }

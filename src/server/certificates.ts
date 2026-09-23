@@ -136,7 +136,7 @@ export async function deliverCertificate(d: Deps, certificateId: string): Promis
   const fullName = `${cert.customer.firstName} ${cert.customer.lastName}`;
 
   let pdfPath = cert.pdfPath;
-  const pdfExists = pdfPath ? await fs.stat(path.resolve(pdfPath)).then(() => true, () => false) : false;
+  const pdfExists = pdfPath ? await fs.stat(path.resolve(/*turbopackIgnore: true*/ pdfPath)).then(() => true, () => false) : false;
   if (!pdfPath || !pdfExists) {
     try {
       pdfPath = await writeCertificatePdf(d, {
@@ -168,7 +168,7 @@ export async function deliverCertificate(d: Deps, certificateId: string): Promis
       dedupeKey: `certificate:${cert.id}`,
       orderId,
       customerId: cert.customerId,
-      attachments: [{ filename: `Certificado-${cert.code}.pdf`, path: path.resolve(pdfPath!), contentType: "application/pdf" }],
+      attachments: [{ filename: `Certificado-${cert.code}.pdf`, path: path.resolve(/*turbopackIgnore: true*/ pdfPath!), contentType: "application/pdf" }],
     });
     // Un intento anterior falló (fila FAILED deduplicada): reintentar esa misma fila (con su PDF adjunto).
     const status = r.duplicate && r.status !== "SENT" ? await deliverOutboxEmail(d, r.id) : r.status;
@@ -343,7 +343,7 @@ export async function renderCertificatePdf(c: CertificatePdfData): Promise<Uint8
 async function writeCertificatePdf(d: Deps, c: CertificatePdfData): Promise<string> {
   const bytes = await renderCertificatePdf(c);
   const rel = path.join(d.config.certificatesDir, `${c.code}.pdf`);
-  await fs.mkdir(path.dirname(path.resolve(rel)), { recursive: true });
-  await fs.writeFile(path.resolve(rel), bytes);
+  await fs.mkdir(path.dirname(path.resolve(/*turbopackIgnore: true*/ rel)), { recursive: true });
+  await fs.writeFile(path.resolve(/*turbopackIgnore: true*/ rel), bytes);
   return rel;
 }

@@ -6,7 +6,8 @@ export type MoodleErrorKind =
   | "network" // no se pudo conectar
   | "timeout" // no respondió a tiempo
   | "http" // status HTTP distinto de 2xx
-  | "protocol"; // respuesta no JSON / forma inesperada
+  | "protocol" // respuesta no JSON / forma inesperada
+  | "validation"; // datos locales que Moodle nunca aceptará (p.ej. email inválido): no se reintenta
 
 /** Códigos de error de Moodle que indican un problema transitorio (vale la pena reintentar). */
 const RETRYABLE_ERRORCODES = new Set(["dmlreadexception", "dmlwriteexception", "dbsessionhandlerproblem", "servicebusy"]);

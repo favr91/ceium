@@ -27,6 +27,7 @@ import {
 import { acquireSeat, confirmReservation, releaseOrderReservations } from "@/server/seats";
 import { SETTING_KEYS } from "@/server/settings";
 import { enrollOrder, unenrollOrder } from "@/server/enrollment";
+import { reallocateInstallments } from "@/server/installments";
 import { buildOrderView, buildPaymentView, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
 
@@ -52,26 +53,18 @@ async function applyConfirmedPayment(tx: Tx, paymentId: string, actor: Actor, no
   await tx.order.update({ where: { id: order.id }, data: { amountPaidCents: amountPaid, paidAt: order.paidAt ?? now } });
   const balance = await recomputeBalance(tx, order.id);
 
-  // Imputar a cuotas en orden.
-  let remaining = p.amountUsdCents;
-  let firstInstallment: string | null = null;
-  const pending = await tx.installment.findMany({ where: { orderId: order.id, status: { in: ["PENDING", "OVERDUE"] } }, orderBy: { sequence: "asc" } });
-  for (const ins of pending) {
-    if (remaining <= 0) break;
-    const take = Math.min(remaining, ins.amountCents - ins.paidCents);
-    if (take <= 0) continue;
-    remaining -= take;
-    const paidCents = ins.paidCents + take;
-    await tx.installment.update({ where: { id: ins.id }, data: { paidCents, status: paidCents >= ins.amountCents ? "PAID" : ins.status, paidAt: paidCents >= ins.amountCents ? now : ins.paidAt } });
-    firstInstallment ??= ins.id;
-  }
-  if (!p.installmentId && firstInstallment) await tx.payment.update({ where: { id: p.id }, data: { installmentId: firstInstallment } });
+  // Imputar a cuotas (en orden de secuencia; ver installments.ts).
+  const realloc = await reallocateInstallments(tx, order.id, now);
+  if (!p.installmentId && realloc.becamePaid[0]) await tx.payment.update({ where: { id: p.id }, data: { installmentId: realloc.becamePaid[0].id } });
+  // Mes a mes: cada cuota pagada habilita SU curso del diplomado (y solo ese).
+  const unlockedCourses = realloc.becamePaid.filter((i) => i.moodleCourseId != null);
 
   await addOrderEvent(tx, order.id, "PAYMENT_RECEIVED", actor, `${T.METHOD_LABELS[p.method] ?? p.method}: ${(p.amountUsdCents / 100).toFixed(2)} USD`, {
     paymentId: p.id,
     amountUsdCents: p.amountUsdCents,
     amountPaidCents: amountPaid,
     balanceCents: balance,
+    installmentsPaid: realloc.becamePaid.map((i) => i.sequence),
   });
 
   if (order.status === "CANCELLED" || order.status === "REFUNDED") {
@@ -83,6 +76,7 @@ async function applyConfirmedPayment(tx: Tx, paymentId: string, actor: Actor, no
   if (PREPAID_STATES.includes(order.status)) {
     if (amountPaid >= order.dueNowCents) {
       result.firstPaymentSatisfied = true;
+      await adoptBuyerName(tx, order, actor);
       for (const it of order.items) {
         if (it.modality !== "SEMIPRESENCIAL" || !it.reservation) continue;
         const r = await confirmReservation(tx, it.reservation.id, now);
@@ -109,11 +103,44 @@ async function applyConfirmedPayment(tx: Tx, paymentId: string, actor: Actor, no
     await transitionOrder(tx, order.id, "PAID", { actor, note: "Saldo cancelado por completo" });
   }
   if (PAID_STATES.includes(order.status) && order.status !== "ENROLLED") result.shouldEnroll = true;
+  if (PAID_STATES.includes(order.status) && unlockedCourses.length > 0) {
+    result.shouldEnroll = true;
+    await addOrderEvent(tx, order.id, "INSTALLMENT_PAID", actor, `Cuota(s) ${unlockedCourses.map((i) => i.sequence).join(", ")} pagada(s): se habilita el siguiente curso del diplomado`, {
+      installments: unlockedCourses.map((i) => ({ id: i.id, sequence: i.sequence, moodleCourseId: i.moodleCourseId })),
+    });
+  }
   return result;
+}
+
+/**
+ * El checkout no está autenticado: el nombre escrito solo pasa al cliente (Moodle y certificado) si este
+ * pedido es su PRIMERA compra pagada y aún no tiene cuenta de Moodle. Si no, se conserva el registrado y
+ * se avisa al panel cuando difieren.
+ */
+async function adoptBuyerName(tx: Tx, order: { id: string; customerId: string; buyerFirstName: string | null; buyerLastName: string | null }, actor: Actor) {
+  if (!order.buyerFirstName || !order.buyerLastName) return;
+  const c = await tx.customer.findUniqueOrThrow({ where: { id: order.customerId } });
+  if (c.firstName === order.buyerFirstName && c.lastName === order.buyerLastName) return;
+  const otherPaid = await tx.order.count({
+    where: { customerId: c.id, id: { not: order.id }, OR: [{ amountPaidCents: { gt: 0 } }, { status: { in: [...PAID_STATES, "REFUNDED"] } }] },
+  });
+  if (otherPaid === 0 && c.moodleUserId == null) {
+    await tx.customer.update({ where: { id: c.id }, data: { firstName: order.buyerFirstName, lastName: order.buyerLastName } });
+    await addOrderEvent(tx, order.id, "CUSTOMER_UPDATED", actor, `Nombre del cliente: ${c.firstName} ${c.lastName} → ${order.buyerFirstName} ${order.buyerLastName} (primera compra pagada)`);
+    return;
+  }
+  await addOrderEvent(
+    tx,
+    order.id,
+    "ATTENTION",
+    SYSTEM,
+    `El nombre escrito en este pedido (${order.buyerFirstName} ${order.buyerLastName}) difiere del registrado (${c.firstName} ${c.lastName}). Se conserva el registrado para Moodle y el certificado; corrígelo desde el panel si corresponde.`,
+  );
 }
 
 async function afterPaymentApplied(d: Deps, paymentId: string, res: ApplyResult, kind: "paypal" | "manual") {
   const orderId = res.orderId;
+  if (res.closedOrder) return; // pedido cerrado: nada que confirmar al cliente (el panel decide / se reembolsa)
   if (res.firstPaymentSatisfied) {
     if (kind === "paypal") {
       await safeNotify(d, "order_confirmation", async () => {
@@ -306,14 +333,22 @@ export interface StartPaypalResult {
   amountCents: number;
 }
 
-/** Crea la orden PayPal por el monto que corresponde ahora (primer pago o siguiente cuota). */
-export async function startPaypalPayment(d: Deps, orderId: string, urls?: { returnUrl?: string; cancelUrl?: string }): Promise<StartPaypalResult> {
+/**
+ * Crea la orden PayPal por el monto que corresponde ahora (primer pago o siguiente cuota). Con
+ * `installmentId` (enlace del correo de recordatorio) cobra exactamente esa cuota, que debe ser la
+ * siguiente impaga del pedido.
+ */
+export async function startPaypalPayment(d: Deps, orderId: string, urls?: { returnUrl?: string; cancelUrl?: string; installmentId?: string | null }): Promise<StartPaypalResult> {
   const now = d.now();
   const ttl = await reservationTtlMs(d, "PAYPAL");
   const { paymentId, amountCents, order } = await withTx(d, async (tx) => {
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: { include: { reservation: true } } } });
     if (!order) throw new DomainError("NOT_FOUND", "El pedido no existe.");
     let amount: number;
+    let installmentId: string | null = null;
+    if (urls?.installmentId && !PAID_STATES.includes(order.status)) {
+      throw new DomainError("INVALID_STATE", order.status === "PENDING_PAYMENT" ? "Primero completa el pago inicial del pedido." : "Este pedido no admite pagos en este momento.");
+    }
     if (order.status === "PENDING_PAYMENT") {
       amount = order.dueNowCents - order.amountPaidCents;
       // Si la reserva se liberó (venció y otro comprador limpió), volver a retener cupo o fallar.
@@ -324,8 +359,17 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
         await tx.seatReservation.update({ where: { id: r.id }, data: { status: "HELD", expiresAt: new Date(now.getTime() + ttl), releasedAt: null, releasedReason: null } });
       }
       if (order.paymentMethod !== "PAYPAL") await tx.order.update({ where: { id: order.id }, data: { paymentMethod: "PAYPAL" } });
+    } else if (PAID_STATES.includes(order.status) && order.balanceCents <= 0) {
+      throw new DomainError("INVALID_STATE", "Este pedido ya está pagado por completo.");
     } else if (PAID_STATES.includes(order.status) && order.balanceCents > 0) {
       const next = await tx.installment.findFirst({ where: { orderId, status: { in: ["PENDING", "OVERDUE"] } }, orderBy: { sequence: "asc" } });
+      if (urls?.installmentId) {
+        const target = await tx.installment.findFirst({ where: { id: urls.installmentId, orderId } });
+        if (!target) throw new DomainError("NOT_FOUND", "La cuota no existe en este pedido.");
+        if (target.status === "PAID" || target.status === "WAIVED") throw new DomainError("INVALID_STATE", `La cuota ${target.sequence} ya está pagada.`);
+        if (next && next.id !== target.id) throw new DomainError("INVALID_STATE", `Primero debes pagar la cuota ${next.sequence}.`);
+      }
+      installmentId = next?.id ?? null;
       amount = Math.min(order.balanceCents, next ? next.amountCents - next.paidCents : order.balanceCents);
     } else if (order.status === "EXPIRED") {
       throw new DomainError("INVALID_STATE", "Este pedido venció. Vuelve a iniciar la compra.");
@@ -334,7 +378,7 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
     }
     if (amount <= 0) throw new DomainError("INVALID_STATE", "No hay monto pendiente por pagar.");
     await tx.payment.updateMany({ where: { orderId, method: "PAYPAL", status: "PENDING" }, data: { status: "CANCELLED" } });
-    const p = await tx.payment.create({ data: { orderId, method: "PAYPAL", status: "PENDING", amountCents: amount, currency: "USD", amountUsdCents: amount, createdAt: now } });
+    const p = await tx.payment.create({ data: { orderId, installmentId, method: "PAYPAL", status: "PENDING", amountCents: amount, currency: "USD", amountUsdCents: amount, createdAt: now } });
     return { paymentId: p.id, amountCents: amount, order };
   });
 
@@ -372,7 +416,10 @@ export interface CaptureCompletedInput {
  * PAYMENT.CAPTURE.COMPLETED (webhook) o captura exitosa en el return URL. Idempotente: puede llegar
  * dos veces (o las dos a la vez); solo la primera aplica el pago y dispara la matrícula.
  */
-export async function onPaypalCaptureCompleted(d: Deps, input: CaptureCompletedInput): Promise<{ alreadyProcessed: boolean; orderId: string; paymentId: string }> {
+export async function onPaypalCaptureCompleted(
+  d: Deps,
+  input: CaptureCompletedInput,
+): Promise<{ alreadyProcessed: boolean; orderId: string; paymentId: string; autoRefundCents?: number; currencyMismatch?: boolean }> {
   const now = d.now();
   const actor: Actor = { type: input.source === "webhook" ? "WEBHOOK" : input.source === "reconcile" ? "SYSTEM" : "CUSTOMER" };
   const p =
@@ -380,7 +427,24 @@ export async function onPaypalCaptureCompleted(d: Deps, input: CaptureCompletedI
     (input.paypalOrderId ? await d.db.payment.findUnique({ where: { paypalOrderId: input.paypalOrderId } }) : null);
   if (!p) throw new DomainError("NOT_FOUND", "No existe un pago para esa captura de PayPal.", { captureId: input.captureId, paypalOrderId: input.paypalOrderId });
 
+  // Solo cobramos en USD: una captura en otra moneda no se imputa (el panel la reembolsa desde PayPal).
+  const currency = input.currency?.trim().toUpperCase();
+  if (currency && currency !== "USD") {
+    const flagged = await withTx(d, async (tx) => {
+      const n = await tx.payment.updateMany({
+        where: { id: p.id, status: { in: ["PENDING", "FAILED", "CANCELLED"] }, NOT: { providerStatus: "CURRENCY_MISMATCH" } },
+        data: { status: "FAILED", providerStatus: "CURRENCY_MISMATCH", paypalCaptureId: input.captureId, providerPayload: (input.raw as object) ?? undefined },
+      });
+      if (n.count === 1) {
+        await addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `PayPal capturó ${input.amountCents != null ? (input.amountCents / 100).toFixed(2) : "?"} ${currency} (se esperaba USD). No se imputó al pedido: reembolsa la captura ${input.captureId} desde PayPal.`, { paymentId: p.id, captureId: input.captureId, currency });
+      }
+      return n.count === 1;
+    });
+    return { alreadyProcessed: !flagged, orderId: p.orderId, paymentId: p.id, currencyMismatch: true };
+  }
+
   const out = await withTx(d, async (tx) => {
+    const before = await tx.payment.findUniqueOrThrow({ where: { id: p.id }, select: { status: true } });
     const amount = input.amountCents ?? p.amountCents;
     const claimed = await tx.payment.updateMany({
       where: { id: p.id, status: { in: ["PENDING", "FAILED", "CANCELLED"] } },
@@ -391,11 +455,30 @@ export async function onPaypalCaptureCompleted(d: Deps, input: CaptureCompletedI
     if (amount !== p.amountCents) {
       await addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `El monto capturado (${(amount / 100).toFixed(2)}) difiere del esperado (${(p.amountCents / 100).toFixed(2)}).`, { paymentId: p.id });
     }
-    return applyConfirmedPayment(tx, p.id, actor, now);
+    if (before.status === "CANCELLED") {
+      // El comprador aprobó un intento que ya había sido reemplazado (p.ej. dos pestañas).
+      await addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `Se capturó un intento de PayPal que había sido reemplazado por otro (${input.captureId}).`, { paymentId: p.id, captureId: input.captureId });
+    }
+    const apply = await applyConfirmedPayment(tx, p.id, actor, now);
+    const o = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { balanceCents: true } });
+    // Excedente: pedido cerrado (todo) o pagado de más (lo que sobra). Se reembolsa automáticamente.
+    const refundCents = apply.closedOrder ? amount : o.balanceCents < 0 ? Math.min(amount, -o.balanceCents) : 0;
+    if (refundCents > 0) {
+      await addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `Pago PayPal en exceso: se reembolsan automáticamente ${(refundCents / 100).toFixed(2)} USD de la captura ${input.captureId}.`, { paymentId: p.id, refundCents });
+    }
+    return { apply, refundCents };
   });
   if (!out) return { alreadyProcessed: true, orderId: p.orderId, paymentId: p.id };
-  await afterPaymentApplied(d, p.id, out, "paypal");
-  return { alreadyProcessed: false, orderId: p.orderId, paymentId: p.id };
+  await afterPaymentApplied(d, p.id, out.apply, "paypal");
+  if (out.refundCents > 0) {
+    try {
+      await refundPayment(d, { paymentId: p.id, amountCents: out.refundCents, reason: out.apply.closedOrder ? "Pago recibido en un pedido cerrado" : "Pago duplicado: reembolso automático del excedente", unenroll: false, releaseSeat: false, keepCertificate: true });
+    } catch (e) {
+      d.log.error(`[paypal] no se pudo reembolsar el excedente del pago ${p.id}`, e);
+      await withTx(d, (tx) => addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `No se pudo reembolsar automáticamente el excedente (${(out.refundCents / 100).toFixed(2)} USD): hazlo desde el panel. ${String((e as Error)?.message ?? e)}`, { paymentId: p.id }));
+    }
+  }
+  return { alreadyProcessed: false, orderId: p.orderId, paymentId: p.id, autoRefundCents: out.refundCents || undefined };
 }
 
 export async function onPaypalCaptureDenied(d: Deps, input: { captureId?: string | null; paypalOrderId?: string | null; raw?: unknown; source: "webhook" | "return" | "reconcile" }) {
@@ -628,6 +711,11 @@ export interface RefundInput {
   unenroll?: boolean;
   /** Liberar el cupo de la cohorte. Por defecto: sí cuando el pedido queda reembolsado por completo. */
   releaseSeat?: boolean;
+  /**
+   * Conservar el certificado del diplomado aunque el pedido quede reembolsado por completo (cortesía).
+   * Por defecto, un reembolso total REVOCA los certificados emitidos por este pedido.
+   */
+  keepCertificate?: boolean;
 }
 
 interface ApplyRefundInput {
@@ -638,6 +726,7 @@ interface ApplyRefundInput {
   reason?: string | null;
   adminId?: string | null;
   releaseSeat?: boolean;
+  keepCertificate?: boolean;
   actor: Actor;
 }
 
@@ -661,7 +750,16 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
   const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId } });
   await tx.order.update({ where: { id: order.id }, data: { amountPaidCents: order.amountPaidCents - input.amountCents } });
   const balance = await recomputeBalance(tx, order.id);
-  await addOrderEvent(tx, order.id, "REFUND", input.actor, input.reason ?? null, { paymentId: p.id, refundId: refund.id, amountCents: input.amountCents, manual: input.manual, balanceCents: balance });
+  // Las cuotas se vuelven a imputar con el neto pagado: la última cubierta vuelve a quedar pendiente.
+  const realloc = await reallocateInstallments(tx, order.id, now);
+  await addOrderEvent(tx, order.id, "REFUND", input.actor, input.reason ?? null, {
+    paymentId: p.id,
+    refundId: refund.id,
+    amountCents: input.amountCents,
+    manual: input.manual,
+    balanceCents: balance,
+    installmentsReopened: realloc.becameUnpaid.map((i) => i.sequence),
+  });
 
   const agg = await tx.payment.aggregate({ where: { orderId: order.id, status: { in: ["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"] } }, _sum: { amountUsdCents: true, refundedCents: true } });
   const fullyRefunded = (agg._sum.amountUsdCents ?? 0) > 0 && (agg._sum.refundedCents ?? 0) >= (agg._sum.amountUsdCents ?? 0);
@@ -672,6 +770,30 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
     }
   } else if (input.releaseSeat === true) {
     await releaseOrderReservations(tx, order.id, "REFUNDED", now);
+  }
+
+  // Mes a mes: una cuota que vuelve a quedar impaga con su curso ya matriculado → decisión del admin.
+  if (!fullyRefunded) {
+    for (const ins of realloc.becameUnpaid) {
+      if (ins.moodleCourseId == null) continue;
+      const enr = await tx.enrollment.findUnique({ where: { customerId_moodleCourseId: { customerId: order.customerId, moodleCourseId: ins.moodleCourseId } } });
+      if (enr?.status === "ENROLLED") {
+        await addOrderEvent(tx, order.id, "ATTENTION", SYSTEM, `Tras el reembolso la cuota ${ins.sequence} quedó sin pagar, pero su curso (Moodle ${ins.moodleCourseId}) sigue matriculado: desmatricula o registra el pago.`, { installmentId: ins.id, moodleCourseId: ins.moodleCourseId });
+      }
+    }
+  }
+
+  // Certificados emitidos por este pedido: un reembolso total los revoca (salvo keepCertificate); uno
+  // parcial que deja saldo lo avisa en el panel (el certificado exige el diplomado pagado completo).
+  const certs = await tx.certificate.findMany({ where: { status: "ISSUED", orderItem: { orderId: order.id } } });
+  for (const c of certs) {
+    if (fullyRefunded && input.keepCertificate !== true) {
+      const reason = "Pedido reembolsado por completo";
+      const n = await tx.certificate.updateMany({ where: { id: c.id, status: "ISSUED" }, data: { status: "REVOKED", revokedAt: now, revokeReason: reason } });
+      if (n.count === 1) await addOrderEvent(tx, order.id, "CERTIFICATE_REVOKED", input.actor, `Certificado ${c.code} revocado: ${reason}`, { certificateId: c.id, code: c.code, revokedAt: now.toISOString() });
+    } else if (balance > 0) {
+      await addOrderEvent(tx, order.id, "ATTENTION", SYSTEM, `El certificado ${c.code} sigue vigente, pero el pedido quedó con saldo pendiente (${(balance / 100).toFixed(2)} USD) tras el reembolso: revócalo desde el panel si corresponde.`, { certificateId: c.id });
+    }
   }
   return { refund, fullyRefunded, orderId: order.id, duplicate: false as const };
 }
@@ -722,7 +844,7 @@ export async function refundPayment(d: Deps, input: RefundInput) {
   let result;
   try {
     result = await withTx(d, (tx) =>
-      applyRefund(tx, { paymentId: p.id, amountCents: amount, providerRefundId, manual: !viaApi, reason: input.reason, adminId: input.adminId, releaseSeat: input.releaseSeat, actor }, now),
+      applyRefund(tx, { paymentId: p.id, amountCents: amount, providerRefundId, manual: !viaApi, reason: input.reason, adminId: input.adminId, releaseSeat: input.releaseSeat, keepCertificate: input.keepCertificate, actor }, now),
     );
   } catch (e) {
     // Carrera con el webhook PAYMENT.CAPTURE.REFUNDED que registró este mismo reembolso primero.

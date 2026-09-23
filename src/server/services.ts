@@ -16,6 +16,7 @@ import * as enrollment from "@/server/enrollment";
 import * as certificates from "@/server/certificates";
 import * as email from "@/server/email";
 import * as jobs from "@/server/jobs";
+import * as installments from "@/server/installments";
 
 export function createDefaultDeps(overrides: Partial<Deps> = {}): Deps {
   return {
@@ -64,6 +65,7 @@ export function createServices(d: Deps) {
       "reconcilePaypalPayments",
     ]),
     enrollment: bind(d, enrollment, ["enrollOrder", "reenrollOrder", "unenrollOrder", "retryDueEnrollments", "resendCohortDetails"]),
+    installments: bind(d, installments, ["runInstallmentReminders", "markOverdueInstallments", "sendInstallmentReminder"]),
     certificates: bind(d, certificates, ["checkDiplomaCompletion", "deliverCertificate", "verifyCertificate", "revokeCertificate", "runCertificateSweep"]),
     email: bind(d, email, ["sendEmail", "retryFailedEmails", "resendEmail"]),
     jobs: bind(d, jobs, ["runJobs"]),
