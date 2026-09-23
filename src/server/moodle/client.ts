@@ -231,6 +231,16 @@ export class MoodleClient {
     return { user: { ...user, suspended: false }, created: false, reactivated: true };
   }
 
+  /**
+   * Fija una contraseña temporal nueva (política de Moodle) y obliga a cambiarla en el primer ingreso.
+   * core_user_update_users no admite createpassword, así que se usa siempre la contraseña generada aquí.
+   */
+  async resetTempPassword(userId: number): Promise<string> {
+    const password = generateTempPassword();
+    await this.updateUsers([{ id: userId, password, preferences: [{ type: "auth_forcepasswordchange", value: 1 }] }]);
+    return password;
+  }
+
   /** core_user_update_users. Lanza si Moodle devuelve warnings (p.ej. invaliduserid). */
   async updateUsers(users: ({ id: number } & Record<string, ParamValue>)[]): Promise<void> {
     const res = await this.call<{ warnings?: MoodleWarning[] } | null>("core_user_update_users", { users });

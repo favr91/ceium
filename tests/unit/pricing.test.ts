@@ -15,11 +15,19 @@ describe("computePlanAmounts", () => {
     expect(half.dueNowCents).toBe(67450);
     expect(half.totalCents).toBe(134900);
   });
-  it("diplomado: mes a mes usa la cuota real", () => {
-    const m = computePlanAmounts({ priceCents: 142000, installmentCents: 18000 }, { kind: "MONTHLY", discountPct: 0, installments: 8 });
-    expect(m.dueNowCents).toBe(18000);
-    expect(m.schedule).toHaveLength(8);
-    expect(m.totalCents).toBe(144000);
+  it("diplomado: mes a mes usa la cuota real y el total es el precio de lista (última cuota $160)", () => {
+    for (const [list, each] of [[142000, 18000], [177000, 23000], [121000, 15000]]) {
+      const m = computePlanAmounts({ priceCents: list, installmentCents: each }, { kind: "MONTHLY", discountPct: 0, installments: 8 });
+      expect(m.dueNowCents).toBe(each);
+      expect(m.schedule).toHaveLength(8);
+      expect(m.schedule[7]).toBe(16000);
+      expect(m.totalCents).toBe(list);
+      expect(m.discountCents).toBe(0);
+    }
+  });
+  it("mes a mes: una cuota configurada demasiado alta reduce el número de cuotas", () => {
+    const m = computePlanAmounts({ priceCents: 50000, installmentCents: 20000 }, { kind: "MONTHLY", discountPct: 0, installments: 8 });
+    expect(m.schedule).toEqual([20000, 20000, 10000]);
   });
   it("formatUSD", () => {
     expect(formatUSD(127800)).toBe("$1,278.00");

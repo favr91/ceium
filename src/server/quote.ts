@@ -2,7 +2,7 @@
 import type { Modality, PlanKind } from "@/generated/prisma/client";
 import type { Db, Tx } from "@/server/deps";
 import { DomainError } from "@/server/errors";
-import { computePlanAmounts } from "@/server/pricing";
+import { computePlanAmounts, priceScopeKey } from "@/server/pricing";
 
 export interface QuoteInput {
   productId: string;
@@ -66,8 +66,8 @@ export async function quote(db: Db | Tx, input: QuoteInput, now: Date = new Date
     choiceId = input.choiceId;
   }
 
-  const price = await db.priceEntry.findFirst({ where: { productId: product.id, modality: input.modality, sedeId, choiceId, active: true } });
-  if (!price) throw new DomainError("NOT_FOUND", "No hay precio configurado para esa combinación de modalidad y sede.");
+  const price = await db.priceEntry.findUnique({ where: { productId_scopeKey: { productId: product.id, scopeKey: priceScopeKey({ modality: input.modality, sedeId, choiceId }) } } });
+  if (!price || !price.active) throw new DomainError("NOT_FOUND", "No hay precio configurado para esa combinación de modalidad y sede.");
 
   const plan = await db.paymentPlan.findFirst({ where: { productId: product.id, kind: input.planKind, active: true } });
   if (!plan) throw new DomainError("VALIDATION", "El plan de pago seleccionado no está disponible para este programa.");

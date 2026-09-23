@@ -12,7 +12,7 @@
 // API de control para tests (JSON):
 //   GET  /health
 //   GET  /__mock/state                         → estado completo
-//   POST /__mock/reset        {courses?}       → estado inicial (cursos 101..126 por defecto)
+//   POST /__mock/reset        {courses?}       → estado inicial (cursos 101..128 por defecto: 26 cursos + 2 niveles del taller transfontanelar)
 //   POST /__mock/complete     {userid, courseid, completed?=true}
 //   POST /__mock/course       {id, fullname?, shortname?, enablecompletion?, criteria?, manualEnrol?}
 //   POST /__mock/fail-next    {wsfunction?, count?=1, type?: "exception"|"http"|"timeout"|"garbage",
@@ -28,7 +28,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STATE_FILE = path.resolve(here, '../../var/mock-moodle/state.json');
-const DEFAULT_COURSE_IDS = Array.from({ length: 26 }, (_, i) => 101 + i);
+const DEFAULT_COURSE_IDS = Array.from({ length: 28 }, (_, i) => 101 + i);
 const ASSIGNABLE_ROLES = new Set([3, 4, 5]); // editingteacher, teacher, student
 const VALID_AUTHS = new Set(['manual', 'nologin', 'email', 'oauth2', 'webservice']);
 

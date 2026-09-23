@@ -45,6 +45,18 @@ export class FakeMoodle implements MoodlePort {
     this.calls.push({ fn: "getCompletion", args: [userId, courseId] });
     return { completed: this.completed.has(`${userId}:${courseId}`) };
   }
+  passwordResets: { userId: number; password: string }[] = [];
+  failReset = 0;
+  async resetTempPassword(userId: number) {
+    this.calls.push({ fn: "resetTempPassword", args: [userId] });
+    if (this.failReset > 0) {
+      this.failReset--;
+      throw new Error("Moodle core_user_update_users: timeout");
+    }
+    const password = "Rst#" + crypto.randomBytes(4).toString("hex");
+    this.passwordResets.push({ userId, password });
+    return password;
+  }
   markCompleted(userId: number, courseId: number) {
     this.completed.add(`${userId}:${courseId}`);
   }
@@ -58,6 +70,8 @@ interface FakePaypalOrder {
   input: PaypalCreateOrderInput;
   status: "CREATED" | "APPROVED" | "COMPLETED";
   captureId?: string;
+  /** Estado de la captura (COMPLETED por defecto; PENDING si PayPal la retuvo). */
+  captureStatus?: "COMPLETED" | "PENDING" | "DECLINED";
 }
 
 export class FakePaypal implements PaypalPort {
@@ -95,6 +109,28 @@ export class FakePaypal implements PaypalPort {
       status: declined ? "APPROVED" : "COMPLETED",
       purchase_units: [{ payments: { captures: [{ id: o.captureId, status: declined ? "DECLINED" : "COMPLETED", amount: { currency_code: "USD", value: (o.input.amountCents / 100).toFixed(2) } }] } }],
     };
+  }
+  failGetOrder = false;
+  /** Respuesta cruda de GET /v2/checkout/orders/{id}. */
+  async getOrder(id: string) {
+    this.calls.push({ fn: "getOrder", args: [id] });
+    if (this.failGetOrder) throw new Error("PayPal getOrder: 503 SERVICE_UNAVAILABLE");
+    const o = this.orders.get(id);
+    if (!o) throw new Error("PayPal getOrder: 404 RESOURCE_NOT_FOUND");
+    const value = (o.input.amountCents / 100).toFixed(2);
+    return {
+      id,
+      status: o.status,
+      purchase_units: [{ amount: { currency_code: "USD", value }, ...(o.captureId ? { payments: { captures: [{ id: o.captureId, status: o.captureStatus ?? "COMPLETED", amount: { currency_code: "USD", value } }] } } : {}) }],
+    };
+  }
+  /** El comprador aprobó y PayPal capturó por su lado (sin return URL ni webhook). */
+  captureOutOfBand(id: string, captureStatus: "COMPLETED" | "PENDING" = "COMPLETED") {
+    const o = this.orders.get(id)!;
+    o.status = "COMPLETED";
+    o.captureId = "CAP-" + crypto.randomBytes(5).toString("hex").toUpperCase();
+    o.captureStatus = captureStatus;
+    return o.captureId;
   }
   async refundCapture(captureId: string, amountCents?: number) {
     this.calls.push({ fn: "refundCapture", args: [captureId, amountCents] });

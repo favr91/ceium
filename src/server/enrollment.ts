@@ -37,6 +37,7 @@ async function loadOrderForEnrollment(d: Deps, orderId: string) {
       items: {
         include: {
           reservation: true,
+          choice: true,
           product: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } },
         },
       },
@@ -44,18 +45,36 @@ async function loadOrderForEnrollment(d: Deps, orderId: string) {
   });
 }
 
-/** Cursos Moodle que otorga cada ítem: el curso suelto o todos los cursos del diplomado. */
+type CourseLike = { id: string; title: string; moodleCourseId: number | null };
+interface ItemLike {
+  productTitle: string;
+  product: CourseLike & { type: string; diplomaCourses: { course: CourseLike }[] };
+  choice?: { moodleCourseIds: unknown } | null;
+}
+
+/**
+ * Cursos Moodle que otorga un ítem: los del diplomado, los de la opción elegida (p.ej. "Nivel 1" del
+ * taller transfontanelar) o el curso del producto.
+ */
+export function itemMoodleCourses(it: ItemLike): { productId: string; moodleCourseId: number | null; title: string }[] {
+  if (it.product.type === "DIPLOMA") return it.product.diplomaCourses.map((dc) => ({ productId: dc.course.id, moodleCourseId: dc.course.moodleCourseId, title: dc.course.title }));
+  const ids = Array.isArray(it.choice?.moodleCourseIds) ? (it.choice!.moodleCourseIds as unknown[]).filter((x): x is number => Number.isInteger(x)) : [];
+  if (ids.length) return ids.map((id) => ({ productId: it.product.id, moodleCourseId: id, title: it.productTitle }));
+  return [{ productId: it.product.id, moodleCourseId: it.product.moodleCourseId, title: it.product.title }];
+}
+
+/** Cursos Moodle que otorga cada ítem del pedido (sin repetir). */
 function desiredCourses(order: NonNullable<Awaited<ReturnType<typeof loadOrderForEnrollment>>>): DesiredCourse[] {
   const out: DesiredCourse[] = [];
   const seen = new Set<number>();
   for (const it of order.items) {
-    const courses = it.product.type === "DIPLOMA" ? it.product.diplomaCourses.map((dc) => dc.course) : [it.product];
+    const courses = itemMoodleCourses(it);
     if (it.product.type === "DIPLOMA" && courses.length === 0) throw new DomainError("VALIDATION", `El diplomado «${it.productTitle}» no tiene cursos configurados.`);
     for (const c of courses) {
       if (c.moodleCourseId == null) throw new DomainError("VALIDATION", `El curso «${c.title}» no tiene curso de Moodle asociado.`);
       if (seen.has(c.moodleCourseId)) continue;
       seen.add(c.moodleCourseId);
-      out.push({ productId: c.id, moodleCourseId: c.moodleCourseId, orderItemId: it.id, title: c.title });
+      out.push({ productId: c.productId, moodleCourseId: c.moodleCourseId, orderItemId: it.id, title: c.title });
     }
   }
   return out;
@@ -206,10 +225,12 @@ async function finalize(d: Deps, orderId: string, customerId: string, desired: D
   return { status: "ENROLLED", enrolledCourseIds: enrolled, pendingCourseIds: [] };
 }
 
-async function sendAccessEmail(d: Deps, orderId: string, _userId: number, tempPassword: string | undefined, activationPending: boolean, dedupeKey: string) {
+async function sendAccessEmail(d: Deps, orderId: string, userId: number, tempPassword: string | undefined, activationPending: boolean, dedupeKey: string) {
   await safeNotify(d, "platform_access", async () => {
-    const order = await d.db.order.findUniqueOrThrow({ where: { id: orderId }, include: { customer: true, items: { include: { product: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } } } } } });
-    const courses = order.items.flatMap((it) => (it.product.type === "DIPLOMA" ? [`${it.productTitle}:`, ...it.product.diplomaCourses.map((dc) => `  ${dc.course.title}`)] : [it.productTitle]));
+    const order = await d.db.order.findUniqueOrThrow({ where: { id: orderId }, include: { customer: true, items: { include: { choice: true, product: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } } } } } });
+    const courses = order.items.flatMap((it) =>
+      it.product.type === "DIPLOMA" ? [`${it.productTitle}:`, ...it.product.diplomaCourses.map((dc) => `  ${dc.course.title}`)] : [it.choice ? `${it.productTitle} — ${it.choice.label}` : it.productTitle],
+    );
     const rendered = T.platformAccess({
       firstName: order.customer.firstName,
       username: order.customer.moodleUsername ?? order.customer.email,
@@ -218,7 +239,16 @@ async function sendAccessEmail(d: Deps, orderId: string, _userId: number, tempPa
       courses: courses.map((c) => c.trim()),
       activationPending,
     });
-    await sendEmail(d, { template: "platform_access", to: order.customer.email, rendered, dedupeKey, orderId, customerId: order.customerId });
+    // La contraseña temporal solo viaja en el correo: la bandeja guarda un marcador (ver sendEmail).
+    await sendEmail(d, {
+      template: "platform_access",
+      to: order.customer.email,
+      rendered,
+      dedupeKey,
+      orderId,
+      customerId: order.customerId,
+      secret: tempPassword ? { kind: "moodle_temp_password", moodleUserId: userId, value: tempPassword } : undefined,
+    });
   });
 }
 
@@ -282,14 +312,11 @@ export async function unenrollOrder(d: Deps, orderId: string, actor: Actor = SYS
   const courses = desiredCourses(order).map((c) => c.moodleCourseId);
   const others = await d.db.order.findMany({
     where: { customerId: order.customerId, id: { not: orderId }, status: { in: [...PAID_STATES] } },
-    include: { items: { include: { product: { include: { diplomaCourses: { include: { course: true } } } } } } },
+    include: { items: { include: { choice: true, product: { include: { diplomaCourses: { include: { course: true } } } } } } },
   });
   const keep = new Set<number>();
   for (const o of others)
-    for (const it of o.items) {
-      const cs = it.product.type === "DIPLOMA" ? it.product.diplomaCourses.map((dc) => dc.course) : [it.product];
-      for (const c of cs) if (c.moodleCourseId != null) keep.add(c.moodleCourseId);
-    }
+    for (const it of o.items) for (const c of itemMoodleCourses(it)) if (c.moodleCourseId != null) keep.add(c.moodleCourseId);
   const rows = await d.db.enrollment.findMany({ where: { customerId: order.customerId, moodleCourseId: { in: courses }, status: { in: ["ENROLLED", "PENDING", "FAILED"] } } });
   const toRemove = rows.filter((r) => !keep.has(r.moodleCourseId));
   const enrolledIds = toRemove.filter((r) => r.status === "ENROLLED").map((r) => r.moodleCourseId);

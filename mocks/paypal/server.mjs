@@ -25,7 +25,8 @@
 //            envía (de nuevo) el evento firmado del capture al target y devuelve {status, event, headers}
 //   POST     /__mock/captures/:captureId/complete | /deny   resuelve un capture PENDING (+ webhook)
 //   POST     /__mock/reset          borra todo el estado (y la config vuelve a la de arranque)
-//   POST     /__mock/config         {autoWebhooks, webhookTarget, webhookId, webhookDelayMs, tokenTtlSec}
+//   POST     /__mock/config         {autoWebhooks, approvalWebhooks, webhookTarget, webhookId, webhookDelayMs, tokenTtlSec}
+//            approvalWebhooks: además envía CHECKOUT.ORDER.APPROVED al aprobar (como PayPal si se suscribe)
 //   POST     /__mock/revoke-tokens  invalida los access tokens emitidos (para probar reintento 401)
 //   GET      /__mock/state          órdenes, captures, refunds, webhooks enviados
 //   GET      /health
@@ -105,6 +106,7 @@ export function createPaypalMock(options = {}) {
     webhookId: options.webhookId ?? process.env.MOCK_PAYPAL_WEBHOOK_ID ?? process.env.PAYPAL_WEBHOOK_ID ?? 'mock-webhook-id',
     webhookTarget: options.webhookTarget ?? process.env.MOCK_PAYPAL_WEBHOOK_TARGET ?? 'http://localhost:3000/api/webhooks/paypal',
     autoWebhooks: options.autoWebhooks ?? process.env.MOCK_PAYPAL_AUTO_WEBHOOKS !== 'false',
+    approvalWebhooks: options.approvalWebhooks ?? process.env.MOCK_PAYPAL_APPROVAL_WEBHOOKS === 'true',
     webhookDelayMs: options.webhookDelayMs ?? Number(process.env.MOCK_PAYPAL_WEBHOOK_DELAY_MS ?? 50),
     tokenTtlSec: options.tokenTtlSec ?? 32400,
     signingSecret: crypto.randomBytes(32),
@@ -204,12 +206,13 @@ export function createPaypalMock(options = {}) {
       'PAYMENT.CAPTURE.DENIED': `Payment denied for ${amount}`,
       'PAYMENT.CAPTURE.REFUNDED': `A ${amount} capture payment was refunded`,
       'PAYMENT.CAPTURE.REVERSED': `A ${amount} capture payment was reversed`,
+      'CHECKOUT.ORDER.APPROVED': 'An order has been approved by buyer',
     };
     return {
       id,
       event_version: '1.0',
       create_time: nowIso(),
-      resource_type: eventType === 'PAYMENT.CAPTURE.REFUNDED' ? 'refund' : 'capture',
+      resource_type: eventType === 'PAYMENT.CAPTURE.REFUNDED' ? 'refund' : eventType.startsWith('CHECKOUT.ORDER.') ? 'checkout-order' : 'capture',
       resource_version: '2.0',
       event_type: eventType,
       summary: summaries[eventType] ?? eventType,
@@ -390,7 +393,7 @@ export function createPaypalMock(options = {}) {
     if (!o) throw notFound();
     return { status: 200, body: orderView(o, origin(req)) };
   }
-  function approve(id, outcome) {
+  function approve(id, outcome, base) {
     const o = state.orders.get(id);
     if (!o) throw notFound();
     if (o.status === 'COMPLETED') throw unprocessable('ORDER_ALREADY_CAPTURED', 'Order already captured.If \'intent=CAPTURE\' only one capture per order is allowed.');
@@ -414,6 +417,7 @@ export function createPaypalMock(options = {}) {
     o.status = 'APPROVED';
     o.update_time = nowIso();
     if (outcome) o._captureOutcome = outcome;
+    if (base && config.approvalWebhooks) autoWebhook(() => buildEvent('CHECKOUT.ORDER.APPROVED', orderView(o, base), base));
     return o;
   }
   function captureOrder(req, id) {
@@ -676,7 +680,7 @@ ${items ? `<ul>${items}</ul>` : ''}
       if ((m = /^\/__mock\/approve\/([^/]+)$/.exec(p))) {
         const outcome = url.searchParams.get('capture')?.toUpperCase() || undefined;
         if (outcome && !['COMPLETED', 'PENDING', 'DECLINED', 'INSTRUMENT_DECLINED'].includes(outcome)) return send(res, 400, { error: 'capture debe ser COMPLETED|PENDING|DECLINED|INSTRUMENT_DECLINED' });
-        const o = approve(m[1], outcome);
+        const o = approve(m[1], outcome, origin(req));
         const returnUrl = o._ctx.return_url;
         const target = returnUrl ? withQuery(returnUrl, { token: o.id, PayerID: o._payerId }) : null;
         if (url.searchParams.get('json') === '1' || !target) return send(res, 200, { id: o.id, status: o.status, payer_id: o._payerId, redirect: target });
@@ -731,7 +735,7 @@ ${items ? `<ul>${items}</ul>` : ''}
       }
       if (p === '/__mock/config' && method === 'POST') {
         const b = parseJson(raw);
-        for (const k of ['autoWebhooks', 'webhookTarget', 'webhookId', 'webhookDelayMs', 'tokenTtlSec']) if (k in b) config[k] = b[k];
+        for (const k of ['autoWebhooks', 'approvalWebhooks', 'webhookTarget', 'webhookId', 'webhookDelayMs', 'tokenTtlSec']) if (k in b) config[k] = b[k];
         return send(res, 200, omit(config, ['signingSecret', 'clientSecret']));
       }
       if (p === '/__mock/revoke-tokens' && method === 'POST') { state.tokens.clear(); return send(res, 200, { ok: true }); }

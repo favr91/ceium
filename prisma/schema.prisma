@@ -229,6 +229,9 @@ model ProductChoice {
   groupName String // "Cursos disponibles"
   label     String
   position  Int     @default(0)
+  /// Cursos de Moodle que otorga esta opción (JSON: number[]). null → el moodleCourseId del producto.
+  /// P.ej. taller transfontanelar: Nivel 1 → [127], Nivel 2 → [128], Todo el taller → [127, 128].
+  moodleCourseIds Json?
 
   prices     PriceEntry[]
   orderItems OrderItem[]
@@ -289,6 +292,9 @@ model PriceEntry {
   sede             Sede?          @relation(fields: [sedeId], references: [id], onDelete: Cascade)
   choiceId         String?
   choice           ProductChoice? @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+  /// Clave de alcance NO nula "<modality>:<sedeId|->:<choiceId|->" (ver priceScopeKey()). Los NULL son
+  /// distintos en índices únicos (SQLite/Postgres), así que la unicidad se garantiza sobre esta columna.
+  scopeKey         String
   priceCents       Int
   installmentCents Int?
   currency         Currency       @default(USD)
@@ -296,7 +302,7 @@ model PriceEntry {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  @@unique([productId, modality, sedeId, choiceId])
+  @@unique([productId, scopeKey])
   @@index([productId])
 }
 
@@ -628,6 +634,11 @@ model EmailOutbox {
   lastError  String?
   dedupeKey  String?     @unique // evita duplicados (p.ej. "platform_access:<orderId>")
   emlPath    String? // var/mail/<id>.eml en dev
+  /// Adjuntos (JSON: {filename, path?, contentBase64?, contentType?}[]) para que reintentos y reenvíos los incluyan.
+  attachments Json?
+  /// Secreto que NO se guarda (JSON: {kind: "moodle_temp_password", moodleUserId}). html/text guardan un
+  /// marcador; al enviar se sustituye por el valor en memoria o, en reintentos/reenvíos, por uno nuevo.
+  secretRef  Json?
   orderId    String?
   order      Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
   customerId String?

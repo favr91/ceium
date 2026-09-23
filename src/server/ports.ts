@@ -18,6 +18,11 @@ export interface MoodlePort {
   unenrol(userId: number, courseIds: number[]): Promise<unknown>;
   /** core_completion_get_course_completion_status */
   getCompletion(userId: number, courseId: number): Promise<{ completed: boolean }>;
+  /**
+   * core_user_update_users: fija una contraseña temporal NUEVA (con auth_forcepasswordchange=1) y la
+   * devuelve. Se usa cuando hay que reenviar credenciales: la original nunca se guarda.
+   */
+  resetTempPassword(userId: number): Promise<string>;
 }
 
 export interface PaypalCreateOrderInput {
@@ -52,6 +57,8 @@ export interface PaypalRefundResult {
 export interface PaypalPort {
   createOrder(input: PaypalCreateOrderInput): Promise<{ id: string; approveUrl: string }>;
   captureOrder(paypalOrderId: string): Promise<unknown>;
+  /** GET /v2/checkout/orders/{id} (respuesta cruda de Orders v2; se normaliza con normalizeCapture). */
+  getOrder(paypalOrderId: string): Promise<unknown>;
   refundCapture(captureId: string, amountCents?: number): Promise<unknown>;
   verifyWebhookSignature(headers: Record<string, string | string[] | undefined> | Headers, body: string | unknown): Promise<boolean> | boolean;
 }

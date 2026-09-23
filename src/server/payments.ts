@@ -259,7 +259,14 @@ export async function adminVerifyPayment(d: Deps, input: VerifyInput) {
     if (claimed.count !== 1) throw new DomainError("INVALID_STATE", "Este pago ya fue verificado.");
 
     if (input.decision === "approve") {
-      await addOrderEvent(tx, p.orderId, "PAYMENT_VERIFIED", actor, input.note ?? "Pago aprobado", { paymentId: p.id });
+      const corrected = input.amountUsdCents != null && input.amountUsdCents !== p.amountUsdCents;
+      const note = [input.note?.trim() || "Pago aprobado", corrected ? `Equivalente en USD corregido: ${(p.amountUsdCents / 100).toFixed(2)} → ${(input.amountUsdCents! / 100).toFixed(2)}` : null].filter(Boolean).join(". ");
+      await addOrderEvent(tx, p.orderId, "PAYMENT_VERIFIED", actor, note, {
+        paymentId: p.id,
+        amountUsdCentsBefore: p.amountUsdCents,
+        amountUsdCentsAfter: input.amountUsdCents ?? p.amountUsdCents,
+        corrected,
+      });
       return { approved: true as const, apply: await applyConfirmedPayment(tx, p.id, actor, now), orderClosed: false };
     }
     await addOrderEvent(tx, p.orderId, "PAYMENT_REJECTED", actor, input.note!.trim(), { paymentId: p.id });
@@ -327,7 +334,7 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
     }
     if (amount <= 0) throw new DomainError("INVALID_STATE", "No hay monto pendiente por pagar.");
     await tx.payment.updateMany({ where: { orderId, method: "PAYPAL", status: "PENDING" }, data: { status: "CANCELLED" } });
-    const p = await tx.payment.create({ data: { orderId, method: "PAYPAL", status: "PENDING", amountCents: amount, currency: "USD", amountUsdCents: amount } });
+    const p = await tx.payment.create({ data: { orderId, method: "PAYPAL", status: "PENDING", amountCents: amount, currency: "USD", amountUsdCents: amount, createdAt: now } });
     return { paymentId: p.id, amountCents: amount, order };
   });
 
@@ -357,7 +364,8 @@ export interface CaptureCompletedInput {
   amountCents?: number | null;
   currency?: string | null;
   raw?: unknown;
-  source: "webhook" | "return";
+  /** return = URL de retorno; webhook = PAYMENT.CAPTURE.COMPLETED; reconcile = job que consulta PayPal. */
+  source: "webhook" | "return" | "reconcile";
 }
 
 /**
@@ -366,7 +374,7 @@ export interface CaptureCompletedInput {
  */
 export async function onPaypalCaptureCompleted(d: Deps, input: CaptureCompletedInput): Promise<{ alreadyProcessed: boolean; orderId: string; paymentId: string }> {
   const now = d.now();
-  const actor: Actor = { type: input.source === "webhook" ? "WEBHOOK" : "CUSTOMER" };
+  const actor: Actor = { type: input.source === "webhook" ? "WEBHOOK" : input.source === "reconcile" ? "SYSTEM" : "CUSTOMER" };
   const p =
     (await d.db.payment.findUnique({ where: { paypalCaptureId: input.captureId } })) ??
     (input.paypalOrderId ? await d.db.payment.findUnique({ where: { paypalOrderId: input.paypalOrderId } }) : null);
@@ -379,7 +387,7 @@ export async function onPaypalCaptureCompleted(d: Deps, input: CaptureCompletedI
       data: { status: "COMPLETED", paypalCaptureId: input.captureId, providerStatus: "COMPLETED", paidAt: now, amountCents: amount, amountUsdCents: amount, providerPayload: (input.raw as object) ?? undefined },
     });
     if (claimed.count !== 1) return null;
-    await addOrderEvent(tx, p.orderId, "PAYMENT_CAPTURED", actor, `PayPal ${input.captureId} (${input.source === "webhook" ? "webhook" : "retorno"})`, { paymentId: p.id, captureId: input.captureId, amountCents: amount });
+    await addOrderEvent(tx, p.orderId, "PAYMENT_CAPTURED", actor, `PayPal ${input.captureId} (${{ webhook: "webhook", return: "retorno", reconcile: "conciliación" }[input.source]})`, { paymentId: p.id, captureId: input.captureId, amountCents: amount });
     if (amount !== p.amountCents) {
       await addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `El monto capturado (${(amount / 100).toFixed(2)}) difiere del esperado (${(p.amountCents / 100).toFixed(2)}).`, { paymentId: p.id });
     }
@@ -390,7 +398,7 @@ export async function onPaypalCaptureCompleted(d: Deps, input: CaptureCompletedI
   return { alreadyProcessed: false, orderId: p.orderId, paymentId: p.id };
 }
 
-export async function onPaypalCaptureDenied(d: Deps, input: { captureId?: string | null; paypalOrderId?: string | null; raw?: unknown; source: "webhook" | "return" }) {
+export async function onPaypalCaptureDenied(d: Deps, input: { captureId?: string | null; paypalOrderId?: string | null; raw?: unknown; source: "webhook" | "return" | "reconcile" }) {
   const p =
     (input.captureId ? await d.db.payment.findUnique({ where: { paypalCaptureId: input.captureId } }) : null) ??
     (input.paypalOrderId ? await d.db.payment.findUnique({ where: { paypalOrderId: input.paypalOrderId } }) : null);
@@ -400,7 +408,7 @@ export async function onPaypalCaptureDenied(d: Deps, input: { captureId?: string
       where: { id: p.id, status: { in: ["PENDING", "CANCELLED"] } },
       data: { status: "FAILED", providerStatus: "DENIED", paypalCaptureId: input.captureId ?? p.paypalCaptureId, providerPayload: (input.raw as object) ?? undefined },
     });
-    if (n.count === 1) await addOrderEvent(tx, p.orderId, "PAYMENT_FAILED", { type: input.source === "webhook" ? "WEBHOOK" : "CUSTOMER" }, "PayPal rechazó el pago", { paymentId: p.id });
+    if (n.count === 1) await addOrderEvent(tx, p.orderId, "PAYMENT_FAILED", { type: input.source === "webhook" ? "WEBHOOK" : input.source === "reconcile" ? "SYSTEM" : "CUSTOMER" }, "PayPal rechazó el pago", { paymentId: p.id });
   });
   return { orderId: p.orderId, paymentId: p.id };
 }
@@ -408,7 +416,7 @@ export async function onPaypalCaptureDenied(d: Deps, input: { captureId?: string
 export type ReturnCaptureStatus = "COMPLETED" | "PENDING" | "FAILED";
 
 /** Return URL de PayPal (?token=<paypalOrderId>): captura la orden. Si el webhook llegó antes, no duplica nada. */
-export async function capturePaypalReturn(d: Deps, paypalOrderId: string): Promise<{ status: ReturnCaptureStatus; orderId: string; orderToken: string }> {
+export async function capturePaypalReturn(d: Deps, paypalOrderId: string, source: "return" | "reconcile" | "webhook" = "return"): Promise<{ status: ReturnCaptureStatus; orderId: string; orderToken: string }> {
   const p = await d.db.payment.findUnique({ where: { paypalOrderId }, include: { order: { select: { token: true } } } });
   if (!p) throw new DomainError("NOT_FOUND", "No encontramos ese pago de PayPal.");
   const done = (status: ReturnCaptureStatus) => ({ status, orderId: p.orderId, orderToken: p.order.token });
@@ -428,15 +436,99 @@ export async function capturePaypalReturn(d: Deps, paypalOrderId: string): Promi
   }
   const capStatus = (res.captureStatus ?? res.status).toUpperCase();
   if (capStatus === "COMPLETED" && res.captureId) {
-    await onPaypalCaptureCompleted(d, { captureId: res.captureId, paypalOrderId, amountCents: res.amountCents, currency: res.currency, raw: res.raw, source: "return" });
+    await onPaypalCaptureCompleted(d, { captureId: res.captureId, paypalOrderId, amountCents: res.amountCents, currency: res.currency, raw: res.raw, source });
     return done("COMPLETED");
   }
   if (capStatus === "PENDING") {
-    await d.db.payment.updateMany({ where: { id: p.id, status: "PENDING" }, data: { providerStatus: "CAPTURE_PENDING", paypalCaptureId: res.captureId ?? null } });
+    await markCapturePending(d, p.id, res.captureId ?? null);
     return done("PENDING");
   }
-  await onPaypalCaptureDenied(d, { captureId: res.captureId, paypalOrderId, raw: res.raw, source: "return" });
+  await onPaypalCaptureDenied(d, { captureId: res.captureId, paypalOrderId, raw: res.raw, source });
   return done("FAILED");
+}
+
+/**
+ * PayPal retuvo la captura (revisión, eCheck…): el pago sigue PENDING con providerStatus CAPTURE_PENDING.
+ * Queda en el historial del pedido (visible para el cliente y el panel) y el pedido NO vence mientras tanto.
+ */
+async function markCapturePending(d: Deps, paymentId: string, captureId: string | null) {
+  await withTx(d, async (tx) => {
+    const n = await tx.payment.updateMany({
+      where: { id: paymentId, status: "PENDING", NOT: { providerStatus: "CAPTURE_PENDING" } },
+      data: { providerStatus: "CAPTURE_PENDING", ...(captureId ? { paypalCaptureId: captureId } : {}) },
+    });
+    if (n.count === 1) {
+      const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
+      await addOrderEvent(tx, p.orderId, "PAYMENT_PENDING_REVIEW", SYSTEM, "PayPal retuvo el pago para revisión. Tu cupo se mantiene; te avisaremos al confirmarse.", { paymentId, captureId });
+    }
+  });
+}
+
+export type PaypalSyncResult = ReturnCaptureStatus | "NOT_APPROVED" | "VOIDED" | "SKIPPED";
+
+/**
+ * Consulta la orden en PayPal y la lleva a término: APPROVED → captura; COMPLETED → aplica la captura
+ * (COMPLETED) o la marca pendiente/denegada; VOIDED → cancela el pago. Cubre al comprador que aprueba y
+ * cierra la pestaña antes del retorno (sin retorno no hay captura y, por tanto, tampoco webhook).
+ */
+export async function syncPaypalOrder(d: Deps, paypalOrderId: string): Promise<PaypalSyncResult> {
+  const p = await d.db.payment.findUnique({ where: { paypalOrderId } });
+  if (!p) throw new DomainError("NOT_FOUND", "No encontramos ese pago de PayPal.");
+  if (p.status !== "PENDING") return "SKIPPED";
+  const o = normalizeCapture(await d.paypal.getOrder(paypalOrderId));
+  const status = o.status.toUpperCase();
+  if (status === "APPROVED") return (await capturePaypalReturn(d, paypalOrderId, "reconcile")).status;
+  if (status === "COMPLETED") {
+    const cap = (o.captureStatus ?? "").toUpperCase();
+    if (cap === "COMPLETED" && o.captureId) {
+      await onPaypalCaptureCompleted(d, { captureId: o.captureId, paypalOrderId, amountCents: o.amountCents, currency: o.currency, raw: o.raw, source: "reconcile" });
+      return "COMPLETED";
+    }
+    if (cap === "PENDING") {
+      await markCapturePending(d, p.id, o.captureId ?? null);
+      return "PENDING";
+    }
+    await onPaypalCaptureDenied(d, { captureId: o.captureId, paypalOrderId, raw: o.raw, source: "reconcile" });
+    return "FAILED";
+  }
+  if (status === "VOIDED") {
+    await d.db.payment.updateMany({ where: { id: p.id, status: "PENDING" }, data: { status: "CANCELLED", providerStatus: "VOIDED" } });
+    return "VOIDED";
+  }
+  return "NOT_APPROVED"; // CREATED / PAYER_ACTION_REQUIRED: el comprador aún no aprueba
+}
+
+/**
+ * Job: concilia pagos PayPal PENDING con orden creada (aprobados sin captura o captura retenida).
+ * Solo toca los creados hace más de `minAgeMs`, para no competir con el retorno en curso (aun así, la
+ * captura y su aplicación son idempotentes).
+ */
+export async function reconcilePaypalPayments(d: Deps, opts: { minAgeMs?: number; maxAgeMs?: number } = {}) {
+  const now = d.now().getTime();
+  const rows = await d.db.payment.findMany({
+    where: {
+      method: "PAYPAL",
+      status: "PENDING",
+      paypalOrderId: { not: null },
+      createdAt: { lte: new Date(now - (opts.minAgeMs ?? 2 * 60_000)), gte: new Date(now - (opts.maxAgeMs ?? 30 * 24 * 3600_000)) },
+    },
+    select: { paypalOrderId: true },
+    orderBy: { createdAt: "asc" },
+    take: 100,
+  });
+  const out: Record<string, number> = { checked: rows.length, captured: 0, pending: 0, failed: 0, errors: 0 };
+  for (const r of rows) {
+    try {
+      const s = await syncPaypalOrder(d, r.paypalOrderId!);
+      if (s === "COMPLETED") out.captured++;
+      else if (s === "PENDING") out.pending++;
+      else if (s === "FAILED") out.failed++;
+    } catch (e) {
+      out.errors++;
+      d.log.warn(`[paypal] no se pudo conciliar ${r.paypalOrderId}`, e);
+    }
+  }
+  return out;
 }
 
 const cents = (v: unknown): number | undefined => {
@@ -483,6 +575,18 @@ export async function handlePaypalWebhook(d: Deps, headers: Record<string, strin
           source: "webhook",
         });
         break;
+      case "CHECKOUT.ORDER.APPROVED":
+        // El comprador aprobó: capturar aunque no vuelva al sitio (idempotente con el retorno).
+        if (!resource.id) throw new DomainError("VALIDATION", "Orden aprobada sin id.");
+        await capturePaypalReturn(d, String(resource.id), "webhook");
+        break;
+      case "PAYMENT.CAPTURE.PENDING": {
+        const orderId = resource.supplementary_data?.related_ids?.order_id ?? null;
+        const p = orderId ? await d.db.payment.findUnique({ where: { paypalOrderId: orderId } }) : null;
+        if (!p) throw new DomainError("NOT_FOUND", "No existe un pago para esa captura de PayPal.");
+        await markCapturePending(d, p.id, resource.id ?? null);
+        break;
+      }
       case "PAYMENT.CAPTURE.DENIED":
         await onPaypalCaptureDenied(d, { captureId: resource.id, paypalOrderId: resource.supplementary_data?.related_ids?.order_id ?? null, raw: resource, source: "webhook" });
         break;
@@ -539,6 +643,14 @@ interface ApplyRefundInput {
 
 async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
   const p = await tx.payment.findUniqueOrThrow({ where: { id: input.paymentId } });
+  if (input.providerRefundId) {
+    // El otro camino (webhook PAYMENT.CAPTURE.REFUNDED o el panel) ya registró este mismo reembolso.
+    const existing = await tx.refund.findUnique({ where: { providerRefundId: input.providerRefundId } });
+    if (existing) {
+      const o = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true } });
+      return { refund: existing, fullyRefunded: o.status === "REFUNDED", orderId: p.orderId, duplicate: true as const };
+    }
+  }
   const refundable = p.amountUsdCents - p.refundedCents;
   if (input.amountCents > refundable) throw new DomainError("VALIDATION", `El monto supera lo reembolsable (${(refundable / 100).toFixed(2)} USD).`);
   const refund = await tx.refund.create({
@@ -561,7 +673,7 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
   } else if (input.releaseSeat === true) {
     await releaseOrderReservations(tx, order.id, "REFUNDED", now);
   }
-  return { refund, fullyRefunded, orderId: order.id };
+  return { refund, fullyRefunded, orderId: order.id, duplicate: false as const };
 }
 
 async function afterRefund(d: Deps, r: { refund: { id: string; amountCents: number; reason: string | null }; fullyRefunded: boolean; orderId: string }, method: PaymentMethod, unenroll: boolean | undefined, actor: Actor) {
@@ -613,12 +725,19 @@ export async function refundPayment(d: Deps, input: RefundInput) {
       applyRefund(tx, { paymentId: p.id, amountCents: amount, providerRefundId, manual: !viaApi, reason: input.reason, adminId: input.adminId, releaseSeat: input.releaseSeat, actor }, now),
     );
   } catch (e) {
-    // El webhook PAYMENT.CAPTURE.REFUNDED pudo registrar este mismo reembolso primero.
+    // Carrera con el webhook PAYMENT.CAPTURE.REFUNDED que registró este mismo reembolso primero.
     if (providerRefundId && isUniqueViolation(e)) {
       const existing = await d.db.refund.findUniqueOrThrow({ where: { providerRefundId } });
-      return { refund: existing, fullyRefunded: (await d.db.order.findUniqueOrThrow({ where: { id: p.orderId } })).status === "REFUNDED", orderId: p.orderId };
-    }
-    throw e;
+      const o = await d.db.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true } });
+      result = { refund: existing, fullyRefunded: o.status === "REFUNDED", orderId: p.orderId, duplicate: true as const };
+    } else throw e;
+  }
+  if (result.duplicate) {
+    // PayPal ya lo había notificado: el reembolso SÍ se hizo. Se deja constancia de quién lo pidió; la
+    // desmatrícula y el correo ya los hizo el webhook (salvo que el admin pidiera desmatricular en uno parcial).
+    await withTx(d, (tx) => addOrderEvent(tx, p.orderId, "NOTE", actor, `Reembolso PayPal ${providerRefundId} solicitado desde el panel (ya registrado por el webhook de PayPal).`, { refundId: result.refund.id }));
+    if (input.unenroll === true && !result.fullyRefunded) await afterRefund(d, result, p.method, true, actor);
+    return result;
   }
   await afterRefund(d, result, p.method, input.unenroll, actor);
   return result;
@@ -639,6 +758,7 @@ export async function onPaypalRefundCompleted(d: Deps, input: { captureId: strin
     if (isUniqueViolation(e)) return { duplicate: true };
     throw e;
   }
+  if (result.duplicate) return { duplicate: true }; // el panel lo registró mientras tanto
   await afterRefund(d, result, "PAYPAL", undefined, actor);
-  return { duplicate: false, ...result };
+  return result;
 }

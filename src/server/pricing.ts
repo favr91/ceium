@@ -2,8 +2,8 @@
 // Reglas (derivadas de las variantes reales de ceium.net, ver prisma/seed.ts):
 //   FULL:    total = price·(1−d)                   dueNow = total
 //   HALF:    total = price·(1−d)                   dueNow = ⌈total/2⌉, resto = 1 cuota
-//   MONTHLY: total = installmentCents·N            dueNow = installmentCents, resto = N−1 cuotas
-//            (si no hay installmentCents: price/N redondeado; la última cuota absorbe el residuo)
+//   MONTHLY: total = price (sin recargo)            dueNow = installmentCents, N−1 cuotas iguales y la
+//            última absorbe el residuo (si no hay installmentCents: price/N redondeado)
 export type PlanKindLike = "FULL" | "HALF" | "MONTHLY";
 
 export interface PlanInput {
@@ -29,12 +29,15 @@ export interface PlanAmounts {
 export function computePlanAmounts(price: PriceInput, plan: PlanInput): PlanAmounts {
   const list = price.priceCents;
   if (plan.kind === "MONTHLY") {
-    const n = Math.max(1, plan.installments);
-    const each = price.installmentCents ?? Math.round(list / n);
+    // Sin recargo: el total mes a mes es el precio de lista. N−1 cuotas iguales y la última absorbe el
+    // residuo (con la cuota real de ceium.net y N=8 la última queda en $160: 7×180+160 = 1420).
+    let n = Math.max(1, plan.installments);
+    const each = price.installmentCents && price.installmentCents > 0 ? Math.min(price.installmentCents, list) : Math.round(list / n);
+    // Si la cuota configurada es tan alta que N cuotas superan el precio, se usan menos cuotas.
+    if (each * (n - 1) >= list) n = Math.max(1, Math.ceil(list / each));
     const schedule = Array.from({ length: n }, () => each);
-    if (price.installmentCents == null) schedule[n - 1] = list - each * (n - 1);
-    const total = schedule.reduce((a, b) => a + b, 0);
-    return { listCents: list, discountCents: Math.max(0, list - total), totalCents: total, dueNowCents: schedule[0], schedule };
+    schedule[n - 1] = list - each * (n - 1);
+    return { listCents: list, discountCents: 0, totalCents: list, dueNowCents: schedule[0], schedule };
   }
   const discount = Math.round((list * plan.discountPct) / 100);
   const total = list - discount;
@@ -48,4 +51,13 @@ export function computePlanAmounts(price: PriceInput, plan: PlanInput): PlanAmou
 /** "$1,278.00" — mismo formato que la tienda Shopify original (USD, 2 decimales). */
 export function formatUSD(cents: number): string {
   return "$" + (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Clave de alcance de un PriceEntry: única por producto (@@unique([productId, scopeKey])).
+ * Todo alta/edición de precios debe escribirla (ONLINE ignora la sede).
+ */
+export function priceScopeKey(p: { modality: "ONLINE" | "SEMIPRESENCIAL"; sedeId?: string | null; choiceId?: string | null }): string {
+  const sede = p.modality === "ONLINE" ? "-" : p.sedeId || "-";
+  return `${p.modality}:${sede}:${p.choiceId || "-"}`;
 }

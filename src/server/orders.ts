@@ -310,7 +310,10 @@ export async function notifyOrderReceived(d: Deps, orderId: string) {
 
 // ───────────── Vencimiento / cancelación / correcciones ─────────────
 
-/** Job: pedidos PENDING_PAYMENT vencidos → EXPIRED (libera cupos). */
+/**
+ * Job: pedidos PENDING_PAYMENT vencidos → EXPIRED (libera cupos). runJobs concilia antes los pagos
+ * PayPal (reconcilePaypalPayments) para no vencer un pedido que el comprador ya aprobó.
+ */
 export async function expireStaleOrders(d: Deps): Promise<number> {
   const now = d.now();
   const stale = await d.db.order.findMany({ where: { status: "PENDING_PAYMENT", expiresAt: { lt: now } }, select: { id: true } });
@@ -319,6 +322,9 @@ export async function expireStaleOrders(d: Deps): Promise<number> {
     const done = await withTx(d, async (tx) => {
       const pending = await tx.payment.count({ where: { orderId: o.id, status: { in: ["AWAITING_VERIFICATION", "COMPLETED"] } } });
       if (pending > 0) return false;
+      // PayPal retuvo la captura (CAPTURE_PENDING): el dinero está en camino; se mantiene el cupo.
+      const inFlight = await tx.payment.count({ where: { orderId: o.id, method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" } });
+      if (inFlight > 0) return false;
       const cur = await tx.order.findUniqueOrThrow({ where: { id: o.id }, select: { status: true } });
       if (cur.status !== "PENDING_PAYMENT") return false;
       await releaseOrderReservations(tx, o.id, "EXPIRED", now);

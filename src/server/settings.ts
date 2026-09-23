@@ -18,6 +18,8 @@ export const SETTING_KEYS = {
   enrollmentRetry: "enrollment.retry",
   /** { intervalMinutes } — job de certificados */
   certificateJob: "certificates.job",
+  /** { requireFullPayment: true } — el certificado exige saldo 0 además de completar todos los cursos */
+  certificatePolicy: "certificates.policy",
   /** { phones, emails, whatsapp, instagram } */
   storeContact: "store.contact",
   /** { cohortsAreSample: true, note } — marca que las cohortes sembradas son de ejemplo */

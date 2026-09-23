@@ -1,13 +1,19 @@
 // Certificado de diplomado: se emite SOLO cuando Moodle reporta completados TODOS los cursos del
-// diplomado (core_completion_get_course_completion_status). Nunca antes, nunca dos veces
-// (única por cliente+diplomado). PDF con pdf-lib y código verificable público.
+// diplomado (core_completion_get_course_completion_status) Y el pedido no tiene saldo pendiente
+// (certificates.policy.requireFullPayment, por defecto true: evita certificar a quien pagó 1 de 8 cuotas).
+// Nunca dos veces (única por cliente+diplomado). PDF con pdf-lib y código verificable público.
+// La entrega (PDF + correo) es recuperable: si falla, el barrido la reintenta.
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { Deps } from "@/server/deps";
+import { readSetting, withTx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
-import { safeNotify, sendEmail } from "@/server/email";
+import { addOrderEvent, SYSTEM } from "@/server/orders";
+import { formatUSD } from "@/server/pricing";
+import { SETTING_KEYS } from "@/server/settings";
+import { deliverOutboxEmail, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
 
 export interface CompletionCheck {
@@ -22,6 +28,10 @@ export interface CompletionCheck {
   certificateId?: string;
   code?: string;
   reason?: string;
+  /** Completó todos los cursos pero el pedido tiene saldo pendiente (política certificates.policy). */
+  blockedByBalance?: boolean;
+  /** Resultado de la entrega (PDF + correo) de un certificado recién emitido. */
+  delivery?: { pdf: boolean; emailed: boolean; error?: string };
 }
 
 const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"; // sin 0/O/1/I
@@ -34,7 +44,11 @@ export function generateCertificateCode(): string {
 export async function checkDiplomaCompletion(d: Deps, customerId: string, diplomaId: string): Promise<CompletionCheck> {
   const base = { customerId, diplomaId, total: 0, completed: 0, pendingCourseIds: [] as number[], issued: false, alreadyIssued: false };
   const existing = await d.db.certificate.findUnique({ where: { customerId_diplomaId: { customerId, diplomaId } } });
-  if (existing) return { ...base, issued: existing.status === "ISSUED", alreadyIssued: true, certificateId: existing.id, code: existing.code, reason: existing.status === "REVOKED" ? "Certificado revocado" : undefined };
+  if (existing) {
+    // Recuperable: si la emisión quedó a medias (sin PDF o sin correo), se completa ahora.
+    if (existing.status === "ISSUED" && (!existing.pdfPath || !existing.emailedAt)) await deliverCertificate(d, existing.id);
+    return { ...base, issued: existing.status === "ISSUED", alreadyIssued: true, certificateId: existing.id, code: existing.code, reason: existing.status === "REVOKED" ? "Certificado revocado" : undefined };
+  }
 
   const diploma = await d.db.product.findUnique({ where: { id: diplomaId }, include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } });
   if (!diploma || diploma.type !== "DIPLOMA") throw new DomainError("NOT_FOUND", "El diplomado no existe.");
@@ -42,11 +56,14 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
   if (courses.length === 0) return { ...base, reason: "El diplomado no tiene cursos configurados" };
   if (courses.some((c) => c.moodleCourseId == null)) return { ...base, total: courses.length, reason: "Hay cursos sin curso de Moodle asociado" };
 
-  const purchase = await d.db.orderItem.findFirst({
+  const purchases = await d.db.orderItem.findMany({
     where: { productId: diplomaId, order: { customerId, status: "ENROLLED" } },
+    include: { order: { select: { id: true, balanceCents: true } } },
     orderBy: { order: { createdAt: "asc" } },
   });
-  if (!purchase) return { ...base, total: courses.length, reason: "El cliente no tiene una inscripción vigente en el diplomado" };
+  if (purchases.length === 0) return { ...base, total: courses.length, reason: "El cliente no tiene una inscripción vigente en el diplomado" };
+  // Si hay varias compras vigentes, se prefiere la que no tiene saldo pendiente.
+  const purchase = purchases.find((p) => p.order.balanceCents <= 0) ?? purchases[0];
 
   const customer = await d.db.customer.findUniqueOrThrow({ where: { id: customerId } });
   const now = d.now();
@@ -77,47 +94,90 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
   const result: CompletionCheck = { ...base, total: courses.length, completed, pendingCourseIds: pending };
   if (completed < courses.length) return result;
 
-  // Todos completos → emitir.
+  // Todos completos. Política: sin saldo pendiente (configurable en certificates.policy).
+  const policy = await readSetting(d.db, SETTING_KEYS.certificatePolicy, { requireFullPayment: true });
+  if (policy.requireFullPayment && purchase.order.balanceCents > 0) {
+    return { ...result, blockedByBalance: true, reason: `Completó todos los cursos, pero el pedido tiene saldo pendiente (${formatUSD(purchase.order.balanceCents)}). Se emitirá al cancelar el saldo.` };
+  }
+
+  // Emitir: certificado + evento en UNA transacción; el PDF y el correo se entregan después (recuperable).
   let cert;
   for (let i = 0; ; i++) {
     try {
-      cert = await d.db.certificate.create({ data: { customerId, diplomaId, orderItemId: purchase.id, code: generateCertificateCode(), status: "ISSUED", issuedAt: now } });
+      cert = await withTx(d, async (tx) => {
+        const c = await tx.certificate.create({ data: { customerId, diplomaId, orderItemId: purchase.id, code: generateCertificateCode(), status: "ISSUED", issuedAt: now } });
+        await addOrderEvent(tx, purchase.orderId, "CERTIFICATE_ISSUED", SYSTEM, `Certificado ${c.code}`, { certificateId: c.id });
+        return c;
+      });
       break;
     } catch (e) {
       if (!isUniqueViolation(e)) throw e;
       const dup = await d.db.certificate.findUnique({ where: { customerId_diplomaId: { customerId, diplomaId } } });
-      if (dup) return { ...result, issued: true, alreadyIssued: true, certificateId: dup.id, code: dup.code };
+      if (dup) return { ...result, issued: dup.status === "ISSUED", alreadyIssued: true, certificateId: dup.id, code: dup.code };
       if (i >= 3) throw e; // colisión de código improbable: reintentar con otro
     }
   }
 
-  const pdfPath = await writeCertificatePdf(d, {
-    code: cert.code,
-    fullName: `${customer.firstName} ${customer.lastName}`,
-    diplomaTitle: diploma.title,
-    courses: courses.map((c) => c.title),
-    issuedAt: now,
-    verifyUrl: verifyUrl(d, cert.code),
-    endorsement: diploma.endorsementTitle,
-  });
-  await d.db.certificate.update({ where: { id: cert.id }, data: { pdfPath } });
-  await d.db.orderEvent.create({ data: { orderId: purchase.orderId, type: "CERTIFICATE_ISSUED", actorType: "SYSTEM", note: `Certificado ${cert.code}`, data: { certificateId: cert.id } } });
+  const delivery = await deliverCertificate(d, cert.id);
+  return { ...result, issued: true, certificateId: cert.id, code: cert.code, delivery };
+}
 
+/**
+ * Genera el PDF (si falta) y envía el correo con el PDF adjunto (si no se envió). Idempotente y
+ * reintentable: el barrido de certificados la vuelve a llamar mientras falte algo.
+ */
+export async function deliverCertificate(d: Deps, certificateId: string): Promise<{ pdf: boolean; emailed: boolean; error?: string }> {
+  const cert = await d.db.certificate.findUniqueOrThrow({
+    where: { id: certificateId },
+    include: { customer: true, orderItem: { select: { orderId: true } }, diploma: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } } },
+  });
+  if (cert.status !== "ISSUED") return { pdf: !!cert.pdfPath, emailed: !!cert.emailedAt };
+  const orderId = cert.orderItem?.orderId ?? null;
+  const fullName = `${cert.customer.firstName} ${cert.customer.lastName}`;
+
+  let pdfPath = cert.pdfPath;
+  const pdfExists = pdfPath ? await fs.stat(path.resolve(pdfPath)).then(() => true, () => false) : false;
+  if (!pdfPath || !pdfExists) {
+    try {
+      pdfPath = await writeCertificatePdf(d, {
+        code: cert.code,
+        fullName,
+        diplomaTitle: cert.diploma.title,
+        courses: cert.diploma.diplomaCourses.map((dc) => dc.course.title),
+        issuedAt: cert.issuedAt,
+        verifyUrl: verifyUrl(d, cert.code),
+        endorsement: cert.diploma.endorsementTitle,
+      });
+      await d.db.certificate.update({ where: { id: cert.id }, data: { pdfPath } });
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? e).slice(0, 300);
+      d.log.error(`[certificates] no se pudo generar el PDF de ${cert.code}; se reintentará`, e);
+      if (orderId) await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "ATTENTION", SYSTEM, `No se pudo generar el PDF del certificado ${cert.code}: ${msg}. Se reintentará automáticamente.`, { certificateId: cert.id }));
+      return { pdf: false, emailed: false, error: msg };
+    }
+  }
+
+  if (cert.emailedAt) return { pdf: true, emailed: true };
+  let emailed = false;
   await safeNotify(d, "certificate_issued", async () => {
-    const rendered = T.certificateIssued({ firstName: customer.firstName, fullName: `${customer.firstName} ${customer.lastName}`, diplomaTitle: diploma.title, code: cert.code, verifyUrl: verifyUrl(d, cert.code), issuedAt: now });
+    const rendered = T.certificateIssued({ firstName: cert.customer.firstName, fullName, diplomaTitle: cert.diploma.title, code: cert.code, verifyUrl: verifyUrl(d, cert.code), issuedAt: cert.issuedAt });
     const r = await sendEmail(d, {
       template: "certificate_issued",
-      to: customer.email,
+      to: cert.customer.email,
       rendered,
       dedupeKey: `certificate:${cert.id}`,
-      orderId: purchase.orderId,
-      customerId,
-      attachments: [{ filename: `Certificado-${cert.code}.pdf`, path: path.resolve(pdfPath), contentType: "application/pdf" }],
+      orderId,
+      customerId: cert.customerId,
+      attachments: [{ filename: `Certificado-${cert.code}.pdf`, path: path.resolve(pdfPath!), contentType: "application/pdf" }],
     });
-    if (r.status === "SENT") await d.db.certificate.update({ where: { id: cert.id }, data: { emailedAt: d.now() } });
+    // Un intento anterior falló (fila FAILED deduplicada): reintentar esa misma fila (con su PDF adjunto).
+    const status = r.duplicate && r.status !== "SENT" ? await deliverOutboxEmail(d, r.id) : r.status;
+    if (status === "SENT") {
+      await d.db.certificate.update({ where: { id: cert.id }, data: { emailedAt: d.now() } });
+      emailed = true;
+    }
   });
-
-  return { ...result, issued: true, certificateId: cert.id, code: cert.code };
+  return { pdf: true, emailed };
 }
 
 export function verifyUrl(d: Pick<Deps, "config">, code: string) {
@@ -139,13 +199,39 @@ export async function verifyCertificate(d: Pick<Deps, "db">, code: string) {
   };
 }
 
-export async function revokeCertificate(d: Deps, certificateId: string, reason: string) {
+/** Revocación desde el panel: queda en el historial del pedido quién, cuándo y por qué. */
+export async function revokeCertificate(d: Deps, certificateId: string, reason: string, adminId: string) {
   if (!reason?.trim()) throw new DomainError("VALIDATION", "Indica el motivo de la revocación.");
-  return d.db.certificate.update({ where: { id: certificateId }, data: { status: "REVOKED", revokedAt: d.now(), revokeReason: reason.trim() } });
+  if (!adminId) throw new DomainError("UNAUTHORIZED", "Falta el administrador que revoca.");
+  const now = d.now();
+  return withTx(d, async (tx) => {
+    const cert = await tx.certificate.findUnique({ where: { id: certificateId }, include: { orderItem: { select: { orderId: true } } } });
+    if (!cert) throw new DomainError("NOT_FOUND", "El certificado no existe.");
+    const n = await tx.certificate.updateMany({ where: { id: certificateId, status: "ISSUED" }, data: { status: "REVOKED", revokedAt: now, revokeReason: reason.trim() } });
+    if (n.count !== 1) throw new DomainError("INVALID_STATE", "El certificado ya está revocado.");
+    if (cert.orderItem) {
+      await addOrderEvent(tx, cert.orderItem.orderId, "CERTIFICATE_REVOKED", { type: "ADMIN", id: adminId }, reason.trim(), { certificateId, code: cert.code, revokedAt: now.toISOString() });
+    }
+    return tx.certificate.findUniqueOrThrow({ where: { id: certificateId } });
+  });
 }
 
-/** Job: revisa a todos los clientes inscritos en diplomados sin certificado y emite los que correspondan. */
-export async function runCertificateSweep(d: Deps): Promise<{ checked: number; issued: number; codes: string[] }> {
+/**
+ * Job: (1) completa entregas a medias (PDF o correo pendientes) y (2) revisa a todos los inscritos en
+ * diplomados sin certificado y emite los que correspondan.
+ */
+export async function runCertificateSweep(d: Deps): Promise<{ checked: number; issued: number; codes: string[]; redelivered: number }> {
+  let redelivered = 0;
+  const incomplete = await d.db.certificate.findMany({ where: { status: "ISSUED", OR: [{ pdfPath: null }, { emailedAt: null }] }, select: { id: true } });
+  for (const c of incomplete) {
+    try {
+      const r = await deliverCertificate(d, c.id);
+      if (r.pdf && r.emailed) redelivered++;
+    } catch (e) {
+      d.log.error(`[certificates] fallo reentregando ${c.id}`, e);
+    }
+  }
+
   const items = await d.db.orderItem.findMany({
     where: { productType: "DIPLOMA", order: { status: "ENROLLED" } },
     select: { productId: true, order: { select: { customerId: true } } },
@@ -168,7 +254,7 @@ export async function runCertificateSweep(d: Deps): Promise<{ checked: number; i
       d.log.error(`[certificates] fallo revisando ${customerId}/${diplomaId}`, e);
     }
   }
-  return { checked: pairs.size, issued, codes };
+  return { checked: pairs.size, issued, codes, redelivered };
 }
 
 // ───────────── PDF ─────────────

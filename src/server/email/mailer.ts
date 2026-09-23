@@ -23,6 +23,8 @@ export interface MailMessage {
   html: string;
   text: string;
   attachments?: MailAttachment[];
+  /** Valores sensibles (contraseña temporal) que NO deben quedar en la copia .eml local. */
+  secrets?: string[];
 }
 
 export interface MailResult {
@@ -33,6 +35,16 @@ export interface MailResult {
 export interface Mailer {
   readonly kind: string;
   send(msg: MailMessage): Promise<MailResult>;
+}
+
+const REDACTED = "••••••••";
+
+/** Copia del mensaje sin secretos (para la copia .eml local). */
+export function redactMessage(msg: MailMessage): MailMessage {
+  const secrets = (msg.secrets ?? []).filter((x) => x && x.length >= 4);
+  if (!secrets.length) return msg;
+  const r = (s: string) => secrets.reduce((acc, x) => acc.split(x).join(REDACTED), s);
+  return { ...msg, subject: r(msg.subject), html: r(msg.html), text: r(msg.text), secrets: undefined };
 }
 
 async function buildEml(msg: MailMessage): Promise<Buffer> {
@@ -52,11 +64,15 @@ async function writeEml(dir: string, id: string, eml: Buffer): Promise<string> {
   return file;
 }
 
-export function createOutboxMailer(mailDir: string): Mailer {
+/**
+ * Transporte de desarrollo: el .eml ES el correo entregado. Por defecto se guarda sin secretos; con
+ * `revealSecrets` (MAIL_OUTBOX_REVEAL_SECRETS=true, solo desarrollo) se guarda tal cual se enviaría.
+ */
+export function createOutboxMailer(mailDir: string, opts: { revealSecrets?: boolean } = {}): Mailer {
   return {
     kind: "outbox",
     async send(msg) {
-      const eml = await buildEml(msg);
+      const eml = await buildEml(opts.revealSecrets ? msg : redactMessage(msg));
       const emlPath = await writeEml(mailDir, msg.id, eml);
       return { messageId: `<${msg.id}@outbox.ceium.local>`, emlPath };
     },
@@ -85,7 +101,7 @@ export function createSmtpMailer(opts: SmtpOptions, mailDir?: string): Mailer {
       let emlPath: string | undefined;
       if (mailDir) {
         try {
-          emlPath = await writeEml(mailDir, msg.id, await buildEml(msg));
+          emlPath = await writeEml(mailDir, msg.id, await buildEml(redactMessage(msg)));
         } catch {
           /* la copia local es opcional */
         }
@@ -103,5 +119,5 @@ export function mailerFromEnv(env: NodeJS.ProcessEnv = process.env): Mailer {
       dir,
     );
   }
-  return createOutboxMailer(dir);
+  return createOutboxMailer(dir, { revealSecrets: env.MAIL_OUTBOX_REVEAL_SECRETS === "true" && env.NODE_ENV !== "production" });
 }

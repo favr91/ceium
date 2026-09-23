@@ -16,6 +16,7 @@ export function moodlePort(client: MoodleClient): MoodlePort {
       const c = await client.getCompletion(userId, courseId);
       return { completed: c.completed === true };
     },
+    resetTempPassword: (userId) => client.resetTempPassword(userId),
   };
 }
 
@@ -41,6 +42,7 @@ export function paypalPort(client: PayPalClient): PaypalPort {
       const r = await client.captureOrder(id);
       return { id: r.orderId, status: String(r.orderStatus), captureId: r.captureId, captureStatus: r.captureStatus, amountCents: r.amountCents, currency: r.capture?.amount?.currency_code, raw: r.raw };
     },
+    getOrder: (id) => client.getOrder(id),
     async refundCapture(captureId, amountCents): Promise<PaypalRefundResult> {
       return normalizeRefund(await client.refundCapture(captureId, amountCents != null ? { amountCents } : {}));
     },

@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 describe("pricing.quote", () => {
-  it("diplomado semipresencial Barquisimeto: FULL 10% / HALF 5% / MONTHLY 8×180", async () => {
+  it("diplomado semipresencial Barquisimeto: FULL 10% / HALF 5% / MONTHLY 7×180+160", async () => {
     const base = { productId: ctx.fx.diploma, modality: "SEMIPRESENCIAL" as const, sedeId: ctx.fx.sedes.bqto };
     const full = await quote(ctx.db, { ...base, planKind: "FULL" }, ctx.clock.now());
     expect([full.listCents, full.discountCents, full.totalCents, full.dueNowCents]).toEqual([142000, 14200, 127800, 127800]);
@@ -25,7 +25,8 @@ describe("pricing.quote", () => {
     const monthly = await quote(ctx.db, { ...base, planKind: "MONTHLY" }, ctx.clock.now());
     expect(monthly.dueNowCents).toBe(18000);
     expect(monthly.installments).toHaveLength(8);
-    expect(monthly.totalCents).toBe(144000);
+    expect(monthly.totalCents).toBe(142000);
+    expect(monthly.installments[7].amountCents).toBe(16000);
     expect(monthly.installments[1].dueDate.toISOString().slice(0, 10)).toBe("2026-10-01");
   });
 

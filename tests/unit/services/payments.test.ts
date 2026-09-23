@@ -56,7 +56,10 @@ describe("pago manual (pago móvil / transferencia)", () => {
     expect(ctx.moodle.enrolments.get(cust.moodleUserId!)).toEqual(new Set([201]));
     expect(await templates(o.id)).toEqual(["order_confirmation", "payment_under_verification", "payment_approved", "platform_access", "cohort_details"]);
     const access = await ctx.db.emailOutbox.findFirstOrThrow({ where: { orderId: o.id, template: "platform_access" } });
-    expect(access.text).toMatch(/Contraseña temporal: Tmp#/);
+    // La contraseña temporal NO se guarda: la bandeja conserva un marcador (el valor solo viaja en el correo).
+    expect(access.text).toContain("Contraseña temporal: [[CEIUM_TEMP_PASSWORD]]");
+    expect(`${access.html}${access.text}`).not.toMatch(/Tmp#/);
+    expect(access.secretRef).toEqual({ kind: "moodle_temp_password", moodleUserId: cust.moodleUserId });
     const payEv = await ctx.db.orderEvent.findFirstOrThrow({ where: { orderId: o.id, type: "PAYMENT_VERIFIED" } });
     expect([payEv.actorType, payEv.actorId]).toEqual(["ADMIN", ctx.fx.adminId]);
     // doble verificación no permitida

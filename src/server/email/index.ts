@@ -17,14 +17,35 @@ export type EmailTemplate =
   | "certificate_issued"
   | "refund_issued";
 
+/**
+ * Marcador que sustituye a la contraseña temporal de Moodle en el HTML/texto que se GUARDA.
+ * Solo contiene caracteres que no cambian al escapar HTML.
+ */
+export const TEMP_PASSWORD_PLACEHOLDER = "[[CEIUM_TEMP_PASSWORD]]";
+
+/** Referencia a un secreto que no se persiste (se guarda en EmailOutbox.secretRef). */
+export interface SecretRef {
+  kind: "moodle_temp_password";
+  moodleUserId: number;
+}
+
 export interface SendEmailInput {
   template: EmailTemplate;
   to: string;
+  /** Si incluye un secreto, debe traer TEMP_PASSWORD_PLACEHOLDER en su lugar (ver `secret`). */
   rendered: T.RenderedEmail;
   dedupeKey?: string;
   orderId?: string | null;
   customerId?: string | null;
+  /** Se guardan (ruta/contenido) en EmailOutbox para que reintentos y reenvíos los incluyan. */
   attachments?: MailAttachment[];
+  /**
+   * Contraseña temporal: se sustituye en el marcador SOLO al enviar y nunca se guarda (ni en BD ni en
+   * el .eml). En un reintento/reenvío ya no existe: se genera otra en Moodle (core_user_update_users).
+   */
+  secret?: SecretRef & { value: string };
+  /** Quién provoca el envío (para el historial del pedido). Por defecto SYSTEM. */
+  actor?: { type: "SYSTEM" | "ADMIN" | "CUSTOMER" | "WEBHOOK"; id?: string | null };
 }
 
 export interface SendEmailResult {
@@ -33,11 +54,47 @@ export interface SendEmailResult {
   duplicate: boolean;
 }
 
+interface StoredAttachment {
+  filename: string;
+  path?: string;
+  contentBase64?: string;
+  contentType?: string;
+}
+
+function storeAttachments(list?: MailAttachment[]): StoredAttachment[] | null {
+  if (!list?.length) return null;
+  return list.map((a) => ({
+    filename: a.filename,
+    ...(a.path ? { path: a.path } : {}),
+    ...(a.content != null ? { contentBase64: Buffer.isBuffer(a.content) ? a.content.toString("base64") : Buffer.from(String(a.content)).toString("base64") } : {}),
+    ...(a.contentType ? { contentType: a.contentType } : {}),
+  }));
+}
+
+function loadAttachments(v: unknown): MailAttachment[] | undefined {
+  if (!Array.isArray(v) || !v.length) return undefined;
+  return (v as StoredAttachment[]).map((a) => ({
+    filename: a.filename,
+    ...(a.path ? { path: a.path } : {}),
+    ...(a.contentBase64 ? { content: Buffer.from(a.contentBase64, "base64") } : {}),
+    ...(a.contentType ? { contentType: a.contentType } : {}),
+  }));
+}
+
+function parseSecretRef(v: unknown): SecretRef | null {
+  const r = v as SecretRef | null;
+  return r && r.kind === "moodle_temp_password" && Number.isInteger(r.moodleUserId) ? r : null;
+}
+
+const scrub = (s: string, secret?: string | false) => (secret ? s.split(secret).join(TEMP_PASSWORD_PLACEHOLDER) : s);
+
 export async function sendEmail(d: Deps, input: SendEmailInput): Promise<SendEmailResult> {
   if (input.dedupeKey) {
     const existing = await d.db.emailOutbox.findUnique({ where: { dedupeKey: input.dedupeKey } });
     if (existing) return { id: existing.id, status: existing.status, duplicate: true };
   }
+  const secretValue = input.secret?.value;
+  const secretRef: SecretRef | null = input.secret ? { kind: input.secret.kind, moodleUserId: input.secret.moodleUserId } : null;
   let row;
   try {
     row = await d.db.emailOutbox.create({
@@ -45,12 +102,15 @@ export async function sendEmail(d: Deps, input: SendEmailInput): Promise<SendEma
         template: input.template,
         to: input.to,
         cc: null,
-        subject: input.rendered.subject,
-        html: input.rendered.html,
-        text: input.rendered.text,
+        // Defensa en profundidad: si la plantilla recibió el valor real, se reemplaza por el marcador.
+        subject: scrub(input.rendered.subject, secretValue),
+        html: scrub(scrub(input.rendered.html, secretValue && T.esc(secretValue)), secretValue),
+        text: scrub(input.rendered.text, secretValue),
         dedupeKey: input.dedupeKey ?? null,
         orderId: input.orderId ?? null,
         customerId: input.customerId ?? null,
+        attachments: (storeAttachments(input.attachments) as object[] | null) ?? undefined,
+        secretRef: (secretRef as object | null) ?? undefined,
       },
     });
   } catch (e) {
@@ -60,18 +120,60 @@ export async function sendEmail(d: Deps, input: SendEmailInput): Promise<SendEma
     }
     throw e;
   }
-  const status = await deliver(d, row.id, input.attachments);
-  if (input.orderId && status === "SENT") {
-    await d.db.orderEvent.create({ data: { orderId: input.orderId, type: "EMAIL_SENT", actorType: "SYSTEM", note: `${input.template} → ${input.to}`, data: { emailId: row.id } } });
-  }
+  const status = await deliver(d, row.id, { secretValue, actor: input.actor });
   return { id: row.id, status, duplicate: false };
 }
 
-async function deliver(d: Deps, id: string, attachments?: MailAttachment[]): Promise<"SENT" | "FAILED"> {
+/** Entrega (o reintenta) una fila concreta de la bandeja con sus adjuntos y secretos. */
+export async function deliverOutboxEmail(d: Deps, id: string): Promise<"SENT" | "FAILED" | "SKIPPED"> {
+  if (!(await claimFailed(d, id))) return "SKIPPED";
+  return deliver(d, id);
+}
+
+/** Reclama una fila FAILED (→ QUEUED) para que dos reintentos simultáneos no la envíen dos veces. */
+async function claimFailed(d: Deps, id: string): Promise<boolean> {
+  const n = await d.db.emailOutbox.updateMany({ where: { id, status: "FAILED" }, data: { status: "QUEUED" } });
+  return n.count === 1;
+}
+
+async function deliver(d: Deps, id: string, opts: { secretValue?: string; actor?: SendEmailInput["actor"] } = {}): Promise<"SENT" | "FAILED"> {
   const row = await d.db.emailOutbox.findUniqueOrThrow({ where: { id } });
+  const ref = parseSecretRef(row.secretRef);
+  let secret = opts.secretValue;
+  let regenerated = false;
   try {
-    const res = await d.mailer.send({ id: row.id, from: d.config.mailFrom, to: row.to, cc: row.cc ?? undefined, bcc: d.config.mailBcc, subject: row.subject, html: row.html, text: row.text ?? "", attachments });
+    if (ref && !secret) {
+      // La contraseña original no se guardó: se emite una nueva (Moodle obliga a cambiarla al entrar).
+      secret = await d.moodle.resetTempPassword(ref.moodleUserId);
+      regenerated = true;
+    }
+    const fill = (s: string, escape: boolean) => (ref && secret ? s.split(TEMP_PASSWORD_PLACEHOLDER).join(escape ? T.esc(secret) : secret) : s);
+    const res = await d.mailer.send({
+      id: row.id,
+      from: d.config.mailFrom,
+      to: row.to,
+      cc: row.cc ?? undefined,
+      bcc: d.config.mailBcc,
+      subject: row.subject,
+      html: fill(row.html, true),
+      text: fill(row.text ?? "", false),
+      attachments: loadAttachments(row.attachments),
+      secrets: secret ? [secret, T.esc(secret)] : undefined,
+    });
     await d.db.emailOutbox.update({ where: { id }, data: { status: "SENT", sentAt: d.now(), attempts: { increment: 1 }, emlPath: res.emlPath ?? null, lastError: null } });
+    if (row.orderId) {
+      const actor = opts.actor ?? { type: "SYSTEM" as const };
+      await d.db.orderEvent.create({
+        data: {
+          orderId: row.orderId,
+          type: "EMAIL_SENT",
+          actorType: actor.type,
+          actorId: actor.type === "ADMIN" ? actor.id ?? null : null,
+          note: `${row.template} → ${row.to}${regenerated ? " (con contraseña temporal nueva)" : ""}`,
+          data: { emailId: row.id, ...(regenerated ? { passwordReset: true } : {}) },
+        },
+      });
+    }
     return "SENT";
   } catch (e) {
     d.log.error(`[email] fallo al enviar ${id}:`, e);
@@ -86,15 +188,35 @@ export async function retryFailedEmails(d: Deps, maxAttempts = 5): Promise<numbe
   let sent = 0;
   for (const r of rows) {
     if (r.status === "QUEUED" && d.now().getTime() - r.createdAt.getTime() < 60_000) continue; // puede estar enviándose
+    if (r.status === "FAILED" && !(await claimFailed(d, r.id))) continue; // otro proceso lo está reintentando
     if ((await deliver(d, r.id)) === "SENT") sent++;
   }
   return sent;
 }
 
-/** Reenvío manual desde el panel: crea una copia nueva (sin dedupe) del correo indicado. */
-export async function resendEmail(d: Deps, emailId: string): Promise<SendEmailResult> {
+/**
+ * Reenvío manual desde el panel: crea una copia nueva (sin dedupe) del correo indicado, con sus adjuntos.
+ * Si el correo llevaba contraseña temporal, se genera otra en Moodle (la anterior nunca se guardó).
+ */
+export async function resendEmail(d: Deps, emailId: string, adminId?: string | null): Promise<SendEmailResult> {
   const r = await d.db.emailOutbox.findUniqueOrThrow({ where: { id: emailId } });
-  return sendEmail(d, { template: r.template as EmailTemplate, to: r.to, rendered: { subject: r.subject, html: r.html, text: r.text ?? "" }, orderId: r.orderId, customerId: r.customerId });
+  const ref = parseSecretRef(r.secretRef);
+  const row = await d.db.emailOutbox.create({
+    data: {
+      template: r.template,
+      to: r.to,
+      cc: r.cc,
+      subject: r.subject,
+      html: r.html,
+      text: r.text,
+      orderId: r.orderId,
+      customerId: r.customerId,
+      attachments: (r.attachments as object[] | null) ?? undefined,
+      secretRef: (ref as object | null) ?? undefined,
+    },
+  });
+  const status = await deliver(d, row.id, { actor: adminId ? { type: "ADMIN", id: adminId } : undefined });
+  return { id: row.id, status, duplicate: false };
 }
 
 // ───────────── Vistas de datos para plantillas ─────────────

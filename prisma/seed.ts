@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs";
 import "dotenv/config";
 import { createPrismaClient } from "../src/server/db";
 import type { Modality, PlanKind, ProductCategory, Prisma } from "../src/generated/prisma/client";
-import { computePlanAmounts } from "../src/server/pricing";
+import { computePlanAmounts, priceScopeKey } from "../src/server/pricing";
 import { SETTING_KEYS, type ManualMethodConfig } from "../src/server/settings";
 
 const prisma = createPrismaClient();
@@ -64,15 +64,34 @@ function planKindFromLabel(label: string): { kind: PlanKind; discountPct: number
 
 async function wipe() {
   // Orden inverso de dependencias.
-  await prisma.$transaction([
-    prisma.orderEvent.deleteMany(), prisma.emailOutbox.deleteMany(), prisma.certificate.deleteMany(), prisma.enrollment.deleteMany(),
-    prisma.refund.deleteMany(), prisma.payment.deleteMany(), prisma.installment.deleteMany(), prisma.balanceAdjustment.deleteMany(),
-    prisma.seatReservation.deleteMany(), prisma.orderItem.deleteMany(), prisma.order.deleteMany(), prisma.customer.deleteMany(),
-    prisma.webhookEvent.deleteMany(), prisma.cohort.deleteMany(), prisma.paymentPlan.deleteMany(), prisma.priceEntry.deleteMany(),
-    prisma.productChoice.deleteMany(), prisma.collectionProduct.deleteMany(), prisma.collection.deleteMany(), prisma.diplomaCourse.deleteMany(),
-    prisma.productImage.deleteMany(), prisma.product.deleteMany(), prisma.sede.deleteMany(), prisma.adminSession.deleteMany(),
-    prisma.adminUser.deleteMany(), prisma.setting.deleteMany(),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.orderEvent.deleteMany();
+    await tx.emailOutbox.deleteMany();
+    await tx.certificate.deleteMany();
+    await tx.enrollment.deleteMany();
+    await tx.refund.deleteMany();
+    await tx.payment.deleteMany();
+    await tx.installment.deleteMany();
+    await tx.balanceAdjustment.deleteMany();
+    await tx.seatReservation.deleteMany();
+    await tx.orderItem.deleteMany();
+    await tx.order.deleteMany();
+    await tx.customer.deleteMany();
+    await tx.webhookEvent.deleteMany();
+    await tx.cohort.deleteMany();
+    await tx.paymentPlan.deleteMany();
+    await tx.priceEntry.deleteMany();
+    await tx.productChoice.deleteMany();
+    await tx.collectionProduct.deleteMany();
+    await tx.collection.deleteMany();
+    await tx.diplomaCourse.deleteMany();
+    await tx.productImage.deleteMany();
+    await tx.product.deleteMany();
+    await tx.sede.deleteMany();
+    await tx.adminSession.deleteMany();
+    await tx.adminUser.deleteMany();
+    await tx.setting.deleteMany();
+  });
 }
 
 async function main() {
@@ -96,6 +115,8 @@ async function main() {
 
   const productId: Record<string, string> = {};
   let moodleId = 101;
+  // Cursos de Moodle de las sub-opciones (p.ej. niveles del taller transfontanelar): después de los cursos.
+  let choiceMoodleId = moodleId + products.filter((p) => categoryOf(p.handle) !== "DIPLOMA").length;
   const warnings: string[] = [];
   let priceCount = 0, planCount = 0;
 
@@ -130,8 +151,13 @@ async function main() {
     // Sub-opciones ("Cursos disponibles")
     const choiceId: Record<string, string> = {};
     if (iChoice >= 0) {
-      for (const [ci, label] of p.options[iChoice].values.entries()) {
-        const c = await prisma.productChoice.create({ data: { productId: product.id, groupName: "Cursos disponibles", label, position: ci } });
+      // Cada opción otorga su propio curso de Moodle ("Nivel 1", "Nivel 2"); "Todo el taller" otorga todos.
+      const labels = p.options[iChoice].values;
+      const own = new Map<string, number>();
+      for (const label of labels) if (!/^todo/i.test(label)) own.set(label, choiceMoodleId++);
+      for (const [ci, label] of labels.entries()) {
+        const ids = own.has(label) ? [own.get(label)!] : [...own.values()];
+        const c = await prisma.productChoice.create({ data: { productId: product.id, groupName: "Cursos disponibles", label, position: ci, moodleCourseIds: ids } });
         choiceId[label] = c.id;
       }
     }
@@ -139,7 +165,10 @@ async function main() {
     // Planes de pago (etiquetas reales)
     const planLabels = iPay >= 0 ? p.options[iPay].values : [];
     const plans = planLabels.length ? planLabels.map((label) => ({ label, ...planKindFromLabel(label) })) : [{ label: "Pago único", kind: "FULL" as PlanKind, discountPct: 0 }];
-    // MONTHLY: 8 cuotas (≈ precio de lista / cuota real: 1420/180, 1770/230, 1210/150). Configurable en el panel.
+    // MONTHLY: 8 cuotas. ref/products.json solo publica la cuota (180/230/150) y el precio de lista
+    // (1420/1770/1210); con 8 cuotas y la última absorbiendo el residuo, la última queda en $160 en las
+    // tres modalidades (7×180+160=1420, 7×230+160=1770, 7×150+160=1210) → el total mes a mes coincide con
+    // el precio de lista (sin recargo). 8 es la única cantidad que da esa regularidad. Configurable en el panel.
     const MONTHLY_INSTALLMENTS = 8;
     for (const [pi, pl] of plans.entries()) {
       await prisma.paymentPlan.create({
@@ -172,9 +201,10 @@ async function main() {
       }
       if (list == null) { warnings.push(`${p.handle}: sin precio de lista`); continue; }
       // ONLINE aparece repetido por sede en algunos talleres (Sede=Barquisimeto): una sola fila ONLINE.
-      const exists = await prisma.priceEntry.findFirst({ where: { productId: product.id, modality: g.modality, sedeId: g.sedeId, choiceId: g.choiceId } });
+      const scopeKey = priceScopeKey(g);
+      const exists = await prisma.priceEntry.findUnique({ where: { productId_scopeKey: { productId: product.id, scopeKey } } });
       if (exists) continue;
-      await prisma.priceEntry.create({ data: { productId: product.id, modality: g.modality, sedeId: g.sedeId, choiceId: g.choiceId, priceCents: list, installmentCents: installment } });
+      await prisma.priceEntry.create({ data: { productId: product.id, scopeKey, modality: g.modality, sedeId: g.sedeId, choiceId: g.choiceId, priceCents: list, installmentCents: installment } });
       priceCount++;
       // Verificación: los montos calculados deben reproducir el precio real de cada variante.
       for (const v of iPay >= 0 ? g.vs : []) {
@@ -268,6 +298,7 @@ async function main() {
     [SETTING_KEYS.orderNextNumber, { next: 1001 }, "Siguiente número visible de orden"],
     [SETTING_KEYS.enrollmentRetry, { maxAttempts: 8, baseDelaySeconds: 60 }, "Reintentos con backoff exponencial de la matrícula en Moodle"],
     [SETTING_KEYS.certificateJob, { intervalMinutes: 60 }, "Frecuencia del job que revisa finalización en Moodle y emite certificados"],
+    [SETTING_KEYS.certificatePolicy, { requireFullPayment: true }, "El certificado del diplomado se emite solo con el saldo del pedido en 0 (además de completar todos los cursos en Moodle)"],
     [SETTING_KEYS.storeContact, { phones: ["+58 412-0840407", "+58 412-5250748"], emails: ["registroceium@gmail.com", "roacar@gmail.com"], whatsapp: "+584120840718", instagram: "https://instagram.com/ceiumoficial" }, "Datos de contacto (de ceium.net/pages/contacto)"],
     [SETTING_KEYS.sampleData, { cohortsAreSample: true, note: "Las cohortes (fechas, cupos, sesiones) son DATOS DE EJEMPLO del seed (Cohort.isSample = true). Reemplazar por los cronogramas reales." }, "Marca de datos de ejemplo"],
   ];

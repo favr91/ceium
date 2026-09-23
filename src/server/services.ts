@@ -60,9 +60,11 @@ export function createServices(d: Deps) {
       "handlePaypalWebhook",
       "refundPayment",
       "onPaypalRefundCompleted",
+      "syncPaypalOrder",
+      "reconcilePaypalPayments",
     ]),
     enrollment: bind(d, enrollment, ["enrollOrder", "reenrollOrder", "unenrollOrder", "retryDueEnrollments", "resendCohortDetails"]),
-    certificates: bind(d, certificates, ["checkDiplomaCompletion", "verifyCertificate", "revokeCertificate", "runCertificateSweep"]),
+    certificates: bind(d, certificates, ["checkDiplomaCompletion", "deliverCertificate", "verifyCertificate", "revokeCertificate", "runCertificateSweep"]),
     email: bind(d, email, ["sendEmail", "retryFailedEmails", "resendEmail"]),
     jobs: bind(d, jobs, ["runJobs"]),
   };

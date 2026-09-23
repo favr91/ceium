@@ -6,6 +6,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import type { Deps } from "@/server/deps";
 import { createOutboxMailer, type Mailer } from "@/server/email/mailer";
 import { SETTING_KEYS } from "@/server/settings";
+import { priceScopeKey } from "@/server/pricing";
 import { createTestDb } from "./testdb";
 import { FakeMoodle, FakePaypal } from "./fakes";
 
@@ -38,9 +39,9 @@ export async function seedFixture(db: PrismaClient): Promise<Fixture> {
   const course = await db.product.create({ data: { type: "COURSE", category: "UNIVERSITY_COURSE", slug: "ecografia-abdominal", title: "Curso de Ecografía Abdominal", moodleCourseId: 201 } });
   await db.priceEntry.createMany({
     data: [
-      { productId: course.id, modality: "ONLINE", sedeId: null, priceCents: 10000 },
-      { productId: course.id, modality: "SEMIPRESENCIAL", sedeId: bqto.id, priceCents: 18000 },
-      { productId: course.id, modality: "SEMIPRESENCIAL", sedeId: ccs.id, priceCents: 20000 },
+      { scopeKey: priceScopeKey({ modality: "ONLINE", sedeId: null }), productId: course.id, modality: "ONLINE", sedeId: null, priceCents: 10000 },
+      { scopeKey: priceScopeKey({ modality: "SEMIPRESENCIAL", sedeId: bqto.id }), productId: course.id, modality: "SEMIPRESENCIAL", sedeId: bqto.id, priceCents: 18000 },
+      { scopeKey: priceScopeKey({ modality: "SEMIPRESENCIAL", sedeId: ccs.id }), productId: course.id, modality: "SEMIPRESENCIAL", sedeId: ccs.id, priceCents: 20000 },
     ],
   });
   await db.paymentPlan.createMany({
@@ -64,8 +65,8 @@ export async function seedFixture(db: PrismaClient): Promise<Fixture> {
   }
   await db.priceEntry.createMany({
     data: [
-      { productId: diploma.id, modality: "ONLINE", sedeId: null, priceCents: 100000, installmentCents: 12500 },
-      { productId: diploma.id, modality: "SEMIPRESENCIAL", sedeId: bqto.id, priceCents: 142000, installmentCents: 18000 },
+      { scopeKey: priceScopeKey({ modality: "ONLINE", sedeId: null }), productId: diploma.id, modality: "ONLINE", sedeId: null, priceCents: 100000, installmentCents: 12500 },
+      { scopeKey: priceScopeKey({ modality: "SEMIPRESENCIAL", sedeId: bqto.id }), productId: diploma.id, modality: "SEMIPRESENCIAL", sedeId: bqto.id, priceCents: 142000, installmentCents: 18000 },
     ],
   });
   await db.paymentPlan.createMany({
