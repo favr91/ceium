@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { HOUR, withTx } from "@/server/deps";
 import { quote } from "@/server/quote";
-import { canTransition, cancelOrder, createCheckout, expireStaleOrders, ORDER_TRANSITIONS, transitionOrder, adjustBalance, reassignCohort } from "@/server/orders";
+import { canTransition, cancelOrder, createCheckout, expireStaleOrders, ORDER_TRANSITIONS, transitionOrder } from "@/server/orders";
+import { adjustBalance, reassignCohort } from "@/server/corrections";
 import { buyer, setupContext, type TestContext } from "./helpers/setup";
 
 let ctx: TestContext;

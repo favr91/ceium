@@ -17,6 +17,7 @@ import * as certificates from "@/server/certificates";
 import * as email from "@/server/email";
 import * as jobs from "@/server/jobs";
 import * as installments from "@/server/installments";
+import * as corrections from "@/server/corrections";
 
 export function createDefaultDeps(overrides: Partial<Deps> = {}): Deps {
   return {
@@ -49,7 +50,11 @@ export function createServices(d: Deps) {
     seats: {
       ...bind(d, seats, ["expireStaleReservations", "getCohortAvailability"]),
     },
-    orders: bind(d, orders, ["createCheckout", "getOrder", "getOrderByToken", "expireStaleOrders", "cancelOrder", "adjustBalance", "reassignCohort", "addNote", "notifyOrderReceived"]),
+    orders: {
+      ...bind(d, orders, ["createCheckout", "getOrder", "getOrderByToken", "expireStaleOrders", "cancelOrder", "addNote", "notifyOrderReceived"]),
+      ...bind(d, corrections, ["adjustBalance", "adjustBalanceDetailed", "waiveInstallment", "reassignCohort"]),
+    },
+    corrections: bind(d, corrections, ["adjustBalance", "adjustBalanceDetailed", "waiveInstallment", "reassignCohort"]),
     payments: bind(d, payments, [
       "recordManualPayment",
       "storeProofFile",

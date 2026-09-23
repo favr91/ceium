@@ -7,7 +7,7 @@ import type { Deps, Tx } from "@/server/deps";
 import { HOUR, MINUTE, readSetting, withTx } from "@/server/deps";
 import { DomainError } from "@/server/errors";
 import { quote, type Quote } from "@/server/quote";
-import { releaseOrderReservations, reassignItemCohort, reserveSeat } from "@/server/seats";
+import { releaseOrderReservations, reserveSeat } from "@/server/seats";
 import { SETTING_KEYS, type ManualMethodConfig } from "@/server/settings";
 import { buildOrderView, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
@@ -368,27 +368,8 @@ export async function cancelOrder(d: Deps, orderId: string, actor: Actor, note?:
   });
 }
 
-/** Ajuste manual de saldo (positivo aumenta la deuda, negativo la condona). */
-export async function adjustBalance(d: Deps, orderId: string, amountCents: number, reason: string, adminId: string) {
-  if (!Number.isInteger(amountCents) || amountCents === 0) throw new DomainError("VALIDATION", "El ajuste debe ser un monto entero distinto de cero (centavos).");
-  if (!reason?.trim()) throw new DomainError("VALIDATION", "Indica el motivo del ajuste.");
-  return withTx(d, async (tx) => {
-    await tx.balanceAdjustment.create({ data: { orderId, amountCents, reason: reason.trim(), createdById: adminId } });
-    const balance = await recomputeBalance(tx, orderId);
-    await addOrderEvent(tx, orderId, "BALANCE_ADJUSTED", { type: "ADMIN", id: adminId }, reason.trim(), { amountCents, balanceCents: balance });
-    return balance;
-  });
-}
-
-/** Corrección manual: reasignar la cohorte de un ítem (mueve el cupo de forma atómica). */
-export async function reassignCohort(d: Deps, orderItemId: string, newCohortId: string, adminId: string, note?: string) {
-  return withTx(d, async (tx) => {
-    const res = await reassignItemCohort(tx, orderItemId, newCohortId, d.now());
-    const item = await tx.orderItem.findUniqueOrThrow({ where: { id: orderItemId } });
-    await addOrderEvent(tx, item.orderId, "COHORT_REASSIGNED", { type: "ADMIN", id: adminId }, note ?? null, { from: res.from, to: res.to });
-    return res;
-  });
-}
+// Ajustes de saldo, condonación de cuotas y reasignación de cohorte: ver corrections.ts (necesitan
+// disparar la matrícula y confirmar cupos, que viven en enrollment.ts / payments.ts).
 
 export async function addNote(d: Deps, orderId: string, note: string, actor: Actor) {
   return d.db.$transaction((tx) => addOrderEvent(tx, orderId, "NOTE", actor, note));

@@ -147,7 +147,8 @@ export async function sendInstallmentReminder(d: Deps, installmentId: string, st
       totalInstallments: total,
       programTitle: ins.orderItem?.productTitle ?? null,
       courseTitle: ins.course?.title ?? null,
-      amountCents: ins.amountCents - ins.paidCents,
+      // Lo que falta de la cuota, nunca más que el saldo del pedido (p.ej. tras un ajuste).
+      amountCents: Math.max(0, Math.min(ins.amountCents - ins.paidCents, o.balanceCents)),
       dueDate: ins.dueDate,
       overdue: stage.overdue || ins.status === "OVERDUE",
       balanceCents: o.balanceCents,

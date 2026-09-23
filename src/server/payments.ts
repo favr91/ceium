@@ -76,19 +76,8 @@ async function applyConfirmedPayment(tx: Tx, paymentId: string, actor: Actor, no
   if (PREPAID_STATES.includes(order.status)) {
     if (amountPaid >= order.dueNowCents) {
       result.firstPaymentSatisfied = true;
-      await adoptBuyerName(tx, order, actor);
-      for (const it of order.items) {
-        if (it.modality !== "SEMIPRESENCIAL" || !it.reservation) continue;
-        const r = await confirmReservation(tx, it.reservation.id, now);
-        if (!r.ok) {
-          result.seatProblem = true;
-          await addOrderEvent(tx, order.id, "SEAT_UNAVAILABLE", SYSTEM, `La cohorte de «${it.productTitle}» se llenó antes de confirmar el pago: reasigna la cohorte o reembolsa.`, { orderItemId: it.id, cohortId: it.cohortId });
-        } else if (r.reacquired) {
-          await addOrderEvent(tx, order.id, "SEAT_REACQUIRED", SYSTEM, `Cupo vuelto a tomar para «${it.productTitle}» (la reserva había vencido).`, { orderItemId: it.id });
-        }
-      }
-      const to = balance <= 0 ? "PAID" : "PARTIALLY_PAID";
-      await transitionOrder(tx, order.id, to, { actor, note: to === "PAID" ? "Pago total recibido" : "Primer pago recibido; queda saldo pendiente" });
+      const r = await satisfyFirstPayment(tx, order.id, actor, now, { balanceCents: balance });
+      result.seatProblem = r.seatProblem;
       result.shouldEnroll = !result.seatProblem;
     } else {
       const stillAwaiting = await tx.payment.count({ where: { orderId: order.id, status: "AWAITING_VERIFICATION" } });
@@ -110,6 +99,30 @@ async function applyConfirmedPayment(tx: Tx, paymentId: string, actor: Actor, no
     });
   }
   return result;
+}
+
+/**
+ * Primer pago cubierto (por un pago confirmado o por una condonación del admin): adopta el nombre del
+ * comprador, convierte las reservas en cupos ocupados (o los vuelve a tomar si vencieron) y pasa el pedido a
+ * PAID / PARTIALLY_PAID según el saldo. Devuelve seatProblem si alguna cohorte se llenó entretanto.
+ */
+export async function satisfyFirstPayment(tx: Tx, orderId: string, actor: Actor, now: Date, opts: { balanceCents: number; note?: string }): Promise<{ seatProblem: boolean }> {
+  const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: { include: { reservation: true } } } });
+  let seatProblem = false;
+  await adoptBuyerName(tx, order, actor);
+  for (const it of order.items) {
+    if (it.modality !== "SEMIPRESENCIAL" || !it.reservation) continue;
+    const r = await confirmReservation(tx, it.reservation.id, now);
+    if (!r.ok) {
+      seatProblem = true;
+      await addOrderEvent(tx, order.id, "SEAT_UNAVAILABLE", SYSTEM, `La cohorte de «${it.productTitle}» se llenó antes de confirmar el pago: reasigna la cohorte (o vuelve a tomar cupo en la misma cuando se libere) o reembolsa.`, { orderItemId: it.id, cohortId: it.cohortId });
+    } else if (r.reacquired) {
+      await addOrderEvent(tx, order.id, "SEAT_REACQUIRED", SYSTEM, `Cupo vuelto a tomar para «${it.productTitle}» (la reserva había vencido).`, { orderItemId: it.id });
+    }
+  }
+  const to = opts.balanceCents <= 0 ? "PAID" : "PARTIALLY_PAID";
+  await transitionOrder(tx, order.id, to, { actor, note: opts.note ?? (to === "PAID" ? "Pago total recibido" : "Primer pago recibido; queda saldo pendiente") });
+  return { seatProblem };
 }
 
 /**
@@ -351,14 +364,27 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
     }
     if (order.status === "PENDING_PAYMENT") {
       amount = order.dueNowCents - order.amountPaidCents;
-      // Si la reserva se liberó (venció y otro comprador limpió), volver a retener cupo o fallar.
+      // El comprador va a PayPal: la reserva y el pedido deben durar al menos `ttl` desde AHORA, o el job
+      // podría vencer el pedido y liberar el cupo mientras paga. Si la reserva ya se liberó, se vuelve a
+      // retener cupo (o se falla); si sigue HELD (aunque vencida y aún sin barrer), se extiende.
+      const until = new Date(now.getTime() + ttl);
       for (const it of order.items) {
         const r = it.reservation;
-        if (it.modality !== "SEMIPRESENCIAL" || !r || r.status !== "RELEASED") continue;
-        if (!(await acquireSeat(tx, r.cohortId, "HELD", { requireOpen: true }))) throw new DomainError("SOLD_OUT", "Tu reserva venció y ya no quedan cupos en esta cohorte.");
-        await tx.seatReservation.update({ where: { id: r.id }, data: { status: "HELD", expiresAt: new Date(now.getTime() + ttl), releasedAt: null, releasedReason: null } });
+        if (it.modality !== "SEMIPRESENCIAL" || !r) continue;
+        if (r.status === "RELEASED") {
+          if (!(await acquireSeat(tx, r.cohortId, "HELD", { requireOpen: true }))) throw new DomainError("SOLD_OUT", "Tu reserva venció y ya no quedan cupos en esta cohorte.");
+          await tx.seatReservation.update({ where: { id: r.id }, data: { status: "HELD", expiresAt: until, releasedAt: null, releasedReason: null } });
+        } else if (r.status === "HELD" && r.expiresAt.getTime() < until.getTime()) {
+          const n = await tx.seatReservation.updateMany({ where: { id: r.id, status: "HELD" }, data: { expiresAt: until } });
+          if (n.count !== 1) throw new DomainError("CONFLICT", "Tu reserva cambió mientras se procesaba; intenta de nuevo.");
+        }
       }
-      if (order.paymentMethod !== "PAYPAL") await tx.order.update({ where: { id: order.id }, data: { paymentMethod: "PAYPAL" } });
+      const extend = !order.expiresAt || order.expiresAt.getTime() < until.getTime();
+      const patch = { ...(order.paymentMethod !== "PAYPAL" ? { paymentMethod: "PAYPAL" as const } : {}), ...(extend ? { expiresAt: until } : {}) };
+      if (Object.keys(patch).length > 0) {
+        const upd = await tx.order.updateMany({ where: { id: order.id, status: "PENDING_PAYMENT" }, data: patch });
+        if (upd.count !== 1) throw new DomainError("CONFLICT", "El pedido cambió mientras se procesaba; intenta de nuevo.");
+      }
     } else if (PAID_STATES.includes(order.status) && order.balanceCents <= 0) {
       throw new DomainError("INVALID_STATE", "Este pedido ya está pagado por completo.");
     } else if (PAID_STATES.includes(order.status) && order.balanceCents > 0) {

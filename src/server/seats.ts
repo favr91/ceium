@@ -4,8 +4,13 @@
 // "leer y luego escribir" que permita sobreventa, ni en SQLite (lock de escritura) ni en Postgres
 // (el UPDATE re-evalúa la condición sobre la fila bloqueada).
 // Las reservas HELD vencidas se liberan antes de intentar tomar cupo, así el conteo es
-// CONFIRMED + HELD vivas. Las reservas de pedidos AWAITING_VERIFICATION (comprobante ya enviado)
-// no vencen: se liberan solo si el admin rechaza el pago.
+// CONFIRMED + HELD vivas. Una reserva HELD NO vence (aunque pase su expiresAt) si el pedido tiene dinero
+// en camino o ya cobrado (ver PROTECTED_ORDER_STATUSES / expirableReservationWhere):
+//  - AWAITING_VERIFICATION: comprobante enviado; se libera solo si el admin rechaza el pago.
+//  - PAID / PARTIALLY_PAID / ENROLLED: el primer pago ya se confirmó.
+//  - un pago PayPal PENDING con providerStatus CAPTURE_PENDING: PayPal retuvo la captura (el cliente
+//    ve "Tu cupo se mantiene"); el cupo se sostiene hasta que PayPal complete o niegue la captura.
+import type { OrderStatus, Prisma } from "@/generated/prisma/client";
 import type { Deps, Tx } from "@/server/deps";
 import { withTx } from "@/server/deps";
 import { DomainError } from "@/server/errors";
@@ -31,12 +36,25 @@ async function decrement(tx: Tx, cohortId: string, field: "seatsHeld" | "seatsCo
   else await tx.$executeRaw`UPDATE "Cohort" SET "seatsConfirmed" = CASE WHEN "seatsConfirmed" > ${by} THEN "seatsConfirmed" - ${by} ELSE 0 END WHERE "id" = ${cohortId}`;
 }
 
+/** Pedidos cuyas reservas HELD no vencen por tiempo (hay un pago en verificación o ya confirmado). */
+export const PROTECTED_ORDER_STATUSES: readonly OrderStatus[] = ["AWAITING_VERIFICATION", "PAID", "PARTIALLY_PAID", "ENROLLED"];
+
+/** Condición sobre el pedido: no está protegido (sin pago en verificación/confirmado ni captura PayPal retenida). */
+function unprotectedOrderWhere(): Prisma.OrderWhereInput {
+  return {
+    status: { notIn: [...PROTECTED_ORDER_STATUSES] },
+    payments: { none: { method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" } },
+  };
+}
+
+/** Reservas HELD que el job (o la limpieza al reservar) puede liberar: vencidas y de pedidos no protegidos. */
+export function expirableReservationWhere(now: Date): Prisma.SeatReservationWhereInput {
+  return { status: "HELD", expiresAt: { lt: now }, order: unprotectedOrderWhere() };
+}
+
 /** Libera reservas HELD vencidas de una cohorte (dentro de la transacción). Devuelve cuántas. */
 export async function releaseExpiredForCohort(tx: Tx, cohortId: string, now: Date): Promise<number> {
-  const stale = await tx.seatReservation.findMany({
-    where: { cohortId, status: "HELD", expiresAt: { lt: now }, order: { status: { not: "AWAITING_VERIFICATION" } } },
-    select: { id: true },
-  });
+  const stale = await tx.seatReservation.findMany({ where: { cohortId, ...expirableReservationWhere(now) }, select: { id: true } });
   let released = 0;
   for (const s of stale) if (await releaseReservation(tx, s.id, "EXPIRED", now)) released++;
   return released;
@@ -113,16 +131,21 @@ export async function releaseOrderReservations(tx: Tx, orderId: string, reason: 
   return n;
 }
 
-/** Job: libera todas las reservas HELD vencidas (excepto pedidos con comprobante en verificación). */
+/**
+ * Job: libera las reservas HELD vencidas de pedidos no protegidos (ver expirableReservationWhere). La
+ * condición se vuelve a comprobar dentro de la transacción: si entretanto llegó un comprobante o PayPal
+ * retuvo la captura, la reserva se conserva.
+ */
 export async function expireStaleReservations(d: Deps): Promise<number> {
   const now = d.now();
-  const stale = await d.db.seatReservation.findMany({
-    where: { status: "HELD", expiresAt: { lt: now }, order: { status: { not: "AWAITING_VERIFICATION" } } },
-    select: { id: true },
-  });
+  const stale = await d.db.seatReservation.findMany({ where: expirableReservationWhere(now), select: { id: true } });
   let released = 0;
   for (const s of stale) {
-    if (await withTx(d, (tx) => releaseReservation(tx, s.id, "EXPIRED", now))) released++;
+    const ok = await withTx(d, async (tx) => {
+      const still = await tx.seatReservation.count({ where: { id: s.id, ...expirableReservationWhere(now) } });
+      return still === 1 && (await releaseReservation(tx, s.id, "EXPIRED", now));
+    });
+    if (ok) released++;
   }
   return released;
 }
@@ -140,41 +163,73 @@ export async function getCohortAvailability(d: Pick<Deps, "db" | "now">, cohortI
   const now = d.now();
   const c = await d.db.cohort.findUniqueOrThrow({ where: { id: cohortId } });
   const held = await d.db.seatReservation.count({
-    where: { cohortId, status: "HELD", OR: [{ expiresAt: { gte: now } }, { order: { status: "AWAITING_VERIFICATION" } }] },
+    where: { cohortId, status: "HELD", NOT: { expiresAt: { lt: now }, order: unprotectedOrderWhere() } },
   });
   const available = Math.max(0, c.capacity - c.seatsConfirmed - held);
   const deadlineOk = !c.enrollmentDeadline || c.enrollmentDeadline.getTime() >= now.getTime();
   return { capacity: c.capacity, confirmed: c.seatsConfirmed, held, available, purchasable: c.status === "OPEN" && deadlineOk && available > 0 };
 }
 
+export interface ReassignOptions {
+  /** Vigencia de una reserva HELD nueva (pedidos aún sin pagar). */
+  ttlMs: number;
+}
+
+export interface ReassignResult {
+  from: string | null;
+  to: string;
+  reservation: Awaited<ReturnType<Tx["seatReservation"]["create"]>>;
+  /** El nuevo cupo quedó ocupado (CONFIRMED): el pedido ya tenía el primer pago confirmado. */
+  confirmed: boolean;
+  /** El ítem no tenía cupo (reserva liberada: p.ej. pago PayPal tardío con la cohorte llena) y ahora sí. */
+  seatRestored: boolean;
+}
+
+const CLOSED_FOR_REASSIGN: readonly OrderStatus[] = ["CANCELLED", "REFUNDED", "EXPIRED", "REJECTED"];
+
 /**
- * Corrección manual: mueve el cupo de un ítem a otra cohorte (misma venta). Si el cupo original estaba
- * confirmado, el nuevo se toma confirmado; si no, retenido con el mismo vencimiento.
+ * Corrección manual: mueve el cupo de un ítem a otra cohorte del mismo programa, o vuelve a tomar cupo en
+ * la MISMA cohorte si la reserva estaba liberada (p.ej. el pago llegó cuando la cohorte ya estaba llena y
+ * luego se abrió un cupo).
+ *  - Pedido con el primer pago confirmado (PAID/PARTIALLY_PAID/ENROLLED) o cupo que ya estaba confirmado:
+ *    el nuevo cupo se toma CONFIRMED (nunca vence) y el llamador debe disparar la matrícula.
+ *  - Pedido sin pagar: HELD con un plazo nuevo (máx. entre el vencimiento actual y ahora + ttl); el
+ *    vencimiento del pedido se extiende igual para que no venza antes que su reserva.
+ * No exige cohorte OPEN (es una corrección del admin), pero sí que no esté cancelada y tenga cupo.
  */
-export async function reassignItemCohort(tx: Tx, orderItemId: string, newCohortId: string, now: Date) {
-  const item = await tx.orderItem.findUniqueOrThrow({ where: { id: orderItemId }, include: { reservation: true, order: true } });
+export async function reassignItemCohort(tx: Tx, orderItemId: string, newCohortId: string, now: Date, opts: ReassignOptions): Promise<ReassignResult> {
+  const item = await tx.orderItem.findUnique({ where: { id: orderItemId }, include: { reservation: true, order: true } });
+  if (!item) throw new DomainError("NOT_FOUND", "El ítem del pedido no existe.");
+  if (item.modality !== "SEMIPRESENCIAL") throw new DomainError("VALIDATION", "Solo los ítems semipresenciales tienen cohorte.");
+  if (CLOSED_FOR_REASSIGN.includes(item.order.status)) throw new DomainError("INVALID_STATE", `El pedido está ${item.order.status}: no se puede reasignar la cohorte.`);
   const newCohort = await tx.cohort.findUnique({ where: { id: newCohortId } });
   if (!newCohort) throw new DomainError("NOT_FOUND", "La cohorte destino no existe.");
   if (newCohort.productId !== item.productId) throw new DomainError("VALIDATION", "La cohorte destino es de otro programa.");
-  if (item.cohortId === newCohortId) throw new DomainError("VALIDATION", "El ítem ya está en esa cohorte.");
+  if (newCohort.status === "CANCELLED") throw new DomainError("COHORT_UNAVAILABLE", "La cohorte destino está cancelada.");
+
   const old = item.reservation;
-  const wasConfirmed = old?.status === "CONFIRMED";
-  if (!(await acquireSeat(tx, newCohortId, wasConfirmed ? "CONFIRMED" : "HELD", { requireOpen: false })))
+  const sameCohort = item.cohortId === newCohortId;
+  if (sameCohort && old && old.status !== "RELEASED") throw new DomainError("VALIDATION", "El ítem ya tiene cupo en esa cohorte.");
+
+  const orderPaid = (["PAID", "PARTIALLY_PAID", "ENROLLED"] as OrderStatus[]).includes(item.order.status);
+  const confirmed = orderPaid || old?.status === "CONFIRMED";
+  const seatRestored = !old || old.status === "RELEASED";
+  if (!(await acquireSeat(tx, newCohortId, confirmed ? "CONFIRMED" : "HELD", { requireOpen: false })))
     throw new DomainError("SOLD_OUT", "La cohorte destino no tiene cupos disponibles.");
+
+  let expiresAt = new Date(now.getTime() + opts.ttlMs);
+  for (const t of [old?.expiresAt, item.order.expiresAt]) if (t && t.getTime() > expiresAt.getTime()) expiresAt = t;
+
   if (old) {
     await releaseReservation(tx, old.id, "REASSIGNED", now);
     await tx.seatReservation.update({ where: { id: old.id }, data: { orderItemId: null } });
   }
   const created = await tx.seatReservation.create({
-    data: {
-      cohortId: newCohortId,
-      orderId: item.orderId,
-      orderItemId: item.id,
-      status: wasConfirmed ? "CONFIRMED" : "HELD",
-      confirmedAt: wasConfirmed ? now : null,
-      expiresAt: old?.expiresAt ?? item.order.expiresAt ?? now,
-    },
+    data: { cohortId: newCohortId, orderId: item.orderId, orderItemId: item.id, status: confirmed ? "CONFIRMED" : "HELD", confirmedAt: confirmed ? now : null, expiresAt },
   });
   await tx.orderItem.update({ where: { id: item.id }, data: { cohortId: newCohortId, sedeId: newCohort.sedeId } });
-  return { from: item.cohortId, to: newCohortId, reservation: created };
+  if (!confirmed && item.order.status === "PENDING_PAYMENT" && (!item.order.expiresAt || item.order.expiresAt.getTime() < expiresAt.getTime())) {
+    await tx.order.update({ where: { id: item.orderId }, data: { expiresAt } });
+  }
+  return { from: item.cohortId, to: newCohortId, reservation: created, confirmed, seatRestored };
 }
