@@ -1,0 +1,10 @@
+/* Estilos globales mínimos. El tema visual de la tienda (réplica Dawn/PageFly de ceium.net)
+   lo construye la pieza "store"; tokens de referencia en ../ref/tokens.json. */
+:root {
+  --ink: #001e2b;
+  --teal: #09b0b0;
+  --bg: #ffffff;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: Inter, system-ui, sans-serif; color: rgba(0, 30, 43, 0.75); background: var(--bg); }

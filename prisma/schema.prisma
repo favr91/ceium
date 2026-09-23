@@ -1,0 +1,695 @@
+// CEIUM — esquema de dominio. Ver ../../SPEC.md ("Dominio").
+// Convenciones:
+//  - Dinero SIEMPRE en centavos enteros (Int, sufijo `Cents`). Moneda base USD.
+//  - Porcentajes como Int 0..100 (`discountPct`).
+//  - IDs cuid (String). Enums nativos de Prisma (en SQLite se guardan como TEXT; compatibles con Postgres).
+//  - Json para listas ricas (docentes, beneficios, temario, sesiones).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum ProductType {
+  COURSE
+  DIPLOMA
+}
+
+/// Categoría de presentación (colección principal). Un taller es un COURSE con category WORKSHOP.
+enum ProductCategory {
+  UNIVERSITY_COURSE
+  ADVANCED_COURSE
+  WORKSHOP
+  DIPLOMA
+}
+
+enum Modality {
+  ONLINE
+  SEMIPRESENCIAL
+}
+
+enum PlanKind {
+  FULL // Paga todo (con discountPct)
+  HALF // Paga la mitad ahora (con discountPct), resto después
+  MONTHLY // Mes a mes: `installments` cuotas de PriceEntry.installmentCents
+}
+
+enum CohortStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  IN_PROGRESS
+  FINISHED
+  CANCELLED
+}
+
+enum ReservationStatus {
+  HELD
+  CONFIRMED
+  RELEASED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  AWAITING_VERIFICATION
+  PARTIALLY_PAID
+  PAID
+  ENROLLED
+  REJECTED
+  CANCELLED
+  EXPIRED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  PAYPAL
+  PAGO_MOVIL
+  TRANSFERENCIA
+  ZELLE
+  EFECTIVO
+}
+
+enum PaymentStatus {
+  PENDING // creado, sin confirmar (p.ej. orden PayPal creada)
+  AWAITING_VERIFICATION // manual: comprobante enviado, falta revisión admin
+  COMPLETED // confirmado (webhook PayPal o aprobado por admin)
+  REJECTED // manual rechazado por admin
+  FAILED // PayPal DENIED / error
+  REFUNDED
+  PARTIALLY_REFUNDED
+  CANCELLED
+}
+
+enum Currency {
+  USD
+  VES
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+enum RefundStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum EnrollmentStatus {
+  PENDING
+  ENROLLED
+  FAILED
+  UNENROLLED
+}
+
+enum CertificateStatus {
+  ISSUED
+  REVOKED
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum ActorType {
+  SYSTEM
+  ADMIN
+  CUSTOMER
+  WEBHOOK
+}
+
+enum AdminRole {
+  ADMIN
+  STAFF
+}
+
+// ───────────────────────────── Catálogo ─────────────────────────────
+
+model Sede {
+  id        String   @id @default(cuid())
+  slug      String   @unique // barquisimeto | caracas | maracaibo
+  name      String
+  city      String?
+  address   String?
+  phone     String?
+  mapUrl    String?
+  active    Boolean  @default(true)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prices     PriceEntry[]
+  cohorts    Cohort[]
+  orderItems OrderItem[]
+}
+
+model Product {
+  id              String          @id @default(cuid())
+  type            ProductType
+  category        ProductCategory
+  slug            String          @unique // = handle de Shopify
+  title           String
+  descriptionHtml String          @default("")
+  excerpt         String? // texto corto para tarjetas
+
+  offersOnline         Boolean @default(true)
+  offersSemipresencial Boolean @default(true)
+
+  // Ficha (sección "Requisitos / Certificado / Avalado / Duración / Beneficios / Docentes")
+  requirements       String?
+  certificateTitle   String? // "Certificado" | "Diplomado de 9 cursos"
+  certificateText    String?
+  endorsementTitle   String? // "Avalado por la UCLA"
+  endorsementText    String?
+  audience           String? // "Dirigido a"
+  duration           String? // "1 mes", "1 mes por curso", "Dos días de práctica presencial."
+  eventDateText      String? // "21 y 22 de noviembre 2025" (talleres)
+  enrollmentNote     String? // "✍ Inscripciones abiertas."
+  enrollmentDeadline DateTime?
+  syllabusUrl        String? // PDF "Descargar contenido"
+  topics             Json? // [{ title, heading?, items: string[] }]
+  faculty            Json? // string[] "Dr. Carlos Roa"
+  benefits           Json? // string[]
+  detailsSource      String? // "ref-html" (extraído de la página real) | "default" (plantilla por categoría)
+
+  moodleCourseId  Int?      @unique // solo COURSE
+  published       Boolean   @default(true)
+  publishedAt     DateTime?
+  position        Int       @default(0)
+  legacyShopifyId String?   @unique
+  seoTitle        String?
+  seoDescription  String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  images                ProductImage[]
+  choices               ProductChoice[]
+  prices                PriceEntry[]
+  plans                 PaymentPlan[]
+  cohorts               Cohort[]
+  collections           CollectionProduct[]
+  diplomaCourses        DiplomaCourse[]     @relation("DiplomaToCourses")
+  inDiplomas            DiplomaCourse[]     @relation("CourseInDiplomas")
+  collectionsForDiploma Collection[]        @relation("CollectionDiploma")
+  orderItems            OrderItem[]
+  enrollments           Enrollment[]
+  certificates          Certificate[]
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String // CDN Shopify (semilla) o /uploads/...
+  alt       String?
+  width     Int?
+  height    Int?
+  position  Int     @default(0)
+
+  @@index([productId, position])
+}
+
+/// Sub-opción de compra extra (p.ej. taller Transfontanelar: "Nivel 1", "Nivel 2", "Todo el taller").
+/// Cuando un producto tiene choices, cada PriceEntry referencia una.
+model ProductChoice {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  groupName String // "Cursos disponibles"
+  label     String
+  position  Int     @default(0)
+
+  prices     PriceEntry[]
+  orderItems OrderItem[]
+
+  @@unique([productId, label])
+}
+
+/// Diplomado → cursos (ordenado).
+model DiplomaCourse {
+  id         String  @id @default(cuid())
+  diplomaId  String
+  diploma    Product @relation("DiplomaToCourses", fields: [diplomaId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Product @relation("CourseInDiplomas", fields: [courseId], references: [id], onDelete: Cascade)
+  position   Int     @default(0)
+  highlights Json? // string[] viñetas mostradas en "Cursos de este diplomado"
+
+  @@unique([diplomaId, courseId])
+  @@index([courseId])
+}
+
+model Collection {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  title           String
+  descriptionHtml String   @default("")
+  imageUrl        String?
+  published       Boolean  @default(true)
+  position        Int      @default(0)
+  diplomaId       String? // colecciones "cursos-del-diplomado-*"
+  diploma         Product? @relation("CollectionDiploma", fields: [diplomaId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  products CollectionProduct[]
+}
+
+model CollectionProduct {
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  position     Int        @default(0)
+
+  @@id([collectionId, productId])
+  @@index([collectionId, position])
+}
+
+/// Matriz de precios producto × modalidad × sede (× choice). ONLINE ⇒ sedeId null.
+/// priceCents = precio de lista TOTAL del programa (antes del descuento del plan).
+/// installmentCents = monto de cada cuota del plan MONTHLY (si aplica).
+model PriceEntry {
+  id               String         @id @default(cuid())
+  productId        String
+  product          Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  modality         Modality
+  sedeId           String?
+  sede             Sede?          @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+  choiceId         String?
+  choice           ProductChoice? @relation(fields: [choiceId], references: [id], onDelete: Cascade)
+  priceCents       Int
+  installmentCents Int?
+  currency         Currency       @default(USD)
+  active           Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([productId, modality, sedeId, choiceId])
+  @@index([productId])
+}
+
+/// Planes de pago por producto.
+///  FULL:    total = price*(1-d);          se cobra todo ahora.
+///  HALF:    total = price*(1-d);          ahora = total/2 (installments=2).
+///  MONTHLY: total = installmentCents*N;   ahora = 1 cuota (installments=N).
+model PaymentPlan {
+  id           String   @id @default(cuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  kind         PlanKind
+  label        String // texto real mostrado: "Paga todo el curso", "Paga la mitad", "Paga mes a mes"...
+  discountPct  Int      @default(0)
+  installments Int      @default(1)
+  position     Int      @default(0)
+  active       Boolean  @default(true)
+
+  orderItems OrderItem[]
+
+  @@unique([productId, kind])
+}
+
+// ───────────────────────────── Cohortes y cupos ─────────────────────────────
+
+/// Cohorte semipresencial (producto + sede). Cupo = capacity.
+/// Ocupación = seatsConfirmed + seatsHeld (reservas vivas). Contadores mantenidos por src/server
+/// con UPDATE condicional (`... WHERE seatsHeld + seatsConfirmed < capacity`) dentro de transacción.
+model Cohort {
+  id                 String       @id @default(cuid())
+  productId          String
+  product            Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sedeId             String
+  sede               Sede         @relation(fields: [sedeId], references: [id])
+  name               String // "Cohorte I - 2026"
+  startDate          DateTime
+  endDate            DateTime
+  enrollmentDeadline DateTime?
+  capacity           Int
+  seatsHeld          Int          @default(0)
+  seatsConfirmed     Int          @default(0)
+  status             CohortStatus @default(OPEN)
+  sessions           Json? // [{ date: "2026-03-14", title, startTime?, endTime?, courseSlug? }]
+  notes              String?
+  scheduleUrl        String? // PDF de cronograma legado
+  isSample           Boolean      @default(false) // datos de ejemplo generados por el seed
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  reservations SeatReservation[]
+  orderItems   OrderItem[]
+
+  @@index([productId, sedeId, status])
+}
+
+model SeatReservation {
+  id             String            @id @default(cuid())
+  cohortId       String
+  cohort         Cohort            @relation(fields: [cohortId], references: [id])
+  orderId        String
+  order          Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItemId    String?           @unique
+  orderItem      OrderItem?        @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  status         ReservationStatus @default(HELD)
+  expiresAt      DateTime
+  confirmedAt    DateTime?
+  releasedAt     DateTime?
+  releasedReason String? // EXPIRED | REJECTED | REFUNDED | CANCELLED | REASSIGNED
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([cohortId, status])
+  @@index([status, expiresAt])
+}
+
+// ───────────────────────────── Clientes y órdenes ─────────────────────────────
+
+model Customer {
+  id             String   @id @default(cuid())
+  email          String   @unique // normalizado a minúsculas
+  firstName      String
+  lastName       String
+  cedula         String?
+  phone          String?
+  specialty      String?
+  city           String?
+  country        String?  @default("VE")
+  moodleUserId   Int?     @unique
+  moodleUsername String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  orders       Order[]
+  enrollments  Enrollment[]
+  certificates Certificate[]
+  emails       EmailOutbox[]
+}
+
+model Order {
+  id              String         @id @default(cuid())
+  number          Int            @unique // visible: #1001, #1002… (asignado por src/server)
+  token           String         @unique // token público para /pedido/[token]
+  customerId      String
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  status          OrderStatus    @default(PENDING_PAYMENT)
+  paymentMethod   PaymentMethod? // método elegido en el checkout
+  currency        Currency       @default(USD)
+  subtotalCents   Int // suma de precios de lista
+  discountCents   Int            @default(0)
+  totalCents      Int // total a pagar del programa (tras descuentos del plan)
+  dueNowCents     Int // primer pago (lo que habilita la matrícula)
+  amountPaidCents Int            @default(0)
+  balanceCents    Int            @default(0) // totalCents - amountPaidCents ± ajustes
+  customerNote    String?
+  internalNote    String?
+  expiresAt       DateTime? // vencimiento de la reserva / pago pendiente
+  placedAt        DateTime       @default(now())
+  paidAt          DateTime?
+  enrolledAt      DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  items        OrderItem[]
+  payments     Payment[]
+  installments Installment[]
+  adjustments  BalanceAdjustment[]
+  reservations SeatReservation[]
+  events       OrderEvent[]
+  enrollments  Enrollment[]
+  emails       EmailOutbox[]
+
+  @@index([status, createdAt])
+  @@index([customerId])
+}
+
+model OrderItem {
+  id             String         @id @default(cuid())
+  orderId        String
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product        @relation(fields: [productId], references: [id])
+  productTitle   String // snapshot
+  productType    ProductType // snapshot
+  modality       Modality
+  sedeId         String?
+  sede           Sede?          @relation(fields: [sedeId], references: [id])
+  cohortId       String?
+  cohort         Cohort?        @relation(fields: [cohortId], references: [id])
+  choiceId       String?
+  choice         ProductChoice? @relation(fields: [choiceId], references: [id])
+  paymentPlanId  String?
+  paymentPlan    PaymentPlan?   @relation(fields: [paymentPlanId], references: [id])
+  planKind       PlanKind       @default(FULL) // snapshot
+  planLabel      String? // snapshot
+  quantity       Int            @default(1)
+  unitPriceCents Int // precio de lista
+  discountCents  Int            @default(0)
+  totalCents     Int // unitPrice*qty - discount (o cuotas*N en MONTHLY)
+  dueNowCents    Int
+
+  reservation  SeatReservation?
+  enrollments  Enrollment[]
+  certificates Certificate[]
+
+  @@index([orderId])
+}
+
+// ───────────────────────────── Pagos ─────────────────────────────
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  installmentId   String?
+  installment     Installment?  @relation(fields: [installmentId], references: [id], onDelete: SetNull)
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  amountCents     Int // monto en `currency`
+  currency        Currency      @default(USD)
+  exchangeRate    Decimal? // VES por USD cuando currency = VES
+  amountUsdCents  Int // equivalente en USD aplicado a la orden
+  reference       String? // nº de referencia del pago móvil / transferencia
+  bank            String?
+  payerName       String?
+  payerPhone      String?
+  payerCedula     String?
+  paidAt          DateTime? // fecha declarada / capturada
+  proofFile       String? // ruta en public/uploads o var/
+  paypalOrderId   String?       @unique
+  paypalCaptureId String?       @unique
+  providerStatus  String?
+  providerPayload Json?
+  verifiedById    String?
+  verifiedBy      AdminUser?    @relation("PaymentVerifier", fields: [verifiedById], references: [id])
+  verifiedAt      DateTime?
+  rejectionReason String?
+  refundedCents   Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  refunds Refund[]
+
+  @@index([orderId])
+  @@index([status, method])
+}
+
+model Refund {
+  id               String       @id @default(cuid())
+  paymentId        String
+  payment          Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  amountCents      Int
+  reason           String?
+  status           RefundStatus @default(PENDING)
+  providerRefundId String?      @unique // id de refund PayPal
+  manual           Boolean      @default(false) // reembolso manual registrado (no PayPal)
+  createdById      String?
+  createdBy        AdminUser?   @relation("RefundCreator", fields: [createdById], references: [id])
+  createdAt        DateTime     @default(now())
+  completedAt      DateTime?
+}
+
+/// Cuotas / saldo pendiente. Se generan al crear la orden según el plan.
+model Installment {
+  id          String            @id @default(cuid())
+  orderId     String
+  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sequence    Int // 1..N
+  dueDate     DateTime?
+  amountCents Int
+  paidCents   Int               @default(0)
+  status      InstallmentStatus @default(PENDING)
+  paidAt      DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  payments Payment[]
+
+  @@unique([orderId, sequence])
+}
+
+/// Corrección manual de saldo (positivo = aumenta lo que se debe; negativo = condona).
+model BalanceAdjustment {
+  id          String     @id @default(cuid())
+  orderId     String
+  order       Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amountCents Int
+  reason      String
+  createdById String?
+  createdBy   AdminUser? @relation(fields: [createdById], references: [id])
+  createdAt   DateTime   @default(now())
+}
+
+/// Idempotencia de webhooks (PayPal).
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  provider    String // "paypal"
+  eventId     String    @unique
+  eventType   String
+  resourceId  String?
+  payload     Json
+  verified    Boolean   @default(false)
+  processedAt DateTime?
+  error       String?
+  createdAt   DateTime  @default(now())
+}
+
+// ───────────────────────────── Moodle ─────────────────────────────
+
+/// Matrícula idempotente: una fila por (cliente, curso Moodle).
+model Enrollment {
+  id                  String           @id @default(cuid())
+  customerId          String
+  customer            Customer         @relation(fields: [customerId], references: [id])
+  productId           String // el CURSO
+  product             Product          @relation(fields: [productId], references: [id])
+  orderId             String?
+  order               Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderItemId         String? // ítem que la originó (curso suelto o diplomado)
+  orderItem           OrderItem?       @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  moodleCourseId      Int
+  moodleUserId        Int?
+  status              EnrollmentStatus @default(PENDING)
+  attempts            Int              @default(0)
+  lastError           String?
+  nextAttemptAt       DateTime?
+  enrolledAt          DateTime?
+  completedAt         DateTime? // según core_completion_get_course_completion_status
+  completionCheckedAt DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([customerId, moodleCourseId])
+  @@index([status, nextAttemptAt])
+}
+
+model Certificate {
+  id           String            @id @default(cuid())
+  customerId   String
+  customer     Customer          @relation(fields: [customerId], references: [id])
+  diplomaId    String
+  diploma      Product           @relation(fields: [diplomaId], references: [id])
+  orderItemId  String?
+  orderItem    OrderItem?        @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  code         String            @unique // código verificable público
+  status       CertificateStatus @default(ISSUED)
+  issuedAt     DateTime          @default(now())
+  pdfPath      String?
+  emailedAt    DateTime?
+  revokedAt    DateTime?
+  revokeReason String?
+
+  @@unique([customerId, diplomaId])
+}
+
+// ───────────────────────────── Correos y auditoría ─────────────────────────────
+
+model EmailOutbox {
+  id         String      @id @default(cuid())
+  template   String // order_confirmation | payment_pending_verification | payment_approved | payment_rejected | platform_access | cohort_details | certificate_issued | ...
+  to         String
+  cc         String?
+  subject    String
+  html       String
+  text       String?
+  status     EmailStatus @default(QUEUED)
+  attempts   Int         @default(0)
+  lastError  String?
+  dedupeKey  String?     @unique // evita duplicados (p.ej. "platform_access:<orderId>")
+  emlPath    String? // var/mail/<id>.eml en dev
+  orderId    String?
+  order      Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  customerId String?
+  customer   Customer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdAt  DateTime    @default(now())
+  sentAt     DateTime?
+
+  @@index([status, createdAt])
+}
+
+model OrderEvent {
+  id         String       @id @default(cuid())
+  orderId    String
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type       String // STATUS_CHANGE | PAYMENT_RECEIVED | PAYMENT_VERIFIED | ENROLLMENT | EMAIL_SENT | REFUND | NOTE | COHORT_REASSIGNED | BALANCE_ADJUSTED ...
+  fromStatus OrderStatus?
+  toStatus   OrderStatus?
+  actorType  ActorType    @default(SYSTEM)
+  actorId    String?
+  actor      AdminUser?   @relation(fields: [actorId], references: [id])
+  note       String?
+  data       Json?
+  createdAt  DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+// ───────────────────────────── Admin ─────────────────────────────
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  role         AdminRole @default(STAFF)
+  passwordHash String // bcryptjs
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions         AdminSession[]
+  verifiedPayments Payment[]           @relation("PaymentVerifier")
+  refunds          Refund[]            @relation("RefundCreator")
+  adjustments      BalanceAdjustment[]
+  events           OrderEvent[]
+}
+
+model AdminSession {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique // sha256 del token de la cookie
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  ip          String?
+  userAgent   String?
+}
+
+/// Configuración clave/valor (JSON). Claves conocidas: ver src/server/settings.ts.
+model Setting {
+  key         String   @id
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+}

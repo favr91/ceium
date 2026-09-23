@@ -1,0 +1,2122 @@
+{
+  "extractedAt": "2026-09-23T22:00:56.781Z",
+  "products": {
+    "taller-avanzado-de-ultrasonido-del-piso-pelvico": {
+      "source": "cache",
+      "handle": "taller-avanzado-de-ultrasonido-del-piso-pelvico",
+      "intro": [
+        "El objetivo del taller es capacitar a profesionales de la salud en el uso avanzado del ultrasonido para el diagnóstico y evaluación funcional del piso pélvico, con énfasis en técnicas ecográficas aplicadas a patologías uroginecológicas."
+      ],
+      "eventDateText": "Enero de 2026.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado avalado para la academia CEIUM.",
+      "audience": "Ginecólogos, gineco-obstetras y profesionales especializados en ecografía ginecológica o uroginecología.",
+      "duration": "Dos días de práctica presencial.",
+      "topics": [
+        {
+          "title": "Fundamentos técnicos",
+          "items": [
+            "Principios físicos del ultrasonido",
+            "Tipos de transductores y modos de imagen (B, Doppler)",
+            "Anatomía facial ecográfica: planos musculares, vasculares y óseos"
+          ]
+        },
+        {
+          "title": "Alplicaciones clínicas y estéticas",
+          "items": [
+            "Mapeo facial previo a infiltraciones (toxina botulínica, rellenos)",
+            "Identificación de estructuras anatómicas críticas (arterias, nervios, glándulas)",
+            "Evaluación de complicaciones: nódulos, migración de rodpucto, granulomas",
+            "Seguimiento regenerativas (PRP, bioestimuladores)"
+          ]
+        },
+        {
+          "title": "Técnica ecográfica",
+          "items": [
+            "Protocolos de escaneo por zonas: frontal, periorbital, malar, mentoniana",
+            "Uso del Doppler para seguridad vascular",
+            "Interpretación de imágenes en tiempo real"
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Taller_Avanzado_De_Ultrasonido_Piso_Pelvico.pdf?v=1762298679",
+      "title": "Taller Avanzado de Ultrasonido del Piso Pélvico"
+    },
+    "taller-avanzado-de-histeroscopia-diagnostica-y-terapeutica-en-el-consultorio": {
+      "source": "cache",
+      "handle": "taller-avanzado-de-histeroscopia-diagnostica-y-terapeutica-en-el-consultorio",
+      "intro": [
+        "Este taller avanzado está diseñado para capacitar a médicos ginecólogos y residentes, independientemente de su experiencia previa, en el uso experto de la histeroscopia diagnóstica y terapéutica realizada en el consultorio. El programa pone un fuerte énfasis en las técnicas modernas, el manejo eficiente de equipos y la resolución práctica de patologías intrauterinas, siendo ideal para aquellos profesionales que buscan perfeccionar sus habilidades en la cirugía intrauterina de mínima invasión."
+      ],
+      "eventDateText": "Enero de 2026.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado avalado para la academia CEIUM.",
+      "audience": "Médicos ginecólogos y residentes con o sin experiencia previa en histeroscopia.",
+      "duration": "Dos días de práctica.",
+      "topics": [
+        {
+          "title": "Fundamentos técnicos",
+          "items": [
+            "Definición e indicaciones de la histeroscopia",
+            "Anatomía histeroscópica y evaluación del endometrio",
+            "Técnica de vagino-histeroscopía y reporte histeroscópico"
+          ]
+        },
+        {
+          "title": "Instrumental y tecnología",
+          "items": [
+            "Equipamiento necesario en el consultorio",
+            "Manejo de presión intrauterina y medios de distensión",
+            "Uso de equipos Especiales: electrocirugía y láser"
+          ]
+        },
+        {
+          "title": "Aplicaciones clínicas",
+          "items": [
+            "Diagnóstico y tratamiento de patologías endometriales",
+            "Miomectomía histeroscópica: resección vs enucleación",
+            "Malformaciones uterinas e infertilidad",
+            "Tratamiento del istmocele"
+          ]
+        },
+        {
+          "title": "Complicaciones y seguridad",
+          "items": [
+            "Prevención y manejo de complicaciones",
+            "Normas de desinfección y esterilización",
+            "Ergonomía y técnica en procedimientos de consultorio"
+          ]
+        },
+        {
+          "title": "Modalidad \"Hands on\"",
+          "items": [
+            "Incluye sesiones prácticas supervisadas con especialista, donde los participantes entrenan en:",
+            "Ensamblaje y manipulación de histeroscopia y resectoscopio",
+            "Ejercicios de orientación, profundidad y rotación"
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Taller_Avanzado_de_Histeroscopia.pdf?v=1762285997",
+      "title": "Taller Avanzado de Histeroscopia Diagnóstica y Terapéutica en el Consultorio"
+    },
+    "curso-universitario-ecografia-pediatrica": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-pediatrica",
+      "intro": [
+        "Exploración con ultrasonido convencional (2D), (3D), (4D) y (5D) HDLIVE al paciente pediátrico en los segmentos de cabeza, cuello, abdomen (hígado, vesícula, páncreas, bazo, retroperitoneo, tracto urinario, tracto digestivo), tórax y pelvis en pediatría.",
+        "Diagnóstico de salud o enfermedad en los sistemas y órganos del paciente pediátrico, usando la tecnología del ultrasonido."
+      ],
+      "belongsTo": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico",
+      "enrollmentNote": "✍ Inscripciones abiertas",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Uso del equipo en preset pediátria ajustes de parámetros.",
+            "Bases fisicas: modo b, doppler y elastografía.",
+            "Descripción de una imagen u órgano.",
+            "Realización del informe ecográfico de pediatría."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Ecografía de Cabeza, Cara y Cuello.",
+            "Ecografia transfontanelar."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Hígado Normal.",
+            "Hígado Patológico."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Vesícula.",
+            "Vías Biliares.",
+            "Bazo Normal y Patologías."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Retroperitoneo.",
+            "Grandes Vasos Abdominales.",
+            "Páncreas Normal, Patológico."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Ecografía del Tracto Urinario Normal y Patológico.",
+            "Ecografía de Trauma Renal.",
+            "Ecografía de la Próstata."
+          ]
+        },
+        {
+          "title": "Tema 6",
+          "items": [
+            "Ecografía de las Glándulas Suprarrenales.",
+            "Ecografía Peritoneo.",
+            "Diafragma y Eco FAST."
+          ]
+        },
+        {
+          "title": "Tema 7",
+          "items": [
+            "Ecografía Pared Abdominal.",
+            "Ecografía Tracto Gastrointestinal.",
+            "Ecografía de Apéndice.",
+            "Ecografía de Estenosis Pilórica."
+          ]
+        },
+        {
+          "title": "Tema 8",
+          "items": [
+            "Ecografía del Tórax y Pelvis en Pediatría."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Isilia Dudamel",
+        "Dra. Leslie Gomez",
+        "Dra. Karla Tamayo",
+        "Dr. Carlos Pérez",
+        "Dr. Charly Pereira",
+        "Dr. Sergio Aguirre",
+        "Dr. Luis Pacheco"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_Pediatrica.pdf?v=1735951784",
+      "title": "Curso Universitario: Ecografía Pediátrica"
+    },
+    "taller-de-ecografia-doppler-transfontanelar-y-transcraneal": {
+      "source": "cache",
+      "handle": "taller-de-ecografia-doppler-transfontanelar-y-transcraneal",
+      "intro": [
+        "Este taller está diseñado para capacitar al personal médico en el uso integral de la Ecografía Neurológica, incluyendo las técnicas Doppler, Transcraneal, Transfontanelar y Transoftálmica. El objetivo principal es dotar a los profesionales de las habilidades necesarias para realizar una evaluación diagnóstica precisa en el recién nacido y el lactante."
+      ],
+      "eventDateText": "14, 15 y 16 de noviembre de 2025",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado avalado para la academia CEIUM.",
+      "audience": "Neonatólogos, Intensivistas pediátricos, Radiólogos pediátricos, Médicos residentes y personal de enfermería especializado.",
+      "duration": "3 días el taller completo, 2 días por curso.",
+      "topics": [
+        {
+          "title": "Curso Transfontanelar Morfológico Nivel 1",
+          "items": [
+            "Principios físicos y clínicos del Doppler en neonatos",
+            "Consideraciones técnicas: ángulo de insonación, modos de ultrasonido usados en medicina",
+            "Manejo y ajustes de los controles ecográficos para la imagen óptima ventana acústica transfontanelar",
+            "Anatomía de la columna y la medula espinal",
+            "Espina bífida abierta y cerrada",
+            "Patrones ecografías normales y patológicos",
+            "Neuroanatomia encefálica normal y patológica",
+            "Neurosonografia encefálica normal y patológica",
+            "Neuroanatomía de la columna vertebral y médula espinal en recién nacido y lactante normal y patológica",
+            "Neurosonografia de la columna vertebral en recién nacido y lactante normal y patológica"
+          ]
+        },
+        {
+          "title": "Curso Transfontanelar Funcional Doppler Nivel 2",
+          "items": [
+            "Principios físicos y clínicos del Doppler en neonatos",
+            "Consideraciones técnicas: ángulo de insonación, ventana acústica transfontanelar",
+            "Valores normales e interpretación de índices de resistencia (IR, IP)",
+            "Identificación de arterias cerebrales principales: arteria cerebral anterior, media, carótidas internas",
+            "Diferencias anatómicas y fisiológicas del neonato",
+            "Cambios hemodinámicos en hidrocefalia",
+            "Uso del Doppler para el control postquirúrgico y pronóstico",
+            "Interpretación de índices vasculares y relación con la presión intracraneal",
+            "Secuencia de deterioro de los flujos: pérdida de flujo diastólico, inversión diastólica, ausencia de flujo sistólico",
+            "Significados clínicos y correlación con criterios clínicos de muerte cerebral",
+            "Limitaciones y precauciones de la técnica en recién nacidos"
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Taller_de_Ecografia_Doppler_Transfontanelar_y_Transcraneal.pdf?v=1762298862",
+      "title": "Taller de Ecografía Doppler Transfontanelar y Transcraneal"
+    },
+    "taller-de-ecografia-facial": {
+      "source": "cache",
+      "handle": "taller-de-ecografia-facial",
+      "intro": [
+        "Capacitar a médicos estéticos, dermatólogos y profesionales afines en el uso del ultrasonido facial para mejorar la precisión, seguridad y seguimiento de tratamientos estéticos y terapias regenerativas."
+      ],
+      "eventDateText": "21 y 22 de noviembre 2025",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado avalado para la academia CEIUM.",
+      "audience": "Médicos estéticos, dermatólogos, odontólogos estéticos, cirujanos plásticos y profesionales con formación en ecografía médica.",
+      "duration": "Dos días de práctica presencial.",
+      "topics": [
+        {
+          "title": "Fundamentos técnicos",
+          "items": [
+            "Principios físicos del ultrasonido",
+            "Tipos de transductores y modos de imagen (B, Doppler)",
+            "Anatomía facial ecográfica: planos musculares, vasculares y óseos"
+          ]
+        },
+        {
+          "title": "Aplicaciones clínicas y estéticas",
+          "items": [
+            "Mapeo facial previo a infiltraciones (toxina botulínica, rellenos)",
+            "Identificación de estructuras anatómicas críticas (arterias, nervios, glándulas)",
+            "Evaluación de complicaciones: nódulos, migración de producto, granulomas",
+            "Seguimiento regenerativas (PRP, bioestimuladores)"
+          ]
+        },
+        {
+          "title": "Técnica ecográfica",
+          "items": [
+            "Protocolos de escaneo por zonas: frontal, periorbital, malar, mentoniana",
+            "Uso del Doppler para seguridad vascular",
+            "Interpretación de imágenes en tiempo real"
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dr. Antonio Labichino"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Taller_de_Ecografia_Facial.pdf?v=1762269086",
+      "title": "Taller de Ecografía Facial"
+    },
+    "diplomado-universitario-de-ecografia-integral-en-el-diagnostico-medico": {
+      "source": "cache",
+      "handle": "diplomado-universitario-de-ecografia-integral-en-el-diagnostico-medico",
+      "intro": [
+        "9 cursos que brindan a los profesionales de la salud formación completa, del uso de la ecografía para el diagnostico de todas las patologías del ser humano."
+      ],
+      "enrollmentNote": "✍ Inscripciones abiertas durante todo el año.",
+      "scheduleLinks": [
+        "Ver Cronograma Cohorte I - 2026",
+        "Ver Cronograma Cohorte II - 2026"
+      ],
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Diplomado de 9 cursos",
+      "certificateText": "Incluye certificado universitario apostillable por cada curso aprobado.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El diplomado está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes por curso",
+      "benefits": [
+        "Adquirir conocimientos teóricos y prácticos actualizados en ecografía integral para el diagnóstico de diversas patologías.",
+        "Desarrollar habilidades para la realización e interpretación de estudios ecográficos de alta calidad.",
+        "Obtener un diploma de reconocido prestigio que avala la formación recibida.",
+        "Mejorar las competencias profesionales y las oportunidades laborales en el campo de la medicina"
+      ],
+      "diplomaCourses": [
+        {
+          "n": 1,
+          "title": "Curso Universitario: Ecografía de Abdomen",
+          "highlights": [
+            "Exploración ecográfica detallada del abdomen, incluyendo hígado, vesícula biliar, vías biliares, bazo, glándulas suprarrenales, peritoneo, diafragma, páncreas, retroperitoneo, grandes vasos abdominales, tracto gastrointestinal, próstata y tracto urinario.",
+            "Diferenciación de hallazgos ecográficos normales y patológicos."
+          ]
+        },
+        {
+          "n": 2,
+          "title": "Curso Universitario: Ecografía Doppler Vascular Periférico",
+          "highlights": [
+            "Estudio del sistema vascular periférico mediante ecografía Doppler.",
+            "Reconocimiento de hallazgos normales y patológicos.",
+            "Diagnóstico de enfermedades vasculares como trombosis venosa profunda, aterosclerosis y aneurismas."
+          ]
+        },
+        {
+          "n": 3,
+          "title": "Curso Universitario: Ecografía De Mama y Pequeñas Partes",
+          "highlights": [
+            "Exploración ecográfica de: mama, escroto, pene, tiroides y paratiroides.",
+            "Diagnóstico de patologías en las glándulas tiroides y paratiroides, mama, escroto, pene y pared abdominal."
+          ]
+        },
+        {
+          "n": 4,
+          "title": "Curso Universitario: Ecografía Ginecológica",
+          "highlights": [
+            "Utilización de ultrasonido 2D, 3D, 4D y 5D HDLIVE para el diagnóstico de patologías uterinas, ováricas y de otros órganos de la pelvis femenina."
+          ]
+        },
+        {
+          "n": 5,
+          "title": "Curso Universitario: De Investigación en Ultrasonido I",
+          "highlights": [
+            "Desarrollo de un artículo científico sobre un tema relacionado con la ecografía integral en medicina.",
+            "Aplicación del método científico y normas APA para la redacción del artículo y un informe final."
+          ]
+        },
+        {
+          "n": 6,
+          "title": "Curso Universitario: Ecografía Obstétrica",
+          "highlights": [
+            "Exploración ecográfica del binomio madre-feto y anexos ovulares utilizando técnicas 2D, 3D, 4D y 5D HDLIVE.",
+            "Interpretación de los resultados de la ecografía Doppler en obstetricia.",
+            "Diferenciación de hallazgos ecográficos normales y anormales."
+          ]
+        },
+        {
+          "n": 7,
+          "title": "Curso Universitario: Ecografía Musculoesquelética",
+          "highlights": [
+            "Aplicación de la ecografía para identificar hallazgos normales y patológicos en el sistema musculoesquelético de miembros superiores, inferiores y cadera."
+          ]
+        },
+        {
+          "n": 8,
+          "title": "Curso Universitario: Ecografía Pediátrica",
+          "highlights": [
+            "Exploración ecográfica con técnicas 2D, 3D, 4D y 5D HDLIVE en pacientes pediátricos, abarcando: cabeza, cuello, abdomen, tórax y pelvis.",
+            "Diagnóstico de enfermedades en los diferentes sistemas y órganos del paciente pediátrico mediante ecografía."
+          ]
+        },
+        {
+          "n": 9,
+          "title": "Curso Universitario: De Investigación en Ultrasonido II",
+          "highlights": [
+            "Entrega y presentación oral del artículo científico desarrollado en Investigación I."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Isilia Dudamel",
+        "Dra. Leslie Gomez",
+        "Dra. Karla Tamayo",
+        "Dr. Carlos Pérez",
+        "Dr. Charly Pereira",
+        "Dr. Sergio Aguirre",
+        "Dr. Fermín Pinto",
+        "Dr. Luis Pacheco"
+      ],
+      "scheduleUrls": [
+        "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CRONOGRAMA_INTEGRAL_Proyecto_Cohorte_I-2026.pdf?v=1757968232",
+        "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CRONOGRAMA_INTEGRAL_Proyecto_Cohorte_II-2026.pdf?v=1757968232"
+      ],
+      "title": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico"
+    },
+    "curso-universitario-enfermedades-materno-fetales": {
+      "source": "cache",
+      "handle": "curso-universitario-enfermedades-materno-fetales",
+      "intro": [
+        "Estudio diagnóstico y tratamiento de las enfermedades infecciosas, metabólicas y otras extendiendo la enseñanza hasta mostrar los hallazgos ecográficos, fetales ovulares y maternos en diferentes enfermedades del binomio madre feto en los tres trimestres del período gestacional."
+      ],
+      "belongsTo": "Diplomado Universitario Avanzado de Medicina Materno Fetal",
+      "enrollmentNote": "✍ Inscripciones abiertas.",
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 1",
+          "items": [
+            "Generalidades la medicina Materno-Fetal:",
+            "Inversión de la pirámide del control prenatal.",
+            "Medicina fetal basada en evidencia.",
+            "Asesoramiento genético.",
+            "Manejo y organización del consultorio de medicina materno-fetal."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Enfermedades endocrino metabólicas durante la gestación:",
+            "Enfermedad tiroidea: hipotiroidismo, hipertiroidismo, dx y tratamiento. El nódulo tiroideo.",
+            "Enfermedad paratiroidea.",
+            "Patología suprarrenal dx y tratamiento.",
+            "Diabetes y embarazo dx y seguimiento.",
+            "Hiperprolactinemia y embarazo."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Enfermedades inmunológicas durante el embarazo:",
+            "Trombofilias -síndrome antifósfolípidos y otros.",
+            "Enfermedad tromboembólica del embarazo.",
+            "Lupus eritematoso sistémico.",
+            "Artritis reumatoidea y embarazo.",
+            "Púrpura trombocitopénica inmunitaria (trombocitopenia inmunitaria)",
+            "Covid y embarazo.",
+            "Trombo-embolismo y embarazo."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Trastornos hipertensivos durante la gestación:",
+            "Hipertensión gestacional.",
+            "Hipertensión arterial crónica.",
+            "Hipertensión de bata blanca o de guardapolvo blanco.",
+            "Preeclampsia / eclampsia.",
+            "Síndrome de hellp."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Anemia y embarazo.",
+            "Infección urinaria y embarazo."
+          ]
+        },
+        {
+          "title": "Tema 6",
+          "items": [
+            "Enfermedades infecciosas maternofetales:",
+            "Torch: diagnóstico, tratamiento puesto al día",
+            "Citomegalovirus,toxoplasmosis, herpes, sífilis, zika, parvovirus 19, rubeola."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Lemoña Gregoriadis",
+        "Dra. Sandra Gutiérrez",
+        "Dra. Paola de Jesús"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CURSO_UNIVERSITARIO_ENFERMEDADES_MATERNO_Y_FETALES.pdf?v=1735951864",
+      "title": "Curso Universitario: Enfermedades Materno Fetales"
+    },
+    "curso-universitario-de-ecocardiografia-fetal": {
+      "source": "cache",
+      "handle": "curso-universitario-de-ecocardiografia-fetal",
+      "intro": [
+        "Exploración del corazón fetal con el uso del ultrasonido con las modalidades B, Doppler y ecografía 3D, 4D y 5D, y reconocimiento de los hallazgos normales y patológicos. Diagnóstico de malformaciones congénitas del corazón."
+      ],
+      "belongsTo": "Diplomado Universitario Avanzado de Medicina Materno Fetal",
+      "enrollmentNote": "✍ Inscripciones abiertas",
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 1",
+          "items": [
+            "Introducción:",
+            "Embriología, anatomía, fisiología y epidemiología cardiovascular fetal.",
+            "Ecocardiografía cortes básicos y avanzados.",
+            "Ajustes técnicos del equipo de eco para la realización del doppler cardíaco.",
+            "Utilización del modo M."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Análisis secuencial y segmentario del corazón fetal:",
+            "Guías para el estudio del corazón.",
+            "Nomenclatura, origen de las cardiopatías congénitas."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Anomalías:",
+            "Septales: civ,canal av,ventriculo único doble entrada.",
+            "Corazón izquierdo: corazón izquierdo hipoplásico, atresia mitral, estenosis/atresia aorta.",
+            "Corazón derecho: atresia tricúspidea, anomalía ebstein, displasia tricúspide. Estenosis/atresia pulmonar."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Conotruncales. fallot, transposición grandes vasos, transposición corregida de grandes vasos, doble salida del VD, troncus arterioso.",
+            "Del arco AO: coartación AO e interrupción del arco AO.",
+            "Arco AO derecho.",
+            "Del retorno venoso y sistémico."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Otras anomalías:",
+            "Tumores, miocardiopatías,isomerismos.",
+            "Focos hiperecogénicos, eje cardíaco desviado, derrame.",
+            "Insuficiencia cardíaca.",
+            "Art subclavia derecha aberrante.",
+            "Anomalías ductus dependientes.",
+            "Fallot, transposición aorto-pulmonar,estenosis y coartación aortica, hipoplasia del V.I, atresia pulmonar."
+          ]
+        },
+        {
+          "title": "Tema 6",
+          "items": [
+            "Otros:",
+            "Diagnóstico temprano de cardiopatías congénitas.",
+            "Función cardíaca arritmias.",
+            "Volumetría Cardíaca -Stic Cardíaco."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dra. Lemoña Gregoriadis",
+        "Dr. Carlos Roa",
+        "Dra. Sandra Gutiérrez",
+        "Dra. Elsy Silva"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CURSO_UNIVERSITARIO_DE_ECOCARDIOGRAFIA_FETAL.pdf?v=1735951189",
+      "title": "Curso Universitario: Ecocardiografía Fetal"
+    },
+    "curso-universitario-ecografia-3d-4d-y-5d-en-obstetricia-y-ginecologia": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-3d-4d-y-5d-en-obstetricia-y-ginecologia",
+      "intro": [
+        "Utilización de ultrasonido en útero y anexos, tecnología (2D), (3D), (4D) Y (5D) HDLIVE, hasta Ecotomografía, en diagnóstico de la normalidad y de patologías del corazón cerebro y otros segmentos corporales fetales."
+      ],
+      "belongsTo": "Diplomado Universitario Avanzado de Medicina Materno Fetal",
+      "enrollmentNote": "✍ Inscripciones abiertas",
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 1",
+          "items": [
+            "Generalidades del manejo de la imagen volumétrica en ecografía obstétrica y ginecológica."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Ecografía volumétrica para el estudio de los cortes axiales longitudinales y coronales del cerebro normal."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Ecografía volumétrica en el estudio de las malformaciones de sistema nerviosos central."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Ecografía volumétrica en el estudio del rostro fetal."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Ecografía volumétrica en el estudio del ovario útero y masas pélvicas anexiales."
+          ]
+        },
+        {
+          "title": "Tema 6",
+          "items": [
+            "Ecografía volumétrica en las malformaciones mullerianas."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_3D_4D_5D_En_Obstetricia_Y_Ginecologica.pdf?v=1735951295",
+      "title": "Curso Universitario: Ecografía 3D, 4D y 5D en Obstetricia y Ginecología"
+    },
+    "curso-universitario-neuroimagen-fetal-y-perinatal": {
+      "source": "cache",
+      "handle": "curso-universitario-neuroimagen-fetal-y-perinatal",
+      "intro": [
+        "Exploración del sistema nervioso central (SNC) con el uso del ultrasonido con las modalidades B, Doppler y ecografía 3D, 4D y 5D, reconocimiento de los hallazgos normales y patológicos. Diagnóstico prenatal de malformaciones congénitas del SNC. Malformaciones del SNC susceptibles de terapéutica prenatal ,técnica, manejo e indicaciones."
+      ],
+      "belongsTo": "Diplomado Universitario Avanzado de Medicina Materno Fetal",
+      "enrollmentNote": "✍ Inscripciones abiertas",
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades de la imagen en neurología fetal:",
+            "Uso del equipo creación del en preset para neuroimagen fetal en ecografía: modo B, doppler y volumetría 3D.",
+            "Principios físicos y glosario de términos para descripción de imágenes en resonancia magnética y secuencias útiles RMN."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Fundamental:",
+            "Anatomía y embriología del SNC.",
+            "Neurosonografía fetal y perinatal guías de exploración.",
+            "Resonancia magnética ¿cuándo?",
+            "Análisis secuencial y segmentario del cerebro normal. Hallazgos ecográficos.",
+            "Desarrollo fetal cerebral normal."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Anomalías:",
+            "Inducción dorsal defectos de cierre de tubo neural.",
+            "Ventriculomegalia, cavum del septo pelúcido, lesiones quísticas: patrones de reconocimiento.",
+            "Holoprosencefalia: tipos.",
+            "Comisuras: cuerpo calloso.",
+            "Del desarrollo cortical."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Anomalías:",
+            "De la línea media.",
+            "Tallo cerebral",
+            "De la fosa posterior",
+            "Fetopatía infecciosa",
+            "Visibles en el trimestre I",
+            "Vasculares",
+            "Tumores",
+            "Destructivas",
+            "Infecciones fetales hallazgos en el torch diagnóstico.",
+            "Enfermedades de tratamiento quirúrgico en el feto."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Neurosonograifa del neonato.",
+            "Doppler y ecografía 3D-4D en el cerebro fetal."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dra. Lemoña Gregoriadis",
+        "Dr. Carlos Roa",
+        "Dra. Elsy Silva"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CURSO_UNIVERSITARIO_DE_NEUROIMAGEN_FETAL_Y_PERINATAL.pdf?v=1735951254",
+      "title": "Curso Universitario: Neuroimagen Fetal y Perinatal"
+    },
+    "curso-universitario-vigilancia-fetal-anteparto-e-intraparto": {
+      "source": "cache",
+      "handle": "curso-universitario-vigilancia-fetal-anteparto-e-intraparto",
+      "intro": [
+        "Capacitación en pruebas de vigilancia de Bienestar Embrio fetal, cardiotocografía fetal, pruebas no invasivas e Invasivas prenatales."
+      ],
+      "belongsTo": "Diplomado Universitario Avanzado de Medicina Materno Fetal",
+      "enrollmentNote": "✍ Inscripciones abiertas",
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 1",
+          "items": [
+            "Generalidades del uso del las pruebas de bienestar fetal:",
+            "Pruebas anteparto",
+            "Cálculo de riesgo eco 11-13.6 sem/marc bioquímicos/ip art uterina.",
+            "Cálculo de riesgo eco 20-24-32-34 morfología e ip de art uterina.",
+            "Marcadores bioquímicos.",
+            "Perfil de crecimiento fetal.",
+            "Perfil biofísico fetal.",
+            "Doppler fetal-perfil hemodinámico.",
+            "Monitoreo fetal antenatal.",
+            "Pruebas intraparto.",
+            "Monitoreo fetal.",
+            "Ultrasonido intraparto.",
+            "Ph."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Generalides:",
+            "Asfixia perinatal",
+            "Epidemiologia y morbimortalidad.",
+            "Hipoxemia: inicial, acidosis a asfixia perinatal.",
+            "Mecanismo de adaptación a la hipoxia.",
+            "Respuesta fetal a la hipoxia: fisiológicos y fisiopatológicos.",
+            "Encefalopatía hipóxico isquémica. (acidosis fetal)",
+            "Criterios de asfixia perinatal de la academia americana de pediatría."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Monitoreo Fetal (anteparto e intraparto):",
+            "Indicaciones, interpretación, clasificación de los patrones de la frecuencia cardíaca.",
+            "Fetal, presentación fetal edad gestacional de realización.",
+            "Parámetros de evaluación: contracciones uterinas, línea de base y variabilidad, amplitud de la FCF, aceleraciones y desacelraciones periódicas o episódicas y variación en el tiempo de estos parámetros. Clasificación y significado de cada uno de esos patrones.",
+            "Bradicardia , taquicardia.",
+            "Estimulación fetal. Cuero cabelludo (CC), EVA, muestra de sangre.",
+            "Clasificación significado de los trazados de la Monitoria Fetal (I,II y III)."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Perfil Biofísico Fetal:",
+            "Historia.",
+            "Ventajas y desventajas",
+            "Parámetros: Tono, movimientos fetales y respiratorios, líquido amniótico y test de reactividad fetal (fecha de realización Edad de realización, conducta fetal(patrones), EVA, Score normal."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Marcadores bioquímicos de bienestar fetal:",
+            "PAPP-A,FHCG libre, factor de crecimiento placentario.",
+            "NIPT (DNA fetal en circulación materna).",
+            "Utilidad de los marcadores."
+          ]
+        },
+        {
+          "title": "Tema 6",
+          "items": [
+            "Perfil de crecimiento fetal y bienestar fetal:",
+            "Fisiología del crecimiento.",
+            "Estimación del peso fetal.",
+            "Diferencia entre RCIU y PEG.",
+            "Velocidad de crecimiento fetal (perfil de crecimiento fetal).",
+            "Cuidado del feto con Restricción del crecimiento. (alto riesgo)",
+            "Importancia de la caída debajo del percentil Doppler 50.",
+            "Ecografía de dx cada 3 semanas.",
+            "Doppler y realización del (indiceCP)",
+            "Desaceleración de la vel de crecimiento y resultado perinatal adverso."
+          ]
+        },
+        {
+          "title": "Tema 7",
+          "items": [
+            "Perfil hemodinámico doppler fetoplacentario:",
+            "Cambios ante la hipoxia y acidosis.",
+            "Usos; RCIU y desaceleración del crecimiento.",
+            "Otros usos.",
+            "Vasos",
+            "Fisiopatología del RCIU de aparición temprana y tardía.",
+            "Feto pequeño con C.A menos de p10.",
+            "Anatomía normal Doppler o anormal otras pruebas adicionales.",
+            "Clasificación del RCIU de acuerdo al Doppler.",
+            "Perfil hemodinámico interpretación."
+          ]
+        },
+        {
+          "title": "Tema 8",
+          "items": [
+            "Ultrasonido preparto e intraparto:",
+            "En urgencias, preparto e intraparto.",
+            "Indicaciones en el preparto y en el trabajo de parto.",
+            "¿Por qué un ecógrafo en sala de partos?",
+            "Uso actual",
+            "Canal del parto anillos de descenso.",
+            "Vías transperneal y transparietal.",
+            "Ángulo occipucio columna (OSA).",
+            "Ultrasonido intraparto (parto operatorio)",
+            "Ultrasonido intraparto (ángulo de progresión), distancia progresión: predicción modo parto.",
+            "Workshop vigilancia fetal.",
+            "Doppler y monitoreo fetal."
+          ]
+        },
+        {
+          "title": "Tema 9",
+          "items": [
+            "Pruebas no invasivas e invasivas de dx prenatal",
+            "Pruebas no invasivas nipt",
+            "Pruebas invasivas",
+            "Biopsia de vellosidades coriales, amniocentesis, embrioscopia, fetoscopia , cirugía fetal."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CURSO_UNIVERSITARIO_VIGILANCIA_FETAL_ANTEPARTO_E_INTRAPARTO.pdf?v=1735951887",
+      "title": "Curso Universitario: Vigilancia Fetal Anteparto e Intraparto"
+    },
+    "curso-universitario-investigacion-en-ultrasonido-ii-duammf": {
+      "source": "cache",
+      "handle": "curso-universitario-investigacion-en-ultrasonido-ii-duammf",
+      "intro": [
+        "Exploración ecográfica de las diferentes patologías renales, traumatismo renal, doppler renal y estudio de casos clínicos."
+      ],
+      "belongsTo": "Diplomado Universitario Avanzado de Medicina Materno Fetal",
+      "enrollmentNote": "✍ Inscripciones abiertas",
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del manejo de la imagen ecográfica.",
+            "Bases fisicas: modo B, Doppler y elastografía.",
+            "Descripción de una imágen u órgano."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Hígado Normal.",
+            "Hígado Patológico.",
+            "Segmentación Ecográfica del Hígado."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Vesícula.",
+            "Vías Biliares.",
+            "Bazo Normal y Patologías."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Retroperitoneo.",
+            "Grandes Vasos Abdominales.",
+            "Páncreas Normal, Patológico."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Ecografía del Tracto Urinario Normal y",
+            "Patológico.",
+            "Ecografía de Trauma Renal.",
+            "Ecografía de la Próstata.",
+            "Ecografía de Vesical Parte I y II."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Ecografía de las Glándulas Suprarrenales.",
+            "Ecografía Peritoneo.",
+            "Diafragma y Eco FAST."
+          ]
+        },
+        {
+          "title": "Tema 6",
+          "items": [
+            "Ecografía Pared Abdominal.",
+            "Ecografía Tracto Gastrointestinal. Ecografía de Apéndice.",
+            "Ecografía de Estenosis Pilórica."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Isilia Dudamel",
+        "Dra. Leslie Gomez",
+        "Dra. Karla Tamayo",
+        "Dr. Carlos Perez",
+        "Dr. Charly Pereira",
+        "Dr. Sergio Aguirre",
+        "Dr. Luis Pacheco"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/1CURSO-UNIVERSITARIO-ECOGRAFIA-ABD-1.pdf?v=1733169483",
+      "title": "Curso Universitario: Investigación en Ultrasonido II"
+    },
+    "curso-universitario-investigacion-en-ultrasonido-i-duammf": {
+      "source": "cache",
+      "handle": "curso-universitario-investigacion-en-ultrasonido-i-duammf",
+      "intro": [
+        "Redacción de un artículo científico que incluya explicaciones argumentadas y analizadas acerca de la Ecografía integral en medicina maternofetal con énfasis en la línea de investigación seleccionada por el participante.",
+        "Redacción un informe final siguiendo el método científico con la norma APA."
+      ],
+      "belongsTo": "Diplomado Universitario Avanzado de Medicina Materno Fetal",
+      "enrollmentNote": "✍ Inscripciones abiertas.",
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 1",
+          "items": [
+            "Contenido docente:",
+            "Método científico.",
+            "Metodología para el análisis de trabajos de investigación.",
+            "Estructura de un artículo basado en una revisión de literatura.",
+            "La revisión sistemática.",
+            "Normas APA.",
+            "Líneas de Investigación de medicina Materno Fetal."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Producto:",
+            "Redacción de un artículo científico que incluya explicaciones argumentadas y analizadas acerca del uso del ecógrafo en medicina maternofetal con énfasis en la línea de investigación seleccionada por el participante.",
+            "Redacción un informe final siguiendo el método científico con la norma APA."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dra. Mireya Montes De Oca",
+        "Dra. Koraida Rojas"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CURSO_UNIVERSITARIO_SEMINARIO_I.pdf?v=1734121697",
+      "title": "Curso Universitario: Investigación en Ultrasonido I"
+    },
+    "curso-universitario-ecografia-doppler-materno-fetal-y-ginecologica": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-doppler-materno-fetal-y-ginecologica",
+      "intro": [
+        "Exploración Ecográfica Doppler maternofetal y diferenciación de los hallazgos normales, patológicos y de riesgo de alteraciones morfológicas, de crecimiento, genéticas, biométricas embrio-fetales y de enfermedades maternas en el embarazo, en los trimestres I, I y III detectables con la Ecografía Doppler color y espectral. Exploración Doppler de las lesiones ginecológicas y las masas pélvicas y ginecología invasiva guiada por ecografía."
+      ],
+      "belongsTo": "Diplomado Universitario Avanzado de Medicina Materno Fetal",
+      "enrollmentNote": "✍ Inscripciones abiertas.",
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del uso del equipo en ecografía doppler materno fetal:",
+            "Bases físicas: modo B, doppler espectral, color, power y velow doppler en la ecografía materno fetal y ginecológica.",
+            "Ajustes de los parámetros de los modos B doppler y 3D para optimización de la imagen de acuerdo al trimestre del embarazo, a la intención morfológica o hemodinámica del examen a realizar.",
+            "Protocolos doppler materno fetal:",
+            "Evaluación Doppler de Arteria Uterina",
+            "Evaluación Doppler de Arteria Umbilical",
+            "Evaluación Doppler de Arteria Cerebral Media",
+            "Evaluación Doppler del Istmo Aórtico"
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Perfil hemodinámico doppler materno fetal:",
+            "Doppler por segmentos vasculares:",
+            "Sector placentario: Arteria Umbilical/Sector Materno: Arteria uterina",
+            "Sector Fetal: Arteria Cerebral media, Istmo Aórtico",
+            "Índice Cerebro placentario",
+            "Sector Venoso: Ductus Venoso, Venas Pulmonares"
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Doppler del corazón y los grandes vasos:",
+            "Doppler Arteria Aorta",
+            "Doppler Arteria Pulmonar",
+            "Doppler de Válvulas A-V",
+            "Rol del pico sistólico transvalvular en la estenosis de las grandes arterias centrales.",
+            "Índice de TEI (rendimiento miocárdico) función ventricular.",
+            "Doppler y madurez pulmonar fetal (TA/TE e Iridaptate)"
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Doppler y RCIU:",
+            "Doppler y RCIU Temprano (parámetros)(pronóstico conductas)",
+            "Doppler y RCIU Tardío (pronóstico, conductas)",
+            "Clasificación del RCIU de acuerdo a los hallazgos Doppler, la biometría Fetal y la edadGestacional.",
+            "Embarazo Gemelar"
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Doppler en preeclampsia y trastornos hipertensivos:",
+            "Tamizaje del Trimestre 1",
+            "Tamizaje del trimestre 2 y 3",
+            "Rol de los cambios Hemodinámicos Doppler de los en los sectores vasculares maternos, fetales y placentarios durante la preeclampsia."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Doppler en otras patologías:",
+            "Doppler en la anemia fetal",
+            "Doppler en el primer trimestre del embarazo",
+            "Doppler en el embarazo gemelar",
+            "Doppler en las malformaciones congénitas."
+          ]
+        },
+        {
+          "title": "Tema 6",
+          "items": [
+            "Doppler en ginecología:",
+            "Rol de la ecografía Doppler en la caracterización de las masas anexiales según los protocolos IOTA, Adnex , O-RADS, GI-RADS y otras patologías pélvicas."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dra. Lemoña Gregoriadis",
+        "Dr. Carlos Roa",
+        "Dra. Elsy Silva"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_Doppler_Materno_Fetal_y_Ginecologica.pdf?v=1735951504",
+      "title": "Curso Universitario: Ecografía Doppler Materno Fetal y Ginecológica"
+    },
+    "curso-universitario-ecografia-morfogenetica-y-crecimiento": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-morfogenetica-y-crecimiento",
+      "intro": [
+        "Exploración ecográfica y diferenciación de los hallazgos normales, patológicos, de riesgo de alteraciones morfológicas, genéticas, biométricas embrio-fetales y de enfermedades maternas en el embarazo, en los trimestres I,II Y III, Ecografía morfológica I y II."
+      ],
+      "belongsTo": "Diplomado Universitario Avanzado de Medicina Materno Fetal",
+      "enrollmentNote": "✍ Inscripciones abiertas.",
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del uso del equipo en ecografía materno fetal:",
+            "Bases físicas: Modo B, Doppler",
+            "Espectral, Color, Power y Velow Doppler en la ecografía Materno Fetal.",
+            "Ajustes de los parámetros de los modos B doppler y 3D para optimización de la imagen de acuerdo al trimestre del embarazo y según la intención morfológica o hemodinámica del examen a realizar."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Ecografía Morfológica de Trimestre I.",
+            "Ecografía Semana 06-10 Criterios de estado embrionario satisfactorio, Biometría de y cálculo de edad gestacional y vitalidad embrionaria, marcadores ecográficos de aneuploidías, aborto, mola, Bump coriónico, embarazo gemelar, criterios de cigosidad, corionicidad, embarazo gemelar criterios diagnósticos y pronósticos.",
+            "Ecografía semana 11-14. Sono morfología temprana por órganos y sistemas (dx precoz de malformaciones) sonomarcadores de aneuploidía y cálculo de riesgo temprano uso de software, cálculo de riesgo temprano de Preclampsia, rciu, parto prematuro.",
+            "Embarazo gemelar criterios diagnóstico y pronostico, signos tempranos de riesgo de rciu selectivo, transfusión intergemelar, TRAP, secuencia anemia policitemia."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Ecografía morfológica de trimestre 2 (semana 20-24):",
+            "Criterios de estado Fetal satisfactorio, marcadores ecográficos de aneuploidías, ecofenotipo fetal.",
+            "Cálculo de riesgo de preelampsia, parto prematuro uso se software, ecocardiografía básica y ampliada búsqueda de malformaciones.",
+            "Neurosonografía del Trimestre II."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Eco de crecimiento semana 32 y 36:",
+            "Criterios de estado Fetal satisfactorio, marcadores ecográficos RCIU tardío, rol de la ecografía Doppler en el tamizaje de PEG y RCIU."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Cortes ecográficos necesarios en la ecografía semana 6-10.",
+            "Cortes ecográficos necesarios en la ecografía semana 11-14.",
+            "Cortes ecográficos necesarios en la ecografía semana 32.",
+            "Cortes ecográficos necesarios en la ecografía semana 36.",
+            "Malformaciones diagnostico ecográfico por órganos y sistemas.",
+            "Hallazgos ecográficos de infección fetal TORCH."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Realización del informe ecográfico en Medicina Materno Fetal: Eco Morfológico del trimestre I y II, Eco de Crecimiento semana 32 y 36. Uso de softwares de cálculo de riesgos."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dra. Lemoña Gregoriadis",
+        "Dra. Sandra Gutiérrez",
+        "Dr. Carlos Roa"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_Morfogenetica_Y_Crecimiento.pdf?v=1735951080",
+      "title": "Curso Universitario: Ecografía Morfogenética y Crecimiento"
+    },
+    "curso-de-ecografia-pulmonar-vias-respiratorias-y-diafragma": {
+      "source": "cache",
+      "handle": "curso-de-ecografia-pulmonar-vias-respiratorias-y-diafragma",
+      "intro": [
+        "Exploración ecográfica y la transmisión de las ondas sonoras en el aire , usos de la ecografía pulmonar, tipos de transductores a utilizar. Ventana paraesternal, ventana intercostal anterior, ventana lateral y ventana posterior. Utilidad para evaluar la anatomía de la laringe, tráquea y relación con el cóndilo mandibular.",
+        "Evaluación ecográfica de los cartílagos laríngeos.",
+        "Evaluación ecográfica de: tiroides, cricoides, membrana cricotiroidea y tráquea."
+      ],
+      "enrollmentNote": "✍ Inscripciones abiertas durante todo el año.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por CEIUM",
+      "endorsementText": "El curso está avalado por la Academia de CEIUM.",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades de la Ecografía."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Unidad I. Ecografía pulmonar:",
+            "Ecografía y la transmisión de las ondas sonoras en el aire.",
+            "Usos de la ecografía pulmonar.",
+            "Tipos de transductores a utilizar.",
+            "Ventanas de exploración pulmonar.",
+            "Técnica de examen ecográfico. Bioscopica",
+            "Ecografía pulmonar normal.",
+            "Patrones ecográficos pulmonares anormales.",
+            "Protocolo BLUE"
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Unidad II. Ecografia diafragmática:",
+            "Tipos de transductores a utilizar.",
+            "Utilidad de la ecografía diafragmática.",
+            "Anatomía ecográfica del diafragma.",
+            "Ecografía diafragmática normal y técnica.",
+            "Excursión diafragmática.",
+            "Engrosamiento diafragmático.",
+            "Parálisis diafragmática."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Unidad III. Ecografia de vías aereas:",
+            "Importancia del ultrasonido en vías aéreas.",
+            "Tipos de transductores a utilizar.",
+            "Utilidad del ultrasonido de la vía aérea.",
+            "Ultrasonido normal en vía aérea.",
+            "Evaluación ecográfica de cartílagos laríngeos.",
+            "Tiroides, Cricoides, Membrana cricotiroidea y Tráquea.",
+            "Ultrasonido del cóndilo mandibular y relación con vía aérea.",
+            "Ubicación del Tubo orotraqueal ecográficamente.",
+            "Vía aérea difícil en ecografía."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dr. Carlos Pérez"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso-de-Ecografia-Pulmonar-Vias-Respiratorias-y-Diafragma.pdf?v=1733884786",
+      "title": "Curso de Ecografía Pulmonar, Vías Respiratorias y Diafragma"
+    },
+    "curso-de-doppler-abdomen-y-renal": {
+      "source": "cache",
+      "handle": "curso-de-doppler-abdomen-y-renal",
+      "intro": [
+        "Exploración ecográfica de las diferentes patologías renales, traumatismo renal, doppler renal y estudio de casos clínicos."
+      ],
+      "enrollmentNote": "✍ Inscripciones abiertas durante todo el año.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por CEIUM",
+      "endorsementText": "El curso está avalado por la Academia de CEIUM.",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del manejo de la imagen ecográfica",
+            "Bases fisicas: modo B, Doppler Espectral,",
+            "Color , Power y Velow Doppler",
+            "Descripción de una imágen u órgano"
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Ecografia Doppler Renal",
+            "Anatomía",
+            "Indicaciones",
+            "Protocolo de estudio",
+            "Hallazgos normales y anormales"
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Ecografia de Grandes Vasos Abdominales",
+            "Anatomía",
+            "Indicaciones",
+            "Protocolo de estudio",
+            "Hallazgos normales y anormales",
+            "Ecografía Doppler color. Hipertensión portal",
+            "Anatomía",
+            "Indicaciones",
+            "Protocolo de estudio",
+            "Hallazgos normales y anormales"
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Ecografía Del Tracto Urinario",
+            "Anatomía",
+            "Protocolo",
+            "Indicaciones",
+            "Utilidad",
+            "Ventajas",
+            "Desventajas",
+            "Patologías",
+            "Conclusiones"
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dr. Luis Rocha",
+        "Dra. Leslie Gomez",
+        "Dr. Charly Pereira",
+        "Dr. Sergio Aguirre",
+        "Dr. Luis Pacheco"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CURSO-UNIVERSITARIO-DE-ECOGRAFIA-DOP-RENAL.pdf?v=1733799138",
+      "title": "Curso de Doppler Abdomen y Renal"
+    },
+    "curso-avanzado-de-intervencionismo-mamario-guiado-por-ecografia": {
+      "source": "cache",
+      "handle": "curso-avanzado-de-intervencionismo-mamario-guiado-por-ecografia",
+      "intro": [
+        "Exploración ecográfica de la anatomía y embriología de la mama, indicaciones y técnica de la ecografía mamaria. Patología mamaria benigna (quistes, fibroadenomas, etc.) y maligna (nódulos sólidos, microcalcificaciones, etc.). Uso de la Elastografía y evaluación Doppler en la ecografía mamaria. Evaluación ecográfica de la mama masculina, prótesis mamarias y ganglio axilar. Clasificación BIRADS para la evaluación ecográfica de la mama.Técnicas avanzadas como sonocine y resonancia magnética en el cáncer de mama. Procedimientos percutáneos guiados por ecografía (PAAF, BAG, marcajes, etc)."
+      ],
+      "enrollmentNote": "✍ Inscripciones abiertas durante todo el año.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por CEIUM",
+      "endorsementText": "El curso está avalado por la Academia de CEIUM.",
+      "audience": "Residente, Especialista, Obstetra, Ginecólogo, Radiólogo, Cirujano, Oncólogo, Mastólogo y Ecografísta.",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades de la Ecografía"
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Obtención, Optimización y Descripción de la Imagen usando el Ecógrafo."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "El manejo de la biopsia desde la morfología al estudio molecular."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Uso del Ecógrafia en la evaluación mastologíca:",
+            "Anatomía, embriología indicaciones y técnica dela ecografía mamaria.",
+            "Ecografía de la patología benigna.",
+            "Ecografía de la patología maligna de la mama.",
+            "Uso de la Elastografía en la ecografía mamaria.",
+            "Evaluación Doppler de la mama.",
+            "Evaluación de los quistes en la ecografía mamaria.",
+            "Evaluación ecográfica de la prótesis mamaria.",
+            "Evaluación del ganglio axilar.",
+            "Evaluación ecográfica de las secreciones.",
+            "Última Clasificación BIRADS del (ACR).",
+            "Discordancia imagino-patológica."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Discordancia imagino- patológica",
+            "Segmento teórico (en línea)",
+            "El manejo de la biopsia desde la morfología al estudio molecular paaf indicacciones limitaciones y técnica.",
+            "Bag indicacciones limitaciones y técnica marcaje de lesiones."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Actividad Práctica:",
+            "Paaf / BAG, biopsia excisional, marcajes, Arpon Indicaciones contraindicaciones ventajas y desventajas de cada método.",
+            "Prácticas con pacientes: (Día 2)",
+            "Consulta Mastología + Eco de alta resolución + Mamografía.",
+            "Biopsias Agujagruesa (core Biopsia)y aguja fina ecoguiadas."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dr. Julio Rivas"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso-de-Mastologia-II.pdf?v=1733883735",
+      "title": "Curso Avanzado de Intervencionismo Mamario Guiado por Ecografía"
+    },
+    "curso-avanzado-de-ecografia-mamaria-guiada-por-mamografia": {
+      "source": "cache",
+      "handle": "curso-avanzado-de-ecografia-mamaria-guiada-por-mamografia",
+      "intro": [
+        "Exploración ecográfica de la anatomía y embriología de la mama, indicaciones y técnica de la ecografía mamaria. Patología mamaria benigna (quistes, fibroadenomas, etc.) y maligna (nódulos sólidos, microcalcificaciones, etc.). Uso de la Elastografía y evaluación Doppler en la ecografía mamaria. Evaluación ecográfica de la mama masculina, prótesis mamarias y ganglio axilar. Clasificación BIRADS para la evaluación ecográfica de la mama."
+      ],
+      "enrollmentNote": "✍ Inscripciones abiertas durante todo el año.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por CEIUM",
+      "endorsementText": "El curso está avalado por la Academia de CEIUM.",
+      "audience": "Residente, Especialista, Obstetra, Ginecólogo, Radiólogo, Cirujano, Oncólogo, Mastólogo y Ecografísta.",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades de la Ecografía."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Obtención, Optimización y Descripción de la Imagen usando el Ecógrafo."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "El manejo de la biopsia desde la morfología al estudio molecular."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Uso del Ecógrafia en la evaluación mastologíca:",
+            "Anatomía, embriología indicaciones y técnica de la ecografía mamaria.",
+            "Ecografía de la patología benigna.",
+            "Ecografía de la patología maligna de la mama.",
+            "Uso de la Elastografía en la ecografía mamaria.",
+            "Evaluación Doppler de la mama.",
+            "Ecografía de la mama masculina.",
+            "Evaluación de los quistes en la ecografía mamaria.",
+            "Evaluación ecográfica de la prótesis mamaria.",
+            "Evaluación del ganglio axilar.",
+            "Evaluación ecográfica de las secreciones.",
+            "Última Clasificación BIRADS del (ACR).",
+            "Discordancia imagino-patológica."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Pesquisa por ultrasonido e mujeres menores de 40 años embarazadas, lactantes y ancianas.",
+            "Ultrasonido Automatizado de mama entera (sonocine)",
+            "Resonancia Magnética en cáncer de mama.",
+            "Mamografía con contraste.",
+            "Pesquisa en pacientes de riesgo.",
+            "Mama densa.",
+            "Mama masculina, mama transgénero.",
+            "Procedimientos percutáneos.",
+            "Evaluación de la mama después de la cirugía preservadora."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dr. Julio Rivas"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso-de-Mastologia-I.pdf?v=1733882947",
+      "title": "Curso Avanzado de Ecografía Mamaria Guiada por Mamografía"
+    },
+    "curso-universitario-ecografia-musculoesqueletica": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-musculoesqueletica",
+      "intro": [
+        "Aplicación de la técnica del ultrasonido en la identificación de los hallazgos normales y patológicos en el sistema musculoesquelético en miembro superior e inferior y cadera."
+      ],
+      "belongsTo": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico",
+      "enrollmentDeadlineText": "05/01/2026",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del manejo de la imagen ecográfica:",
+            "Uso del equipo en preset msk ajustes de parámetros.",
+            "Bases físicas: modo B, doppler y elastografía en MSK.",
+            "Semiología descriptiva de la imágenes en MSK realización del informe ecográfico en MSK."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Ecografía Sistema Músculo Esquelética de Miembro Superior:",
+            "Ecografía Musculoesquelética: Generalidades y Enfermedades Reumática.",
+            "Ecografía Musculoesquelético de Miembro Superior Hombro.",
+            "Ecografía Musculoesquelética de la Articulación de Codo.",
+            "Ecografía Musculoesquelética de la Articulación de Mano."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Ecografía Sistema Músculo Esquelética de Miembro Inferior:",
+            "Ecografía Musculoesquelética de Cadera y Muslo.",
+            "Ecografía Musculoesquelética de Rodilla.",
+            "Ecografía Musculoesquelética de Tobillo y Pie."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Leslie Gómez",
+        "Dr. Charly Pereira",
+        "Dr. Sergio Aguirre",
+        "Dr. Luis Pacheco"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_Musculoesqueletica.pdf?v=1735951643",
+      "title": "Curso Universitario: Ecografía Musculoesquelética"
+    },
+    "curso-universitario-investigacion-en-untrasonido-ii": {
+      "source": "cache",
+      "handle": "curso-universitario-investigacion-en-untrasonido-ii",
+      "intro": [
+        "Presentación escrita del artículo científico.",
+        "Presentación oral del artículo científico."
+      ],
+      "belongsTo": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico",
+      "enrollmentNote": "✍ Inscripciones abiertas",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Presentar satisfactoriamente, un informe escrito basado en una revisión de literatura, siguiendo la estructura de artículo científico y las normas APA."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Presentación escrita del artículo científico."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Presentación oral del artículo científico."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dra. Mireya Montes de Oca",
+        "Dra. Koraida Rojas"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CURSO-UNIVERSITARIO-SEMINARIO-DE-INV-II.pdf?v=1733882225",
+      "title": "Curso Universitario: Investigación en Ultrasonido II"
+    },
+    "curso-universitario-ecografia-obstetrica": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-obstetrica",
+      "intro": [
+        "Exploración ecográfica con técnica convencional (2D), (3D), (4D) Y (5D) HDLIVE del binomio feto-madre y los anexos ovulares, e interpretar los resultados de la exploración ecográfica doppler en obstetricia, diferenciando los hallazgos ecográficos normales de los anormales."
+      ],
+      "belongsTo": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico",
+      "enrollmentNote": "✍ Inscripciones abiertas.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del manejo de la imagen ecográfica:",
+            "Generalidades del uso del equipo en obstetricia.",
+            "Uso del equipo en preset obstétrico.",
+            "Ajustes de parámetros.",
+            "Bases físicas: modo B, doppler y elastografía.",
+            "Semiología descriptiva de la imágenes en obstétrica.",
+            "Realización del informe ecográfico obstétrico."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Trimestre I:",
+            "Ecografía de las 6-10 semanas de embarazo.",
+            "Ecografía de las 11 a 13 semanas + 6 días (Morfogenético I)"
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Trimestre II y III:",
+            "Ecografía de las semana 18 a 24 (Morfogenético II).",
+            "Ecografía Doppler en Obstétricia y RCIU.",
+            "Embarazo gemelar normal y patológico."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Generalidades del uso del equipo en ecocardiografia fetal:",
+            "Uso del equipo en preset cardiológico, ajustes de parámetros del equipo.",
+            "Ecocardiografia básica y extendida normal.",
+            "Ecocardiográfia Patológica."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Malformaciones y deformaciones Fetales:",
+            "Esqueléticas, toraxicas, pared abdominal, gastrointestinales, Tracto urinario, pélvicas, sistema nervioso central faciales."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Líquidos amniótico, placenta y anexos ovulares normal y patológicos.",
+            "Perfil Biofísico."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Elsy Silva",
+        "Dra. Lemoña Gregoriadis",
+        "Dra. Isilia Dudamel"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_Obstetrica.pdf?v=1735951741",
+      "title": "Curso Universitario: Ecografía Obstétrica"
+    },
+    "curso-universitario-investigacion-en-ultrasonido-i": {
+      "source": "cache",
+      "handle": "curso-universitario-investigacion-en-ultrasonido-i",
+      "intro": [
+        "Redacción de un artículo científico que incluya explicaciones argumentadas y analizadas acerca de la Ecografía integral en medicina con énfasis en la línea de investigación seleccionada por el participante.",
+        "Redacción de un informe final siguiendo las normas de estilo de literatura científica con la norma APA."
+      ],
+      "belongsTo": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico",
+      "enrollmentNote": "✍ Inscripciones abiertas",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Redactar un trabajo de investigación de algún aspecto del ultrasonido tipo artículo científico atendiendo a las normas APA."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Método científico."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Metodología para el análisis de trabajos de investigación"
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Estructura de un artículo basado en una revisión de literatura."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Normas APA"
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Líneas de Investigación de Ecografía integral en medicina."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dra. Mireya Montes de Oca",
+        "MSc. Nerza Roa de Álvarez",
+        "Prof. Koraida Roja"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso-Universitario-Investigacion-Parte-I.pdf?v=1733847114",
+      "title": "Curso Universitario: Investigación en Ultrasonido I"
+    },
+    "curso-universitario-ecografia-ginecologica": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-ginecologica",
+      "intro": [
+        "Utilización de ultrasonido en útero y anexos, tecnología (2D), (3D), (4D) Y (5D) HDLIVE, hasta Ecotomografía, en diagnóstico de patologías uterinas ováricas y de otros órganos correspondientes a la pelvis femenina."
+      ],
+      "belongsTo": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico",
+      "enrollmentNote": "✍ Inscripciones abiertas.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del manejo de la imagen ecográfica",
+            "Generalidades del uso del equipo en ginecología.",
+            "Uso del equipo en preset ginecológico, ajustes de parámetros del equipo.",
+            "Bases físicas: modo b, doppler y elastografía en ginecología.",
+            "Semiología descriptiva de la imagen en ginecología.",
+            "Realización del informe ecográfico de ginecología."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Pelvis : Anatomía de la región Pélvica",
+            "Útero Normal y Patológico",
+            "Histerosonografía"
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Ovario normal y Patológico."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Actualización en el manejo de la masa pélvica anexial",
+            "Girads Adnex y Orads.",
+            "Ecografía Invasiva usos.",
+            "SonoHiterosalpingografia / Punción /",
+            "Aspiración.",
+            "Tumoración Pélvica."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Elsy Silva",
+        "Dra. Lemoña Gregoriadis",
+        "Dra. Isilia Dudamel"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_Ginecologica.pdf?v=1735951593",
+      "title": "Curso Universitario: Ecografía Ginecológica"
+    },
+    "curso-universitario-ecografia-de-mama-y-pequenas-partes": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-de-mama-y-pequenas-partes",
+      "intro": [
+        "Exploración ecográfica de las partes pequeñas: mama, escroto, pene, tiroides y paratiroides.",
+        "Diagnóstico de las patologías de las partes pequeñas: tiroides, paratiroides, mama, escroto, pene y pared abdominal."
+      ],
+      "belongsTo": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico",
+      "enrollmentNote": "✍ Inscripciones abiertas.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del manejo de la imagen ecográfica",
+            "Bases fisicas: modo B, Doppler y elastografía.",
+            "Descripción de una imágen u órgano.",
+            "Semiología descriptiva de la imagen en pequeñas partes.",
+            "Realización del informe ecográfico de Tema 1",
+            "Cuello Anatomía de la región cervical",
+            "Tiroides Normal y Tiroides Patológica lasificación TI-RADS Y Doppler tiroideo",
+            "Parcial 1"
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Paratiroides normal y patológica.",
+            "Glándula salival normal y patológica."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Escroto pene y pared abdominal anatomía.",
+            "Escroto normal y patológico.",
+            "Pene normal y patológico.",
+            "Pared abdominal normal y patológica."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Mama Anatomía.",
+            "Ecografía de la mama normal.",
+            "Clasificación BI-RADS.",
+            "BAG Y PAAF en lesiones de mama.",
+            "Examen final."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Isilia Dudamel",
+        "Dra. Leslie Gomez",
+        "Dra. Karla Tamayo",
+        "Dr. Carlos Pérez",
+        "Dr. Charly Pereira",
+        "Dr. Sergio Aguirre",
+        "Dr. Luis Pacheco"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_De_Mama_y_Pequenas.pdf?v=1735951404",
+      "title": "Curso Universitario: Ecografía de Mama y Pequeñas Partes"
+    },
+    "curso-universitario-ecografia-doppler-vascular-periferico": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-doppler-vascular-periferico",
+      "intro": [
+        "Exploración del sistema vascular periférico con el uso del ultrasonido y reconocimiento de los hallazgos normales y patológicos."
+      ],
+      "belongsTo": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico",
+      "enrollmentNote": "✍ Inscripciones abiertas.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del manejo de la imagen ecográfica.",
+            "Bases físicas: Modo B, Doppler Espectral,",
+            "Color, Power y Velow Doppler.",
+            "Descripción de una imágen u órgano."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Eco Doppler Vascular periférica de miembro superior.",
+            "Eco Doppler color del sistema arterial de miembros superiores:",
+            "Anatomía",
+            "Indicaciones",
+            "Protocolo de estudio",
+            "Hallazgos normales y anormales",
+            "Eco Doppler color del sistema venoso de miembros superiores:",
+            "Anatomía",
+            "Indicaciones",
+            "Protocolo de estudio",
+            "Hallazgos normales y anormales"
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Eco Doppler Vascular periférica de miembro inferior.",
+            "Eco Doppler color del sistema arterial de miembros inferiores:",
+            "Anatomía",
+            "Protocolo",
+            "Indicaciones",
+            "Utilidad",
+            "Ventajas",
+            "Desventajas",
+            "Patologías",
+            "Conclusiones"
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Doppler Carotideo y vertebral",
+            "Anatomía arterial y venosa del cuello.",
+            "Doppler Carotideo normal.",
+            "Doppler Carotideo Patológico",
+            "Práctica."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Doppler Vertebral normal.",
+            "Doppler Vertebral Patológico.",
+            "Práctica.",
+            "Parcial 2 ."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Doppler Transcraneal.",
+            "Anatomía y Fisiología de la Circulación cerebral.",
+            "Doppler Transcraneal normal y patológico.",
+            "Práctica."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dr. Luis Rocha",
+        "Dra. Leslie Gomez",
+        "Dr. Charly Pereira",
+        "Dr. Sergio Aguirre",
+        "Dr. Luis Pacheco"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_Doppler_Vascular_Periferico.pdf?v=1735951536",
+      "title": "Curso Universitario: Ecografía Doppler Vascular Periférico"
+    },
+    "curso-universitario-ecografia-de-abdomen": {
+      "source": "cache",
+      "handle": "curso-universitario-ecografia-de-abdomen",
+      "intro": [
+        "Exploración ecográfica y diferenciación de los hallazgos ecográficos normales de los patológicos en el hígado, vesícula, vías biliares y bazo glándulas suprarrenales, peritoneo, ecoFAST, diafragma, páncreas, retroperitoneo y grandes vasos abdominales, tracto gastrointestinal, próstata y tracto urinario."
+      ],
+      "belongsTo": "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico",
+      "enrollmentNote": "✍ Inscripciones abiertas.",
+      "requirements": "Título de médico o constancia de último año de medicina.",
+      "certificateTitle": "Certificado",
+      "certificateText": "Incluye certificado universitario apostillable.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El curso está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes",
+      "topics": [
+        {
+          "title": "Tema 0",
+          "items": [
+            "Generalidades del manejo de la imagen ecográfica",
+            "Bases fisicas: modo B, Doppler y elastografía.",
+            "Descripción de una imágen u órgano."
+          ]
+        },
+        {
+          "title": "Tema 1",
+          "items": [
+            "Hígado Normal.",
+            "Hígado Patológico.",
+            "Segmentación Ecográfica del Hígado."
+          ]
+        },
+        {
+          "title": "Tema 2",
+          "items": [
+            "Vesícula.",
+            "Vías Biliares.",
+            "Bazo Normal y Patologías."
+          ]
+        },
+        {
+          "title": "Tema 3",
+          "items": [
+            "Retroperitoneo.",
+            "Grandes Vasos Abdominales.",
+            "Páncreas Normal, Patológico."
+          ]
+        },
+        {
+          "title": "Tema 4",
+          "items": [
+            "Ecografía del Tracto Urinario Normal y",
+            "Patológico.",
+            "Ecografía de Trauma Renal.",
+            "Ecografía de la Próstata.",
+            "Ecografía de Vesical Parte I y II."
+          ]
+        },
+        {
+          "title": "Tema 5",
+          "items": [
+            "Ecografía de las Glándulas Suprarrenales.",
+            "Ecografía Peritoneo.",
+            "Diafragma y Eco FAST."
+          ]
+        },
+        {
+          "title": "Tema 6",
+          "items": [
+            "Ecografía Pared Abdominal.",
+            "Ecografía Tracto Gastrointestinal. Ecografía de Apéndice.",
+            "Ecografía de Estenosis Pilórica."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Isilia Dudamel",
+        "Dra. Leslie Gomez",
+        "Dra. Karla Tamayo",
+        "Dr. Carlos Perez",
+        "Dr. Charly Pereira",
+        "Dr. Sergio Aguirre",
+        "Dr. Luis Pacheco"
+      ],
+      "syllabusUrl": "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Curso_Universitario_Ecografia_de_Abdomen.pdf?v=1735951349",
+      "title": "Curso Universitario: Ecografía de Abdomen"
+    },
+    "diplomado-universitario-avanzado-de-medicina-materno-fetal": {
+      "source": "cache",
+      "handle": "diplomado-universitario-avanzado-de-medicina-materno-fetal",
+      "intro": [
+        "9 cursos avanzados para mantenerse a la vanguardia en el área de Medicina Materno Fetal, abarcando desde el diagnostico prenatal de la salud fetal hasta el manejo de las enfermedades maternas y fetales."
+      ],
+      "enrollmentNote": "✍ Inscripciones abiertas durante todo el año.",
+      "scheduleLinks": [
+        "Ver Cronograma Cohorte I - 2026",
+        "Ver Cronograma Cohorte II - 2026"
+      ],
+      "requirements": "Ser médico residente, ginecólogo-obstetra o imagenólogo.",
+      "certificateTitle": "Diplomado de 9 cursos",
+      "certificateText": "Incluye certificado universitario apostillable por cada curso aprobado.",
+      "endorsementTitle": "Avalado por la UCLA",
+      "endorsementText": "El diplomado está avalado por la Universidad Centrooccidental Lisandro Alvarado (UCLA).",
+      "duration": "1 mes por curso",
+      "benefits": [
+        "Adquirir conocimientos actualizados y habilidades prácticas en el diagnóstico y manejo de las patologías materno-fetales.",
+        "Mejorar la calidad de la atención brindada a las mujeres embarazadas y sus bebés.",
+        "Obtener un diploma de reconocido prestigio que avala la formación recibida."
+      ],
+      "diplomaCourses": [
+        {
+          "n": 1,
+          "title": "Curso Universitario: Ecografía Morfogenética y Crecimiento",
+          "highlights": [
+            "Exploración ecográfica detallada del desarrollo fetal en cada trimestre.",
+            "Identificación de hallazgos normales, patológicos y de riesgo.",
+            "Diagnóstico prenatal de malformaciones congénitas."
+          ]
+        },
+        {
+          "n": 2,
+          "title": "Curso Universitario: Ecografía Doppler Materno Fetal y Ginecológica",
+          "highlights": [
+            "Evaluación del flujo sanguíneo materno-fetal y ginecológico.",
+            "Diagnóstico de alteraciones del crecimiento fetal, preeclampsia y otras patologías.",
+            "Exploración Doppler de lesiones ginecológicas y masas pélvicas."
+          ]
+        },
+        {
+          "n": 3,
+          "title": "Curso Universitario: Neuroimagen Fetal y Perinatal",
+          "highlights": [
+            "Estudio del sistema nervioso central fetal mediante ecografía.",
+            "Reconocimiento de hallazgos normales y patológicos.",
+            "Diagnóstico prenatal de malformaciones congénitas del SNC.",
+            "Manejo de malformaciones congénitas del SNC susceptibles de tratamiento prenatal."
+          ]
+        },
+        {
+          "n": 4,
+          "title": "Curso Universitario: Ecocardiografía Fetal",
+          "highlights": [
+            "Exploración ecográfica detallada del corazón fetal.",
+            "Reconocimiento de hallazgos normales y patológicos.",
+            "Diagnóstico de malformaciones congénitas cardíacas y tratamiento postnatal respectivo."
+          ]
+        },
+        {
+          "n": 5,
+          "title": "Curso Universitario: De Investigación en Ultrasonido I",
+          "highlights": [
+            "Desarrollo de un artículo científico sobre un tema de investigación en ecografía materno-fetal.",
+            "Aplicación del método científico y normas APA."
+          ]
+        },
+        {
+          "n": 6,
+          "title": "Curso Universitario: Vigilancia Fetal Anteparto E Intraparto",
+          "highlights": [
+            "Capacitación en la realización e interpretación de pruebas de bienestar fetal.",
+            "Cardiotocografía fetal.",
+            "Pruebas prenatales invasivas y no invasivas. ecografia intraparto."
+          ]
+        },
+        {
+          "n": 7,
+          "title": "Curso Universitario: Ecografía 3D 4D 5D En Obstetricia Y Ginecología",
+          "highlights": [
+            "Aplicación de la tecnología ecográfica 3D, 4D y 5D en el diagnóstico prenatal.",
+            "Evaluación de la anatomía fetal en detalle.",
+            "Detección de malformaciones congénitas y otras patologías."
+          ]
+        },
+        {
+          "n": 8,
+          "title": "Curso Universitario: Enfermedades Materno Fetales",
+          "highlights": [
+            "Estudio diagnóstico y tratamiento de enfermedades infecciosas, metabólicas y otras que afectan al binomio madre-feto.",
+            "Correlación de los hallazgos clínicos, ecográficos y de laboratorio.",
+            "Manejo integral de las complicaciones materno-fetales."
+          ]
+        },
+        {
+          "n": 9,
+          "title": "Curso Universitario: De Investigación en Ultrasonido II",
+          "highlights": [
+            "Entrega y presentación oral del artículo científico desarrollado en el Seminario de Investigación II."
+          ]
+        }
+      ],
+      "faculty": [
+        "Dr. Carlos Roa",
+        "Dra. Lemoña Gregoriadis",
+        "Dra. Elsy Silva",
+        "Dra. Sandra Colmenarez",
+        "Dra. Jenny De Jesús"
+      ],
+      "scheduleUrls": [
+        "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CRONOGRAMA_MMF_Proyecto_Cohorte_I-2026.pdf?v=1757968232",
+        "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/CRONOGRAMA_MMF_Proyecto_Cohorte_II-2026.pdf?v=1757968232"
+      ],
+      "title": "Diplomado Universitario Avanzado de Medicina Materno Fetal"
+    }
+  }
+}
