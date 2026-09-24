@@ -59,7 +59,7 @@ export function createServices(d: Deps) {
       ...bind(d, seats, ["expireStaleReservations", "getCohortAvailability"]),
     },
     orders: {
-      ...bind(d, orders, ["createCheckout", "getOrder", "getOrderByToken", "expireStaleOrders", "cancelOrder", "addNote", "notifyOrderReceived"]),
+      ...bind(d, orders, ["createCheckout", "getOrder", "getOrderByToken", "expireStaleOrders", "cancelOrder", "addNote", "notifyOrderReceived", "listUnderpaidOrders"]),
       ...bind(d, corrections, ["adjustBalance", "adjustBalanceDetailed", "waiveInstallment", "reassignCohort"]),
     },
     corrections: bind(d, corrections, ["adjustBalance", "adjustBalanceDetailed", "waiveInstallment", "reassignCohort"]),

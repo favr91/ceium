@@ -15,6 +15,7 @@ import { DomainError, isDomainError, isUniqueViolation } from "@/server/errors";
 import { normalizeCapture, normalizeRefund } from "@/server/ports";
 import {
   addOrderEvent,
+  flagUnderpaidOrder,
   PAID_STATES,
   PREPAID_STATES,
   recomputeBalance,
@@ -95,6 +96,8 @@ async function applyConfirmedPayment(tx: Tx, paymentId: string, actor: Actor, no
           note: `Pago insuficiente para el primer pago: faltan ${((order.dueNowCents - amountPaid) / 100).toFixed(2)} USD`,
         });
       }
+      // Dinero cobrado que no alcanza el primer pago: el cupo queda protegido (seats.ts) y el staff lo ve.
+      await flagUnderpaidOrder(tx, order.id, actor);
     }
   } else if (order.status === "PARTIALLY_PAID" && balance <= 0) {
     await transitionOrder(tx, order.id, "PAID", { actor, note: "Saldo cancelado por completo" });
@@ -378,6 +381,7 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
         orderClosed = true;
       } else {
         await transitionOrder(tx, order.id, "PENDING_PAYMENT", { actor, note: `Pago rechazado: ${input.note!.trim()}` });
+        await flagUnderpaidOrder(tx, order.id, actor);
       }
     }
     return { approved: false as const, apply: null, orderClosed };

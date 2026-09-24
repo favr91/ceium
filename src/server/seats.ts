@@ -10,6 +10,9 @@
 //  - PAID / PARTIALLY_PAID / ENROLLED: el primer pago ya se confirmó.
 //  - un pago PayPal PENDING con providerStatus CAPTURE_PENDING: PayPal retuvo la captura (el cliente
 //    ve "Tu cupo se mantiene"); el cupo se sostiene hasta que PayPal complete o niegue la captura.
+//  - cualquier pedido con dinero ya cobrado (amountPaidCents > 0 o un pago COMPLETED), aunque esté en
+//    PENDING_PAYMENT: p. ej. un primer pago manual aprobado que no alcanzó el primer pago (VES/tasa). Ese
+//    cupo no se revende; el pedido queda en la cola de pagos insuficientes (orders.listUnderpaidOrders).
 import type { OrderStatus, Prisma } from "@/generated/prisma/client";
 import type { Deps, Tx } from "@/server/deps";
 import { withTx } from "@/server/deps";
@@ -39,11 +42,19 @@ async function decrement(tx: Tx, cohortId: string, field: "seatsHeld" | "seatsCo
 /** Pedidos cuyas reservas HELD no vencen por tiempo (hay un pago en verificación o ya confirmado). */
 export const PROTECTED_ORDER_STATUSES: readonly OrderStatus[] = ["AWAITING_VERIFICATION", "PAID", "PARTIALLY_PAID", "ENROLLED"];
 
-/** Condición sobre el pedido: no está protegido (sin pago en verificación/confirmado ni captura PayPal retenida). */
+/**
+ * Condición sobre el pedido: no está protegido (sin pago en verificación/confirmado, sin dinero cobrado y
+ * sin captura PayPal retenida). Debe coincidir con los criterios de expireStaleOrders (orders.ts).
+ */
 function unprotectedOrderWhere(): Prisma.OrderWhereInput {
   return {
     status: { notIn: [...PROTECTED_ORDER_STATUSES] },
-    payments: { none: { method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" } },
+    amountPaidCents: { lte: 0 },
+    payments: {
+      none: {
+        OR: [{ status: { in: ["AWAITING_VERIFICATION", "COMPLETED"] } }, { method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" }],
+      },
+    },
   };
 }
 

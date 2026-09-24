@@ -33,6 +33,11 @@ export const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
 export const PAID_STATES: readonly OrderStatus[] = ["PAID", "PARTIALLY_PAID", "ENROLLED"];
 /** Estados previos al primer pago confirmado. */
 export const PREPAID_STATES: readonly OrderStatus[] = ["PENDING_PAYMENT", "AWAITING_VERIFICATION", "EXPIRED", "REJECTED"];
+/**
+ * Estados terminales sin deuda: el pedido se cerró (reembolso total o cancelación), así que el cliente no
+ * debe nada y balanceCents = 0. Un pago que llegue después se trata como pago en pedido cerrado (ATTENTION).
+ */
+export const CLOSED_STATES: readonly OrderStatus[] = ["REFUNDED", "CANCELLED"];
 
 export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
   return ORDER_TRANSITIONS[from]?.includes(to) ?? false;
@@ -66,7 +71,8 @@ export async function transitionOrder(tx: Tx, orderId: string, to: OrderStatus, 
     if (!order) throw new DomainError("NOT_FOUND", "El pedido no existe.");
     const from = order.status;
     if (!canTransition(from, to)) throw new DomainError("INVALID_TRANSITION", `Transición no permitida: ${from} → ${to}.`, { from, to });
-    const n = await tx.order.updateMany({ where: { id: orderId, status: from }, data: { ...(opts.patch ?? {}), status: to } });
+    const closing = CLOSED_STATES.includes(to) ? { balanceCents: 0 } : {};
+    const n = await tx.order.updateMany({ where: { id: orderId, status: from }, data: { ...(opts.patch ?? {}), ...closing, status: to } });
     if (n.count === 1) {
       await tx.orderEvent.create({
         data: { orderId, type: "STATUS_CHANGE", fromStatus: from, toStatus: to, actorType: opts.actor.type, actorId: opts.actor.type === "ADMIN" ? opts.actor.id ?? null : null, note: opts.note ?? null, data: opts.data ?? undefined },
@@ -87,11 +93,14 @@ export async function lockOrder(tx: Tx, orderId: string, now: Date = new Date())
   await tx.order.updateMany({ where: { id: orderId }, data: { updatedAt: now } });
 }
 
-/** Recalcula balance = total + ajustes − pagado. */
+/**
+ * Recalcula balance = total + ajustes − pagado. En un pedido cerrado (CLOSED_STATES: reembolsado o
+ * cancelado) el saldo es 0: el cliente no debe nada y el panel no debe mostrar una deuda falsa.
+ */
 export async function recomputeBalance(tx: Tx, orderId: string): Promise<number> {
-  const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { totalCents: true, amountPaidCents: true } });
+  const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { totalCents: true, amountPaidCents: true, status: true } });
   const adj = await tx.balanceAdjustment.aggregate({ where: { orderId }, _sum: { amountCents: true } });
-  const balance = o.totalCents + (adj._sum.amountCents ?? 0) - o.amountPaidCents;
+  const balance = CLOSED_STATES.includes(o.status) ? 0 : o.totalCents + (adj._sum.amountCents ?? 0) - o.amountPaidCents;
   await tx.order.update({ where: { id: orderId }, data: { balanceCents: balance } });
   return balance;
 }
@@ -339,9 +348,79 @@ export async function notifyOrderReceived(d: Deps, orderId: string) {
 
 // ───────────── Vencimiento / cancelación / correcciones ─────────────
 
+// ───────────── Pagos insuficientes ─────────────
+// Un pedido PENDING_PAYMENT con dinero cobrado (amountPaidCents > 0) no alcanzó el primer pago: p. ej. un
+// pago móvil en VES aprobado que, por la tasa, quedó corto. Ese pedido NO vence ni libera su cupo (seats.ts),
+// así que necesita a una persona: completar el pago (el enlace de PayPal cobra solo la diferencia), registrar
+// el resto a mano o reembolsar. Se marca con ATTENTION al quedar así y otra vez (una sola) al pasar su plazo,
+// y aparece en listUnderpaidOrders (cola del panel).
+
+/** Estados previos al primer pago en los que un pedido puede quedar con dinero cobrado insuficiente. */
+const UNDERPAID_STATES: readonly OrderStatus[] = ["PENDING_PAYMENT", "EXPIRED", "REJECTED"];
+const UNDERPAID_NOTE = "Pago insuficiente para el primer pago";
+const UNDERPAID_STALE_NOTE = "Venció el plazo de pago con un pago parcial cobrado";
+
+/** Deja un ATTENTION: el pedido quedó en PENDING_PAYMENT con un pago cobrado que no cubre el primer pago. */
+export async function flagUnderpaidOrder(tx: Tx, orderId: string, actor: Actor = SYSTEM): Promise<void> {
+  const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { status: true, amountPaidCents: true, dueNowCents: true } });
+  if (!UNDERPAID_STATES.includes(o.status) || o.amountPaidCents <= 0 || o.amountPaidCents >= o.dueNowCents) return;
+  const missing = o.dueNowCents - o.amountPaidCents;
+  const seat = o.status === "PENDING_PAYMENT" ? "El cupo se mantiene" : `El pedido está ${o.status === "EXPIRED" ? "vencido" : "rechazado"} y sin cupo reservado`;
+  await addOrderEvent(
+    tx,
+    orderId,
+    "ATTENTION",
+    actor,
+    `${UNDERPAID_NOTE}: cobrado ${formatUSD(o.amountPaidCents)} de ${formatUSD(o.dueNowCents)}; faltan ${formatUSD(missing)}. ${seat}: pide al cliente la diferencia, registra el resto o reembolsa.`,
+    { underpaid: true, amountPaidCents: o.amountPaidCents, dueNowCents: o.dueNowCents, missingCents: missing },
+  );
+}
+
+export interface UnderpaidOrderRow {
+  id: string;
+  number: number;
+  customerEmail: string;
+  customerName: string;
+  amountPaidCents: number;
+  dueNowCents: number;
+  missingCents: number;
+  status: OrderStatus;
+  expiresAt: Date | null;
+  overdue: boolean;
+}
+
+/**
+ * Cola del panel: pedidos antes del primer pago (PENDING_PAYMENT, o EXPIRED/REJECTED que recibieron un pago
+ * tardío) con dinero cobrado que no alcanza el primer pago.
+ */
+export async function listUnderpaidOrders(d: Deps, user: SessionUser): Promise<UnderpaidOrderRow[]> {
+  await requireAdmin(d.db, user, "orders.view");
+  const now = d.now();
+  const rows = await d.db.order.findMany({
+    where: { status: { in: [...UNDERPAID_STATES] }, amountPaidCents: { gt: 0 } },
+    include: { customer: { select: { email: true, firstName: true, lastName: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows
+    .filter((o) => o.amountPaidCents < o.dueNowCents)
+    .map((o) => ({
+      id: o.id,
+      number: o.number,
+      customerEmail: o.customer.email,
+      customerName: `${o.customer.firstName} ${o.customer.lastName}`.trim(),
+      amountPaidCents: o.amountPaidCents,
+      dueNowCents: o.dueNowCents,
+      missingCents: o.dueNowCents - o.amountPaidCents,
+      status: o.status,
+      expiresAt: o.expiresAt,
+      overdue: !!o.expiresAt && o.expiresAt.getTime() < now.getTime(),
+    }));
+}
+
 /**
  * Job: pedidos PENDING_PAYMENT vencidos → EXPIRED (libera cupos). runJobs concilia antes los pagos
- * PayPal (reconcilePaypalPayments) para no vencer un pedido que el comprador ya aprobó.
+ * PayPal (reconcilePaypalPayments) para no vencer un pedido que el comprador ya aprobó. Un pedido vencido
+ * con dinero cobrado (pago insuficiente) no se vence: se le deja un ATTENTION (una sola vez) para el staff.
  */
 export async function expireStaleOrders(d: Deps): Promise<number> {
   const now = d.now();
@@ -349,6 +428,23 @@ export async function expireStaleOrders(d: Deps): Promise<number> {
   let n = 0;
   for (const o of stale) {
     const done = await withTx(d, async (tx) => {
+      const cur0 = await tx.order.findUniqueOrThrow({ where: { id: o.id }, select: { status: true, amountPaidCents: true, dueNowCents: true } });
+      const completed = await tx.payment.count({ where: { orderId: o.id, status: "COMPLETED" } });
+      if (cur0.status === "PENDING_PAYMENT" && (cur0.amountPaidCents > 0 || completed > 0)) {
+        const flagged = await tx.orderEvent.count({ where: { orderId: o.id, type: "ATTENTION", note: { startsWith: UNDERPAID_STALE_NOTE } } });
+        if (flagged === 0) {
+          const missing = Math.max(0, cur0.dueNowCents - cur0.amountPaidCents);
+          await addOrderEvent(
+            tx,
+            o.id,
+            "ATTENTION",
+            SYSTEM,
+            `${UNDERPAID_STALE_NOTE} (${formatUSD(cur0.amountPaidCents)}; faltan ${formatUSD(missing)}). No se venció ni se liberó el cupo: completa el pago o reembolsa.`,
+            { underpaid: true, stale: true, amountPaidCents: cur0.amountPaidCents, dueNowCents: cur0.dueNowCents, missingCents: missing },
+          );
+        }
+        return false;
+      }
       const pending = await tx.payment.count({ where: { orderId: o.id, status: { in: ["AWAITING_VERIFICATION", "COMPLETED"] } } });
       if (pending > 0) return false;
       // PayPal retuvo la captura (CAPTURE_PENDING): el dinero está en camino; se mantiene el cupo.
