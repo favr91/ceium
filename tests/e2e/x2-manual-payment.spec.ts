@@ -536,3 +536,79 @@ for (const unenroll of [true, false]) {
     await expect(page).toHaveURL(/\/admin\/login/);
   });
 }
+
+// ───────────── 5. verificación: el pago debe pertenecer al pedido abierto ─────────────
+
+test("aprobar desde la ficha de un pedido con el paymentId de OTRO pedido → rechazado sin tocar el otro pago, su cupo, Moodle ni correos", async ({ page, browser, request }) => {
+  // Independiente de los casos anteriores: pago móvil habilitado con datos reales y una cohorte propia.
+  fixture("setting", { key: "payments.manualMethods", value: [PAGO_MOVIL_REAL, ...OTHERS_OFF] });
+  C = fixture<CourseCohort>("course-cohort", { product: COURSE, sede: "barquisimeto", capacity: CAPACITY, name: `Cohorte x2own ${Date.now().toString(36)}` });
+  const ctxB = await browser.newContext({ locale: "es-VE", viewport: { width: 1440, height: 900 } });
+  const emailA = uniqueEmail("x2owna");
+  const emailB = uniqueEmail("x2ownb");
+  const refA = `0105${Date.now().toString().slice(-8)}`;
+  const refB = `0108${(Date.now() + 1).toString().slice(-8)}`;
+  try {
+    const a = await buyWithPagoMovil(page, emailA, ["Luisa", "Pérez Díaz"], refA);
+    const b = await buyWithPagoMovil(await ctxB.newPage(), emailB, ["Tomás", "Rivas León"], refB);
+    const payA = payments(a.id)[0].id;
+    const payB = payments(b.id)[0].id;
+    const snapB = () => ({
+      order: order(b.id).status,
+      payment: one<{ status: string; verifiedAt: string | null; verifiedById: string | null }>(`SELECT status, verifiedAt, verifiedById FROM Payment WHERE id = ?`, payB),
+      seat: reservationOf(b.id).status,
+      emails: emails(b.id).map((m) => m.template).sort(),
+      events: fullEvents(b.id).length,
+    });
+    const beforeB = snapB();
+    expect(beforeB).toMatchObject({ order: "AWAITING_VERIFICATION", seat: "HELD", payment: { status: "AWAITING_VERIFICATION", verifiedById: null } });
+    const cohortBefore = cohort(C.cohortId);
+
+    const { ctx, page: admin, adminId } = await adminLogin(browser);
+    try {
+      await openOrderInAdmin(admin, a.number, "AWAITING_VERIFICATION");
+      // Un POST manipulado: la acción de servidor recibe el pedido A pero el pago de B.
+      let tampered = 0;
+      await admin.route(`**/admin/orders/${a.id}**`, async (route) => {
+        const req = route.request();
+        const body = req.postData();
+        if (req.method() === "POST" && req.headers()["next-action"] && body?.includes(payA)) {
+          tampered++;
+          return route.continue({ postData: body.split(payA).join(payB) });
+        }
+        return route.continue();
+      });
+      await admin.getByTestId("payment").filter({ hasText: refA }).getByRole("button", { name: "Aprobar pago" }).click();
+      await expect(admin.getByRole("status").or(admin.getByRole("alert")).filter({ hasText: "El pago no pertenece a este pedido." })).toBeVisible();
+      expect(tampered).toBe(1);
+      await admin.unroute(`**/admin/orders/${a.id}**`);
+
+      // Nada cambió en B (ni en A): ni pago, ni cupo, ni correos, ni historial, ni Moodle.
+      expect(snapB()).toEqual(beforeB);
+      expect(order(a.id).status).toBe("AWAITING_VERIFICATION");
+      expect(cohort(C.cohortId)).toEqual(cohortBefore);
+      expect(customerOf(b.id).moodleUserId).toBeNull();
+      expect((await moodleState(request)).users.some((u) => u.email.toLowerCase() === emailB.toLowerCase())).toBe(false);
+
+      // Sin manipular, cada pedido se verifica desde su propia ficha: A aprobado, B rechazado.
+      await admin.reload();
+      await admin.getByTestId("payment").filter({ hasText: refA }).getByRole("button", { name: "Aprobar pago" }).click();
+      await expect(admin.getByRole("status").filter({ hasText: "Pago aprobado" })).toBeVisible();
+      await waitForOrderStatus(a.id, "ENROLLED");
+      expect(one<{ verifiedById: string }>(`SELECT verifiedById FROM Payment WHERE id = ?`, payA).verifiedById).toBe(adminId);
+
+      await openOrderInAdmin(admin, b.number, "AWAITING_VERIFICATION");
+      const cardB = admin.getByTestId("payment").filter({ hasText: refB });
+      await cardB.getByRole("button", { name: "Rechazar pago" }).click();
+      await cardB.getByRole("form", { name: "Rechazar pago" }).getByLabel("Motivo del rechazo").fill("Monto no recibido.");
+      await cardB.getByRole("button", { name: "Rechazar pago" }).click();
+      await expect(admin.getByRole("status").filter({ hasText: "Pago rechazado" })).toBeVisible();
+      expect(order(b.id).status).toBe("REJECTED");
+      expect(reservationOf(b.id).status).toBe("RELEASED");
+    } finally {
+      await ctx.close();
+    }
+  } finally {
+    await ctxB.close();
+  }
+});

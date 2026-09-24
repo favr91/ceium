@@ -40,8 +40,10 @@ export async function verifyPayment(orderId: string, paymentId: string, decision
   try {
     const amountUsdCents = amountUsd ? parseCents(amountUsd) : undefined;
     if (amountUsdCents !== undefined && !(amountUsdCents > 0)) return { ok: false, error: "Indica un equivalente en USD válido." };
-    const p = await services().payments.adminVerifyPayment(user, { paymentId, decision, note: note.trim() || null, amountUsdCents });
-    if (p.orderId !== orderId) return { ok: false, error: "El pago no pertenece a este pedido." };
+    // La pertenencia se comprueba ANTES de verificar: un paymentId de otro pedido no debe aprobarse ni rechazarse.
+    const pay = await services().deps.db.payment.findUnique({ where: { id: paymentId }, select: { orderId: true } });
+    if (!pay || pay.orderId !== orderId) return { ok: false, error: "El pago no pertenece a este pedido." };
+    await services().payments.adminVerifyPayment(user, { paymentId, decision, note: note.trim() || null, amountUsdCents });
     return done(orderId, decision === "approve" ? "Pago aprobado. El pedido quedó pagado y se inició la matrícula." : "Pago rechazado. Se avisó al cliente por correo.");
   } catch (e) {
     return fail(e, "No pudimos registrar la verificación. Intenta de nuevo.");
