@@ -18,6 +18,11 @@ import * as email from "@/server/email";
 import * as jobs from "@/server/jobs";
 import * as installments from "@/server/installments";
 import * as corrections from "@/server/corrections";
+import * as cohorts from "@/server/cohorts";
+import * as catalog from "@/server/catalog";
+import * as adminSettings from "@/server/admin-settings";
+import * as adminUsers from "@/server/admin-users";
+import * as audit from "@/server/audit";
 
 export function createDefaultDeps(overrides: Partial<Deps> = {}): Deps {
   return {
@@ -77,6 +82,12 @@ export function createServices(d: Deps) {
     certificates: bind(d, certificates, ["checkDiplomaCompletion", "deliverCertificate", "verifyCertificate", "revokeCertificate", "runCertificateSweep"]),
     email: bind(d, email, ["sendEmail", "retryFailedEmails", "resendEmail"]),
     jobs: bind(d, jobs, ["runJobs"]),
+    // Panel: toda escritura de catálogo/cohortes/configuración/usuarios pasa por aquí (valida + AuditLog).
+    cohorts: bind(d, cohorts, ["createCohort", "updateCohort", "setCohortStatus", "deleteCohort"]),
+    catalog: bind(d, catalog, ["updateProduct", "upsertPrice", "setPriceActive", "upsertPlan", "upsertCollection", "upsertSede", "setDiplomaCourses"]),
+    settings: bind(d, adminSettings, ["updateSetting"]),
+    adminUsers: bind(d, adminUsers, ["createAdminUser", "updateAdminUser", "resetAdminPassword"]),
+    audit: { list: (q: audit.AuditQuery = {}) => audit.listAuditLog(d, q) },
   };
 }
 

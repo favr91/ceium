@@ -187,8 +187,8 @@ export class MoodleClient {
    *  1. Por email (autoritativo; se prueban el email tal cual y en minúsculas).
    *  2. Por username derivado del email (usernameFromEmail): Moodle solo admite [a-z0-9_.@-], así que
    *     medico+ceium@gmail.com → medico_ceium@gmail.com. Una cuenta con ese username solo se acepta si
-   *     es del mismo email (o si el username ES el email sin transformar, como las cuentas creadas a mano
-   *     con username = email); si es de OTRA persona se prueba medico_ceium@gmail.com-2, -3…
+   *     su email es el mismo (el username nunca basta, aunque coincida con el email del comprador);
+   *     si es de OTRA persona se prueba medico_ceium@gmail.com-2, -3…
    * Si la cuenta existe suspendida, la reactiva. Email inválido → MoodleError "validation" (no reintentable).
    */
   async findOrCreateUser(input: NewUserInput): Promise<FindOrCreateUserResult> {
@@ -246,7 +246,9 @@ export class MoodleClient {
       const candidate = i === 1 ? base : `${base.slice(0, 96)}-${i}`;
       const [u] = await this.getUsersByField("username", [candidate]);
       if (!u) return { user: null, freeUsername: candidate };
-      if (u.email?.toLowerCase() === lower || (i === 1 && candidate === lower)) return { user: u, freeUsername: candidate };
+      // Solo se acepta la cuenta si su EMAIL es el del comprador. El username no identifica a nadie:
+      // medico+x@gmail.com se guarda como medico_x@gmail.com, que puede ser el email real de otra persona.
+      if (u.email?.toLowerCase() === lower) return { user: u, freeUsername: candidate };
     }
     throw new MoodleError({ kind: "validation", wsfunction: "core_user_create_users", message: `no hay un username libre para ${email}` });
   }
@@ -307,7 +309,8 @@ export class MoodleClient {
 
   /**
    * Estado de finalización del curso para el usuario. Nunca devuelve completed=true salvo que Moodle
-   * reporte completionstatus.completed === true. usernotenroled / nocriteriaset / completionnotenabled
+   * reporte completionstatus.completed === true. Errores reales de core_completion_external:
+   * nottracked (no matriculado) / nocriteriaset / completionnotenabled
    * se normalizan como no completado; el resto de errores se lanzan.
    */
   async getCompletion(userId: number, courseId: number): Promise<CourseCompletion> {
@@ -332,7 +335,7 @@ export class MoodleClient {
       };
     } catch (e) {
       if (e instanceof MoodleError && e.kind === "moodle") {
-        if (e.errorcode === "usernotenroled" || e.errorcode === "notenroled") return { ...base, completions: [], state: "NOT_ENROLLED" };
+        if (e.errorcode === "nottracked") return { ...base, completions: [], state: "NOT_ENROLLED" };
         if (e.errorcode === "nocriteriaset") return { ...base, completions: [], state: "NO_CRITERIA" };
         if (e.errorcode === "completionnotenabled") return { ...base, completions: [], state: "NOT_ENABLED" };
       }

@@ -13,6 +13,7 @@
     "db:push": "prisma db push && prisma generate",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "node scripts/db-reset.mjs",
+    "db:check": "node scripts/db-reset.mjs var/check/check.db",
     "db:studio": "prisma studio",
     "catalog:extract": "node prisma/seed-data/extract-details.mjs",
     "test": "vitest run",

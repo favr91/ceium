@@ -3,12 +3,15 @@
 // crear el esquema y el seed.
 //   npm run db:reset            # usa DATABASE_URL (.env)
 //   DATABASE_URL=file:./x.db npm run db:reset
+//   npm run db:check            # BD NUEVA en var/check/check.db (no toca dev.db): para revisores/agentes
 // Solo para SQLite local; se niega con cualquier otra URL (p.ej. PostgreSQL de producción).
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 
+// Un argumento (ruta de archivo) tiene prioridad sobre DATABASE_URL: `node scripts/db-reset.mjs var/check/check.db`.
+if (process.argv[2]) process.env.DATABASE_URL = `file:${path.resolve(process.cwd(), process.argv[2])}`;
 const url = process.env.DATABASE_URL ?? "file:./dev.db";
 if (!url.startsWith("file:")) {
   console.error(`[db:reset] DATABASE_URL no es un archivo SQLite (${url.split(":")[0]}:…). No se reinicia.`);
@@ -26,4 +29,4 @@ const run = (cmd) => execSync(cmd, { stdio: "inherit", env: process.env });
 run("npx prisma db push");
 if (process.env.DB_RESET_SKIP_GENERATE !== "1") run("npx prisma generate");
 run("npx tsx prisma/seed.ts");
-console.log("[db:reset] listo");
+console.log(`[db:reset] listo → ${url}`);

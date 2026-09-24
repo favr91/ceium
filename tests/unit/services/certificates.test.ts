@@ -41,9 +41,10 @@ describe("certificado de diplomado", () => {
     const r9 = await checkDiplomaCompletion(ctx.d, customer.id, ctx.fx.diploma);
     expect(r9).toMatchObject({ issued: true, alreadyIssued: false, total: 9, completed: 9, pendingCourseIds: [] });
     expect(r9.code).toMatch(/^CEIUM-[2-9A-HJ-NP-Z]{5}-[2-9A-HJ-NP-Z]{5}$/);
-    // Las completadas se cachean: el segundo chequeo solo consultó el curso 9
+    // Las completadas se cachean para contar (el barrido solo consulta las pendientes: el 9), pero antes de
+    // emitir se vuelven a confirmar con Moodle las 8 cacheadas: la caché nunca basta para certificar.
     const completionCalls = ctx.moodle.calls.filter((c) => c.fn === "getCompletion").map((c) => c.args[1]);
-    expect(completionCalls.slice(-1)).toEqual([309]);
+    expect(completionCalls.slice(-9)).toEqual([309, 301, 302, 303, 304, 305, 306, 307, 308]);
 
     const cert = await ctx.db.certificate.findUniqueOrThrow({ where: { code: r9.code! } });
     expect(cert.pdfPath).toBeTruthy();

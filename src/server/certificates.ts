@@ -69,30 +69,34 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
   const now = d.now();
   let completed = 0;
   const pending: number[] = [];
+  /** Filas contadas por la caché (completedAt) y no por una consulta a Moodle en esta pasada. */
+  const fromCache: { id: string; moodleCourseId: number }[] = [];
+  const askMoodle = async (userId: number, mid: number): Promise<boolean> => {
+    try {
+      return (await d.moodle.getCompletion(userId, mid)).completed === true;
+    } catch (e) {
+      d.log.warn(`[certificates] no se pudo consultar finalización (user ${userId}, curso ${mid})`, e);
+      return false;
+    }
+  };
   for (const c of courses) {
     const mid = c.moodleCourseId!;
     const enr = await d.db.enrollment.findUnique({ where: { customerId_moodleCourseId: { customerId, moodleCourseId: mid } } });
     // Solo cuenta una matrícula vigente: una finalización registrada en una matrícula que luego se dio de
     // baja (reembolso, cambio de cohorte) es obsoleta y no se combina con las demás.
-    if (!enr || enr.status !== "ENROLLED") {
+    if (!enr || enr.status !== "ENROLLED" || customer.moodleUserId == null) {
       pending.push(mid);
       continue;
     }
-    if (enr.completedAt) {
+    // La caché solo vale dentro del ciclo de matrícula actual (completedAt posterior a enrolledAt). Aun así,
+    // antes de emitir se vuelve a preguntar a Moodle (abajo): la caché nunca basta para certificar.
+    if (enr.completedAt && enr.enrolledAt && enr.completedAt >= enr.enrolledAt) {
       completed++;
+      fromCache.push({ id: enr.id, moodleCourseId: mid });
       continue;
     }
-    if (customer.moodleUserId == null) {
-      pending.push(mid);
-      continue;
-    }
-    let done = false;
-    try {
-      done = (await d.moodle.getCompletion(customer.moodleUserId, mid)).completed === true;
-    } catch (e) {
-      d.log.warn(`[certificates] no se pudo consultar finalización (user ${customer.moodleUserId}, curso ${mid})`, e);
-    }
-    await d.db.enrollment.update({ where: { id: enr.id }, data: { completionCheckedAt: now, ...(done ? { completedAt: now } : {}) } });
+    const done = await askMoodle(customer.moodleUserId, mid);
+    await d.db.enrollment.update({ where: { id: enr.id }, data: { completionCheckedAt: now, completedAt: done ? now : null } });
     if (done) completed++;
     else pending.push(mid);
   }
@@ -103,6 +107,18 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
   // Todos completos. Requisito obligatorio: saldo 0 (no configurable).
   if (purchase.order.balanceCents > 0) {
     return { ...result, blockedByBalance: true, reason: `Completó todos los cursos, pero el pedido tiene saldo pendiente (${formatUSD(purchase.order.balanceCents)}). Se emitirá al cancelar el saldo.` };
+  }
+
+  // «Nunca antes»: lo cacheado se confirma otra vez con Moodle justo antes de emitir. Si Moodle ya no lo
+  // reporta completado (curso reiniciado, error), se borra la caché y no se emite.
+  const regressed: number[] = [];
+  for (const r of fromCache) {
+    const done = await askMoodle(customer.moodleUserId!, r.moodleCourseId);
+    await d.db.enrollment.update({ where: { id: r.id }, data: { completionCheckedAt: now, ...(done ? {} : { completedAt: null }) } });
+    if (!done) regressed.push(r.moodleCourseId);
+  }
+  if (regressed.length) {
+    return { ...result, completed: completed - regressed.length, pendingCourseIds: [...pending, ...regressed], reason: "Moodle no confirma la finalización de todos los cursos" };
   }
 
   // Emitir: certificado + evento en UNA transacción; el PDF y el correo se entregan después (recuperable).

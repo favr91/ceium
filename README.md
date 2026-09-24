@@ -8,7 +8,7 @@ cp .env.example .env        # ya existe en dev
 npm install                 # postinstall = prisma generate
 npm run db:push             # crea/actualiza dev.db (SQLite) + genera cliente
 npm run db:seed             # BORRA y recrea catálogo real, sedes, cohortes de ejemplo, admin, settings
-npm run mocks               # mock Moodle :4010 + mock PayPal :4020 (placeholders hasta que se implementen)
+npm run mocks               # mock Moodle :4010 + mock PayPal :4020 (protocolo real: REST de Moodle, Orders v2/Payments/Webhooks)
 npm run dev                 # http://localhost:3000   · panel: /admin (admin@ceium.net / ceium-admin-2026)
 ```
 Otros: `build`, `start`, `test` (vitest, `tests/unit`), `test:e2e` (playwright, `tests/e2e`: entorno aislado — BD `var/e2e/e2e.db` recreada y sembrada, app en :3100 con
@@ -18,11 +18,15 @@ Otros: `build`, `start`, `test` (vitest, `tests/unit`), `test:e2e` (playwright, 
 de la siguiente cuota con enlace de pago), certificados y reintento de correos.
 
 ### Base de datos limpia (verificación / agentes)
-`db:reset` borra el archivo SQLite de `DATABASE_URL` y hace `prisma db push` + seed (no usa `--force-reset`, que
-Prisma 7 bloquea cuando lo ejecuta un agente de IA). Para verificar desde cero sin tocar `dev.db`, apuntar a una BD nueva:
+**No usar `npx prisma db push --force-reset`**: Prisma 7 lo bloquea cuando lo ejecuta un agente de IA sin
+consentimiento explícito del usuario. En su lugar:
 ```bash
+npm run db:check            # BD NUEVA en var/check/check.db (esquema + seed); dev.db no se toca
+npm run db:reset            # borra el archivo SQLite de DATABASE_URL (dev.db) y hace db push + seed
+# o, a mano, una BD en cualquier ruta:
 DATABASE_URL="file:/tmp/ceium-check.db" npx prisma db push && DATABASE_URL="file:/tmp/ceium-check.db" npm run db:seed
 ```
+Para usar la BD de verificación: `DATABASE_URL=file:./var/check/check.db npm run dev` (o `jobs`, `tsx …`).
 Los tests (`npm test`) ya crean una BD SQLite aislada por archivo de test; no tocan `dev.db`.
 
 ## Estructura
@@ -46,5 +50,12 @@ var/                 (no versionado) correos .eml, comprobantes, certificados, c
 - **Mes a mes** (solo diplomados): una cuota por curso del diplomado (9 × 180/230/150), `Installment.courseId` = curso que
   habilita; cada cuota confirmada matricula SOLO ese curso. Cuotas se imputan con `reallocateInstallments` (pagos y reembolsos).
 - ONLINE ⇒ `sedeId = null`. Cohortes solo semipresencial. Cupo con contadores `seatsHeld/seatsConfirmed` y UPDATE condicional.
+- **Panel = servicios auditados.** Catálogo (`catalog.ts`: fichas, precios, planes, colecciones, sedes, cursos de
+  diplomado), cohortes (`cohorts.ts`: el cupo nunca queda por debajo de `seatsHeld + seatsConfirmed`), configuración
+  (`admin-settings.ts`: datos bancarios, tasa BCV, TTL de reservas… validados por clave) y usuarios (`admin-users.ts`)
+  escriben el cambio y su `AuditLog` (quién, cuándo, antes/después, campos) en la misma transacción. Los pedidos usan
+  `OrderEvent`. No escribir esas tablas con `prisma.*` desde rutas/acciones.
+- `Product.enrollmentDeadline` (último día de inscripción, inclusivo) se aplica en `quote()`/`createCheckout`;
+  la tienda usa `isProductEnrollmentOpen()` para mostrar «Inscripciones cerradas».
 - Cohortes sembradas = **datos de ejemplo** (`Cohort.isSample`, Setting `seed.sampleData`). Datos bancarios = `TODO` (Setting `payments.manualMethods`).
 - Todo texto de UI en español (Venezuela). Nada de catálogo hardcodeado: todo sale de la BD.

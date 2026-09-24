@@ -52,12 +52,27 @@ export function addMonths(date: Date, n: number): Date {
   return d;
 }
 
+/**
+ * Product.enrollmentDeadline = último día de inscripción («Inscripción hasta: 05/01/2026»), guardado como las
+ * 00:00 de ese día en Venezuela. Es inclusivo: la venta cierra 24 h después.
+ */
+export function productEnrollmentClosesAt(deadline: Date | null | undefined): Date | null {
+  return deadline ? new Date(deadline.getTime() + 24 * 60 * 60 * 1000) : null;
+}
+
+/** ¿El programa admite inscripciones ahora? (la tienda lo usa para mostrar «Inscripciones cerradas»). */
+export function isProductEnrollmentOpen(p: { published: boolean; enrollmentDeadline: Date | null }, now: Date = new Date()): boolean {
+  const closes = productEnrollmentClosesAt(p.enrollmentDeadline);
+  return p.published && (!closes || now.getTime() < closes.getTime());
+}
+
 export async function quote(db: Db | Tx, input: QuoteInput, now: Date = new Date()): Promise<Quote> {
   const product = await db.product.findUnique({
     where: { id: input.productId },
     include: { choices: true, diplomaCourses: { orderBy: { position: "asc" }, include: { course: { select: { id: true, title: true, moodleCourseId: true } } } } },
   });
   if (!product || !product.published) throw new DomainError("NOT_FOUND", "El programa no existe o no está disponible.");
+  if (!isProductEnrollmentOpen(product, now)) throw new DomainError("VALIDATION", "Las inscripciones de este programa están cerradas.", { productId: product.id, enrollmentDeadline: product.enrollmentDeadline });
   if (input.modality === "ONLINE" && !product.offersOnline) throw new DomainError("VALIDATION", "Este programa no se ofrece en modalidad online.");
   if (input.modality === "SEMIPRESENCIAL" && !product.offersSemipresencial) throw new DomainError("VALIDATION", "Este programa no se ofrece en modalidad semipresencial.");
 

@@ -35,6 +35,14 @@ interface DesiredCourse {
   label: string;
 }
 
+/** Conflicto de datos local que reintentar no resuelve (p.ej. cuenta Moodle de otro cliente). */
+export class PermanentEnrollmentError extends Error {
+  readonly retryable = false;
+  get short() {
+    return this.message;
+  }
+}
+
 /** Error que no se arregla reintentando (MoodleError.retryable === false). */
 export function isPermanentError(e: unknown): boolean {
   const r = (e as { retryable?: unknown } | null)?.retryable;
@@ -142,7 +150,8 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
     } else if (existing.status === "UNENROLLED" || (existing.status === "FAILED" && opts.force)) {
       await d.db.enrollment.updateMany({
         where: { id: existing.id, status: existing.status },
-        data: { status: "PENDING", attempts: 0, nextAttemptAt: null, lastError: null, orderId, orderItemId: c.orderItemId },
+        // Ciclo de matrícula nuevo: la finalización registrada en el ciclo anterior deja de valer.
+        data: { status: "PENDING", attempts: 0, nextAttemptAt: null, lastError: null, orderId, orderItemId: c.orderItemId, enrolledAt: null, completedAt: null, completionCheckedAt: null },
       });
     }
   }
@@ -172,10 +181,19 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
   try {
     if (userId == null) {
       const u = await d.moodle.findOrCreateUser(order.customer.email, { firstname: order.customer.firstName, lastname: order.customer.lastName });
-      userId = u.id;
       created = u.created;
       tempPassword = u.created ? u.tempPassword : undefined;
-      await d.db.customer.updateMany({ where: { id: order.customerId, moodleUserId: null }, data: { moodleUserId: u.id, moodleUsername: u.username ?? order.customer.email } });
+      // La cuenta Moodle ya pertenece a OTRO cliente (IDs de Moodle reciclados, cuenta compartida…): no se
+      // matricula en la cuenta ajena y reintentar no lo arregla → error permanente + ATTENTION.
+      const owner = await d.db.customer.findFirst({ where: { moodleUserId: u.id, id: { not: order.customerId } }, select: { email: true } });
+      if (owner) throw new PermanentEnrollmentError(`la cuenta de Moodle #${u.id} (${u.username ?? "?"}) ya está vinculada a otro cliente (${owner.email})`);
+      try {
+        await d.db.customer.updateMany({ where: { id: order.customerId, moodleUserId: null }, data: { moodleUserId: u.id, moodleUsername: u.username ?? order.customer.email } });
+      } catch (e) {
+        if (isUniqueViolation(e)) throw new PermanentEnrollmentError(`la cuenta de Moodle #${u.id} ya está vinculada a otro cliente`);
+        throw e;
+      }
+      userId = u.id;
       await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "MOODLE_USER", actor, u.created ? "Cuenta de Moodle creada" : "Cuenta de Moodle existente vinculada", { moodleUserId: u.id, created: u.created }));
     }
     // 4) Matricular con reintentos inmediatos cortos.
@@ -229,7 +247,7 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
       }
     });
     // Si la cuenta se creó ahora, la contraseña temporal no se puede volver a obtener: enviarla ya.
-    if (created && tempPassword) await sendAccessEmail(d, orderId, userId!, tempPassword, true, `platform_credentials:${order.customerId}`, desired.map((c) => c.label));
+    if (created && tempPassword && userId != null) await sendAccessEmail(d, orderId, userId, tempPassword, true, `platform_credentials:${order.customerId}`, desired.map((c) => c.label));
     return { status: worst === "FAILED" ? "FAILED" : "RETRY_SCHEDULED", reason: msg, enrolledCourseIds: [], pendingCourseIds: courseIds, createdMoodleUser: created };
   }
 
@@ -385,7 +403,7 @@ export async function unenrollOrder(d: Deps, orderId: string, actor: Actor = SYS
   const enrolledIds = toRemove.filter((r) => r.status === "ENROLLED").map((r) => r.moodleCourseId);
   const userId = order.customer.moodleUserId;
   if (enrolledIds.length && userId != null) await d.moodle.unenrol(userId, enrolledIds);
-  if (toRemove.length) await d.db.enrollment.updateMany({ where: { id: { in: toRemove.map((r) => r.id) } }, data: { status: "UNENROLLED", nextAttemptAt: null } });
+  if (toRemove.length) await d.db.enrollment.updateMany({ where: { id: { in: toRemove.map((r) => r.id) } }, data: { status: "UNENROLLED", nextAttemptAt: null, completedAt: null, completionCheckedAt: null } });
   const kept = rows.filter((r) => keep.has(r.moodleCourseId)).map((r) => r.moodleCourseId);
   await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "UNENROLLMENT", actor, `Desmatriculado de ${toRemove.length} curso(s)`, { courseIds: toRemove.map((r) => r.moodleCourseId), kept }));
   return { unenrolledCourseIds: toRemove.map((r) => r.moodleCourseId), keptCourseIds: kept };

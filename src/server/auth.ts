@@ -11,6 +11,7 @@ import bcrypt from "bcryptjs";
 import type { AdminRole, AdminSession, AdminUser } from "@/generated/prisma/client";
 import type { Db, Tx } from "@/server/deps";
 import { DomainError } from "@/server/errors";
+import { recordAudit } from "@/server/audit";
 
 export const ADMIN_SESSION_COOKIE = "ceium_admin";
 export const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -130,8 +131,11 @@ export async function revokeAllSessions(db: Db, adminUserId: string): Promise<nu
 
 export async function changePassword(db: Db, adminUserId: string, newPassword: string): Promise<void> {
   const passwordHash = await hashPassword(newPassword);
-  await db.adminUser.update({ where: { id: adminUserId }, data: { passwordHash } });
-  await revokeAllSessions(db, adminUserId);
+  await db.$transaction(async (tx) => {
+    const u = await tx.adminUser.update({ where: { id: adminUserId }, data: { passwordHash }, select: { id: true, email: true } });
+    await tx.adminSession.deleteMany({ where: { adminUserId } });
+    await recordAudit(tx, { actor: u, action: "admin_user.password_change", entityType: "AdminUser", entityId: adminUserId, force: true });
+  });
 }
 
 /** Opciones de la cookie de sesión (para `cookies().set(ADMIN_SESSION_COOKIE, token, adminCookieOptions(exp))`). */

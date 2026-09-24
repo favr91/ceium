@@ -53,10 +53,4 @@ export async function getSetting<T = unknown>(key: string, fallback?: T): Promis
   return (row?.value as T | undefined) ?? (fallback as T);
 }
 
-export async function setSetting(key: string, value: unknown, description?: string) {
-  await prisma.setting.upsert({
-    where: { key },
-    create: { key, value: value as never, description },
-    update: { value: value as never, ...(description ? { description } : {}) },
-  });
-}
+// Escrituras: updateSetting (src/server/admin-settings.ts) — valida por clave y deja auditoría.

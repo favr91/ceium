@@ -410,10 +410,11 @@ export function createMoodleMock(opts = {}) {
       const course = findCourse(p.courseid);
       if (!course) throw missingRecord('course');
       if (!findUser(p.userid)) throw missingRecord('user');
-      if (!course.enablecompletion) throw moodleEx('completionnotenabled', 'Completion is not enabled for this course');
+      if (!course.enablecompletion) throw moodleEx('completionnotenabled', 'Completion is not enabled');
       const enrolled = state.enrolments.some((x) => x.userid === p.userid && x.courseid === p.courseid && x.status === 0);
-      if (!enrolled) throw moodleEx('usernotenroled', 'User is not enrolled in this course');
-      if (!course.criteria.length) throw moodleEx('nocriteriaset', 'No criteria set for this course');
+      // Moodle real (core_completion_external): !is_tracked_user() → moodle_exception('nottracked', 'completion').
+      if (!enrolled) throw moodleEx('nottracked', 'You are currently not being tracked by completion in this course');
+      if (!course.criteria.length) throw moodleEx('nocriteriaset', 'No completion criteria set for this course');
       const done = state.completions.find((x) => x.userid === p.userid && x.courseid === p.courseid);
       const completions = course.criteria.map((c) => ({
         type: c.type,

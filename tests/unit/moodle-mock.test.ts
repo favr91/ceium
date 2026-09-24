@@ -91,7 +91,7 @@ describe("mock moodle — protocolo", () => {
   it("core_completion_get_course_completion_status: forma real y /__mock/complete", async () => {
     await ws("core_user_create_users", newUser);
     const q = { courseid: "101", userid: "3" };
-    expect(await ws("core_completion_get_course_completion_status", q)).toMatchObject({ errorcode: "usernotenroled", exception: "moodle_exception" });
+    expect(await ws("core_completion_get_course_completion_status", q)).toMatchObject({ errorcode: "nottracked", exception: "moodle_exception" });
     await ws("enrol_manual_enrol_users", { "enrolments[0][roleid]": "5", "enrolments[0][userid]": "3", "enrolments[0][courseid]": "101" });
     const before = await ws("core_completion_get_course_completion_status", q);
     expect(before.completionstatus.completed).toBe(false);

@@ -4,8 +4,12 @@ Código de dominio (solo servidor). Nunca importarlo desde componentes cliente.
 - `pricing.ts` — montos por plan de pago (centavos), `formatUSD` y `priceScopeKey` (clave única NO nula de PriceEntry: todo alta/edición de precios debe escribirla).
 - `settings.ts` — claves de la tabla Setting y getters.
 
-Módulos esperados (otras piezas): `catalog/`, `cohorts/` (reservas atómicas), `orders/`, `payments/paypal.ts`,
-`payments/manual.ts`, `moodle/client.ts`, `enrollment/`, `certificates/`, `email/`, `auth/`, `jobs/`.
+Panel (escrituras administrativas, siempre con `AuditLog` en la misma transacción; `services().cohorts|catalog|settings|adminUsers|audit`):
+- `audit.ts` — `recordAudit` (antes/después/campos cambiados, sin secretos), `listAuditLog`.
+- `cohorts.ts` — `createCohort`, `updateCohort` (cupo con UPDATE condicional: nunca < `seatsHeld + seatsConfirmed`; no cancela con cupos ocupados), `setCohortStatus`, `deleteCohort` (solo sin ventas).
+- `catalog.ts` — `updateProduct`, `upsertPrice` / `setPriceActive` (escribe `scopeKey`; ONLINE sin sede), `upsertPlan` (MONTHLY solo diplomados, cuotas = nº de cursos), `upsertCollection`, `upsertSede`, `setDiplomaCourses`.
+- `admin-settings.ts` — `updateSetting` con esquema por clave (datos bancarios de pago móvil/transferencia, tasa BCV, TTL de reservas, PayPal, reintentos, recordatorios, contacto).
+- `admin-users.ts` — `createAdminUser`, `updateAdminUser` (siempre queda un ADMIN activo; cierra sesiones al desactivar/cambiar rol), `resetAdminPassword`.
 
 ## Servicios de dominio (compra → pago → matrícula → certificado)
 

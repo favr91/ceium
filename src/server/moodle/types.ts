@@ -52,7 +52,7 @@ export interface MoodleCompletionStatusResponse {
 /**
  * Resultado normalizado de getCompletion:
  * - COMPLETE / INCOMPLETE: Moodle respondió con el estado.
- * - NOT_ENROLLED (usernotenroled), NO_CRITERIA (nocriteriaset), NOT_ENABLED (completionnotenabled):
+ * - NOT_ENROLLED (nottracked: el usuario no está matriculado/rastreado), NO_CRITERIA (nocriteriaset), NOT_ENABLED (completionnotenabled):
  *   Moodle no puede evaluar la finalización → se trata como NO completado (nunca emitir certificado).
  */
 export type CompletionState = "COMPLETE" | "INCOMPLETE" | "NOT_ENROLLED" | "NO_CRITERIA" | "NOT_ENABLED";

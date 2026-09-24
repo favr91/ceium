@@ -176,7 +176,7 @@ model Product {
   duration           String? // "1 mes", "1 mes por curso", "Dos días de práctica presencial."
   eventDateText      String? // "21 y 22 de noviembre 2025" (talleres)
   enrollmentNote     String? // "✍ Inscripciones abiertas."
-  enrollmentDeadline DateTime?
+  enrollmentDeadline DateTime? // último día de inscripción (inclusivo, 00:00 Venezuela). quote()/createCheckout lo aplican
   syllabusUrl        String? // PDF "Descargar contenido"
   topics             Json? // [{ title, heading?, items: string[] }]
   faculty            Json? // string[] "Dr. Carlos Roa"
@@ -684,6 +684,30 @@ model OrderEvent {
   @@index([orderId, createdAt])
 }
 
+/// Auditoría del panel para todo lo que NO es un pedido (los pedidos usan OrderEvent): catálogo, precios,
+/// planes, colecciones, sedes, cohortes (cupo/estado), configuración y usuarios del panel.
+/// Quién (actor), cuándo, qué entidad, antes/después y la lista de campos cambiados. Nunca guarda secretos
+/// (passwordHash se omite). Solo se inserta; no hay edición ni borrado desde la app.
+model AuditLog {
+  id         String     @id @default(cuid())
+  actorType  ActorType  @default(ADMIN)
+  actorId    String?
+  actor      AdminUser? @relation(fields: [actorId], references: [id])
+  actorEmail String? // copia: el historial sigue legible aunque cambie el usuario
+  action     String // p.ej. cohort.create | cohort.update | price.upsert | setting.update | admin_user.update
+  entityType String // Product | PriceEntry | PaymentPlan | Collection | Sede | Cohort | Setting | AdminUser | DiplomaCourse
+  entityId   String
+  before     Json?
+  after      Json?
+  changes    Json? // [{ field, from, to }]
+  note       String?
+  createdAt  DateTime   @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}
+
 // ───────────────────────────── Admin ─────────────────────────────
 
 model AdminUser {
@@ -702,6 +726,7 @@ model AdminUser {
   refunds          Refund[]            @relation("RefundCreator")
   adjustments      BalanceAdjustment[]
   events           OrderEvent[]
+  auditLogs        AuditLog[]
 }
 
 model AdminSession {

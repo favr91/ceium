@@ -95,6 +95,25 @@ describe("findOrCreateUser", () => {
     expect(r.user.firstname).toBe("Médico");
   });
 
+  it("username = email del comprador NO basta: si la cuenta es de otro email, se crea otra (sufijo)", async () => {
+    // A (medico+x@gmail.com) obtuvo el username medico_x@gmail.com; B tiene de verdad ese email.
+    const a = await client.findOrCreateUser({ email: "medico+x@gmail.com", firstname: "A", lastname: "A" });
+    expect(a.user.username).toBe("medico_x@gmail.com");
+    const b = await client.findOrCreateUser({ email: "medico_x@gmail.com", firstname: "B", lastname: "B" });
+    expect(b.created).toBe(true);
+    expect(b.user.id).not.toBe(a.user.id);
+    expect(b.user.username).toBe("medico_x@gmail.com-2");
+    // y cada uno vuelve a su propia cuenta
+    expect((await client.findOrCreateUser({ email: "medico_x@gmail.com", firstname: "B", lastname: "B" })).user.id).toBe(b.user.id);
+    expect((await client.findOrCreateUser({ email: "medico+x@gmail.com", firstname: "A", lastname: "A" })).user.id).toBe(a.user.id);
+  });
+
+  it("getCompletion: usuario no matriculado → Moodle real responde nottracked → NOT_ENROLLED", async () => {
+    const u = await client.findOrCreateUser({ email: "nt@example.com", firstname: "N", lastname: "T" });
+    const r = await client.getCompletion(u.user.id, 101);
+    expect(r).toMatchObject({ completed: false, state: "NOT_ENROLLED" });
+  });
+
   it("email inválido → MoodleError no reintentable (kind validation)", async () => {
     const e = await client.findOrCreateUser({ email: "no-es-un-correo", firstname: "A", lastname: "B" }).catch((x) => x);
     expect(e).toBeInstanceOf(MoodleError);
