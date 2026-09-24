@@ -1141,7 +1141,16 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date): Promise<
   const { refundedCents: refunded } = await tx.payment.update({ where: { id: p.id }, data: { refundedCents: { increment: input.amountCents } }, select: { refundedCents: true } });
   await tx.payment.update({ where: { id: p.id }, data: { status: refunded >= p.amountUsdCents ? "REFUNDED" : "PARTIALLY_REFUNDED" } });
   const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId } });
+  const adjBefore = (await tx.balanceAdjustment.aggregate({ where: { orderId: order.id }, _sum: { amountCents: true } }))._sum.amountCents ?? 0;
+  const balanceBefore = order.totalCents + adjBefore - order.amountPaidCents;
   await tx.order.update({ where: { id: order.id }, data: { amountPaidCents: { decrement: input.amountCents } } });
+  // Reembolso parcial de CORTESÍA (sin retiro: no libera cupo ni desmatricula) sobre un pedido ya pagado por
+  // completo: lo devuelto es un descuento posterior, no una deuda. Sin esto el saldo volvería a ser positivo, la
+  // cuota (en el plan de contado, vencida desde el checkout) se reabriría y el job de cuotas le cobraría al médico
+  // lo que se le acaba de devolver. Se registra como ajuste (condonación) y se reducen las cuotas pagadas.
+  const courtesy = input.options.releaseSeat !== true && input.options.unenroll !== true && PAID_STATES.includes(order.status) && balanceBefore <= 0 && order.amountPaidCents - input.amountCents > 0;
+  const forgiven = courtesy ? Math.max(0, balanceBefore + input.amountCents) : 0;
+  if (forgiven > 0) await forgiveRefundedAmount(tx, order.id, forgiven, refund.reason ?? input.reason ?? null, input, now);
   const balance = await recomputeBalance(tx, order.id);
   // Las cuotas se vuelven a imputar con el neto pagado: la última cubierta vuelve a quedar pendiente.
   const realloc = await reallocateInstallments(tx, order.id, now);
@@ -1199,6 +1208,30 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date): Promise<
     }
   }
   return { refund, fullyRefunded, orderId: order.id, duplicate: false };
+}
+
+/**
+ * Descuento posterior por un reembolso de cortesía: BalanceAdjustment negativo por lo que dejaría de estar pagado
+ * y las cuotas pagadas se reducen desde la última (una que queda en 0 pasa a WAIVED, fuera de la imputación), así
+ * la reimputación posterior las mantiene pagadas y el pedido no queda con saldo ni cuotas vencidas.
+ */
+async function forgiveRefundedAmount(tx: Tx, orderId: string, amountCents: number, reason: string | null, input: ApplyRefundInput, now: Date) {
+  const note = `Reembolso parcial de cortesía de ${(input.amountCents / 100).toFixed(2)} USD sobre un pedido pagado: lo devuelto se descuenta del total y no queda como deuda${reason ? ` (${reason})` : ""}.`;
+  await tx.balanceAdjustment.create({ data: { orderId, amountCents: -amountCents, reason: note, createdById: input.adminId ?? null } });
+  const list = await tx.installment.findMany({ where: { orderId, status: { not: "WAIVED" } }, orderBy: { sequence: "desc" } });
+  let left = amountCents;
+  const touched: { sequence: number; beforeCents: number; afterCents: number; waived: boolean }[] = [];
+  for (const ins of list) {
+    if (left <= 0) break;
+    const take = Math.min(left, ins.amountCents);
+    if (take <= 0) continue;
+    left -= take;
+    const after = ins.amountCents - take;
+    const waived = after === 0;
+    await tx.installment.update({ where: { id: ins.id }, data: waived ? { status: "WAIVED", paidCents: 0, paidAt: ins.paidAt ?? now } : { amountCents: after } });
+    touched.push({ sequence: ins.sequence, beforeCents: ins.amountCents, afterCents: after, waived });
+  }
+  await addOrderEvent(tx, orderId, "BALANCE_ADJUSTED", input.actor, note, { amountCents: -amountCents, cause: "COURTESY_REFUND", paymentId: input.paymentId, installments: touched });
 }
 
 async function afterRefund(d: Deps, r: RefundResult, method: PaymentMethod, unenroll: boolean | undefined, actor: Actor) {

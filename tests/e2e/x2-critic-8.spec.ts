@@ -2,12 +2,11 @@
 // reembolso PayPal, por HTTP contra el carril (app + mocks). Cada sonda comprueba el resultado REAL: BD, estado
 // del mock de Moodle / PayPal y bandeja de correos.
 //   1. Reembolso PARCIAL de cortesía desde el panel (sin retiro) en un pedido pagado completo → lo devuelto no se
-//      puede convertir en deuda: nada de «Cuota vencida — paga 10 USD» al médico.         (FALLA en HEAD)
+//      puede convertir en deuda: nada de «Cuota vencida — paga 10 USD» al médico (ajuste de saldo auditado).
 //   2. Moodle rechaza la matrícula con un error definitivo al aprobar → FAILED + aviso; rematricular → una vez.
 //   3. El reembolso ya se hizo en el panel de PayPal (webhook demorado) y el admin reembolsa desde el panel →
 //      CAPTURE_FULLY_REFUNDED visible, nada cambia; al llegar el webhook: reembolsado, cupo libre, sin Moodle.
 //   4. Reembolso PARCIAL hecho desde PayPal (webhook) en un pedido pagado completo → sin cobro de lo devuelto.
-//                                                                                        (FALLA en HEAD)
 // Carril: E2E_LANE=e2e E2E_PORT=3104 npx playwright test tests/e2e/x2-critic-8.spec.ts --project=desktop
 import fs from "node:fs";
 import path from "node:path";
@@ -163,6 +162,13 @@ test("reembolso PARCIAL de cortesía (opciones por defecto: no desmatricula, no 
   // Un reembolso de cortesía NO convierte lo devuelto en deuda: nada de «cuota vencida» ni cobro de 10 USD.
   expect(templates(o.orderId), snap).not.toContain("installment_reminder");
   expect(ord.balanceCents, snap).toBeLessThanOrEqual(0);
+  // Auditado como descuento: ajuste de saldo negativo + evento, la cuota sigue pagada (por el neto) y nada vencido.
+  expect(ins.map((i) => i.status), snap).toEqual(["PAID"]);
+  expect(q<{ amountCents: number }>(`SELECT amountCents FROM BalanceAdjustment WHERE orderId = ?`, o.orderId).map((a) => a.amountCents), snap).toEqual([-1000]);
+  expect(events(o.orderId, "BALANCE_ADJUSTED").length, snap).toBe(1);
+  expect(events(o.orderId, "REFUND").length, snap).toBe(1);
+  expect(events(o.orderId, "INSTALLMENT_OVERDUE"), snap).toHaveLength(0);
+  expect(reservationOf(o.orderId).status).toBe("CONFIRMED");
 });
 
 // ───────────── 3. Moodle rechaza la matrícula (error definitivo) ─────────────

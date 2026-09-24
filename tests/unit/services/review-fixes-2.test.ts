@@ -95,7 +95,7 @@ describe("reembolsos y certificados", () => {
     expect(await ctx.db.orderEvent.count({ where: { orderId: o.id, type: "CERTIFICATE_REVOKED" } })).toBe(1);
   });
 
-  it("reembolso parcial que deja saldo con certificado emitido → ATTENTION (no se revoca solo)", async () => {
+  it("reembolso parcial de cortesía con certificado emitido → descuento sin deuda: el certificado sigue vigente y sin aviso de saldo", async () => {
     const o = await createCheckout(ctx.d, { customer: buyer(), items: [{ productId: ctx.fx.diploma, modality: "ONLINE", planKind: "FULL" }], paymentMethod: "PAYPAL" });
     const s = await startPaypalPayment(ctx.d, o.id);
     ctx.paypal.approve(s.paypalOrderId);
@@ -105,8 +105,9 @@ describe("reembolsos y certificados", () => {
     const cert = await checkDiplomaCompletion(ctx.d, o.customerId, ctx.fx.diploma);
     await refundPayment(ctx.d, ctx.fx.admin, { paymentId: s.paymentId, amountCents: 5000, reason: "Descuento" });
     expect((await verifyCertificate(ctx.d, cert.code!))!.status).toBe("ISSUED");
-    const ev = await ctx.db.orderEvent.findFirstOrThrow({ where: { orderId: o.id, type: "ATTENTION", note: { contains: cert.code! } } });
-    expect(ev.note).toContain("saldo pendiente");
+    // x2 crítico 8: sobre un pedido pagado completo lo devuelto es un descuento posterior, no deuda.
+    expect((await ctx.db.order.findUniqueOrThrow({ where: { id: o.id } })).balanceCents).toBe(0);
+    expect(await ctx.db.orderEvent.count({ where: { orderId: o.id, type: "ATTENTION", note: { contains: cert.code! } } })).toBe(0);
   });
 });
 

@@ -222,7 +222,10 @@ describe("PayPal", () => {
     await refundPayment(ctx.d, ctx.fx.admin, { paymentId: pay.id, amountCents: 2500, reason: "Descuento posterior" });
     let after = await order(o.id);
     expect(after.status).toBe("ENROLLED");
-    expect([after.amountPaidCents, after.balanceCents]).toEqual([7500, 2500]);
+    // Descuento posterior sobre un pedido pagado completo: lo devuelto NO queda como deuda (ajuste + cuota reducida).
+    expect([after.amountPaidCents, after.balanceCents]).toEqual([7500, 0]);
+    expect((await ctx.db.installment.findMany({ where: { orderId: o.id } })).map((i) => [i.status, i.amountCents, i.paidCents])).toEqual([["PAID", 7500, 7500]]);
+    expect((await ctx.db.balanceAdjustment.findMany({ where: { orderId: o.id } })).map((a) => a.amountCents)).toEqual([-2500]);
     expect(ctx.paypal.refunds[0].amountCents).toBe(2500);
     expect(ctx.moodle.count("unenrol")).toBe(0);
     // el resto se reembolsa desde el panel de PayPal → llega solo el webhook
