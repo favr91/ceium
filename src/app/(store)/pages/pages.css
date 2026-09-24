@@ -1,0 +1,394 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Páginas informativas (/pages/quienes-somos, /pages/preguntas-frecuentes, /pages/contacto, /pages/cursos):
+   réplica de las páginas PageFly de ceium.net. Medidas tomadas de la hoja PageFly de cada página y de los
+   estilos computados en vivo a 1440 × 900 y 390 × 844. Cortes de PageFly:
+   móvil < 767.5 px · tableta 767.5–1024.5 px · portátil 1024.5–1199.5 px · escritorio ≥ 1199.5 px.
+   ───────────────────────────────────────────────────────────────────────────── */
+.pg-pf {
+  --pg-ink: #001e2b;
+  --pg-teal: #09b0b0;
+  --pg-teal-hover: #089a9a;
+  --pg-grey: #f1f1f1;
+  --pg-muted: #667880;
+  font-family: var(--font-inter), Inter, sans-serif;
+  color: var(--pg-ink);
+}
+.pg-pf p { margin: 0; }
+
+/* PageFly pone `*{letter-spacing:0!important}` en sus páginas: también el cromo (anuncio, menú, pie). */
+.store-root:has(.pg-pf),
+.store-root:has(.pg-pf) * { letter-spacing: 0 !important; }
+
+.pg-container { max-width: 1200px; margin: 0 auto; padding: 0 15px; }
+.pg-empty { font-size: 16px; line-height: 1.6; }
+
+.store-root .pg-h2 { margin: 0 0 16px; font-size: 46px; line-height: 53px; font-weight: 700; color: var(--pg-ink); }
+
+/* Botón PageFly (Contáctanos / Enviar mensaje). */
+.pg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 24px;
+  border: 0;
+  border-radius: 100px;
+  background: var(--pg-teal);
+  color: #fff;
+  font: 500 14px/16px var(--font-inter), Inter, sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.store-root .pg-btn,
+.store-root .pg-btn:visited { color: #fff; text-decoration: none; }
+.pg-btn:hover { background: var(--pg-teal-hover); }
+.pg-btn:focus-visible { outline: 2px solid var(--pg-ink); outline-offset: 2px; }
+.pg-btn[disabled] { opacity: 0.7; cursor: progress; }
+
+/* ───────────── Quiénes somos ───────────── */
+.pg-about__intro { padding: 96px 0; }
+.pg-pf .pg-eyebrow {
+  margin: 0 0 24px;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 400;
+  color: var(--pg-teal);
+  text-transform: uppercase;
+  letter-spacing: 1.5px !important;
+}
+.store-root .pg-about__title { margin: 0; font-size: 57px; line-height: 66px; font-weight: 700; color: var(--pg-ink); }
+
+.pg-about__hero {
+  display: flex;
+  justify-content: center;
+  padding: 184px 0;
+  background-color: #2b3a40;
+  background-size: cover;
+  background-position: center center;
+}
+.pg-play {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  transition: transform 0.3s;
+}
+.pg-play img { display: block; width: 88px; height: auto; }
+.pg-play:hover { transform: scale(1.1); }
+.pg-play:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+
+.pg-about__story { padding-top: 96px; }
+.pg-about__box { display: flex; align-items: center; padding: 64px; border-radius: 32px; background: var(--pg-grey); }
+.pg-about__copy,
+.pg-about__media { flex: 1 1 0; min-width: 0; }
+.pg-about__copy { margin-right: 40px; }
+.pg-about__media { margin-left: 40px; }
+.pg-pf .pg-about__text { margin-bottom: 32px; font-size: 15px; line-height: 21px; color: var(--pg-ink); }
+.pg-about__media img { display: block; width: 100%; height: auto; border-radius: 16px; }
+
+.pg-team { padding: 96px 14% 98px; }
+/* 48 px del encabezado + 12 px de relleno de las diapositivas del ContentList de PageFly. */
+.pg-team__head { margin-bottom: 60px; text-align: center; }
+.pg-pf .pg-team__text { padding: 0 24%; font-size: 15px; line-height: 21px; color: var(--pg-ink); }
+.pg-team__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; margin: 0; padding: 0; }
+.pg-member { min-width: 0; }
+.pg-member__photo { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; margin: 0 0 12px; border-radius: 20px; }
+.store-root .pg-member__name { margin: 0 0 4px; font-size: 16px; line-height: 18px; font-weight: 700; color: var(--pg-ink); }
+.pg-pf .pg-member__role { font-size: 14px; line-height: 16px; color: rgba(0, 30, 43, 0.6); }
+
+/* Diálogo del video (popup de PageFly). */
+.pg-video {
+  width: min(854px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 32px);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: #fff;
+  overflow: hidden;
+}
+.pg-video::backdrop { background: rgba(0, 0, 0, 0.9); }
+.pg-video__box { position: relative; padding-top: 24px; }
+.pg-video__close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--pg-ink, #001e2b);
+  cursor: pointer;
+}
+.pg-video__close svg { width: 12px; height: 12px; }
+.pg-video__close:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.pg-video__frame { aspect-ratio: 16 / 9; background: #000; }
+.pg-video__frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+/* ───────────── Preguntas frecuentes ───────────── */
+.pg-faq__section { padding: 96px 18% 76px; background: var(--pg-grey); }
+.store-root .pg-faq__title { margin: 0 0 56px; font-size: 46px; line-height: 53px; font-weight: 700; text-align: center; color: var(--pg-ink); }
+.pg-faq__item { margin: 0; }
+.pg-faq__q {
+  position: relative;
+  display: block;
+  margin-bottom: 16px;
+  padding: 24px;
+  border: 1px solid #eee;
+  border-radius: 20px;
+  background: #fff;
+  color: var(--pg-ink);
+  font-size: 16px;
+  line-height: 18px;
+  font-weight: 700;
+  list-style: none;
+  cursor: pointer;
+}
+.pg-faq__q::-webkit-details-marker { display: none; }
+.pg-faq__q::marker { content: ""; }
+.pg-faq__q span { display: block; line-height: normal; }
+.pg-faq__q:focus-visible { outline: 2px solid var(--pg-teal); outline-offset: 2px; }
+.pg-faq__icon {
+  position: absolute;
+  top: calc(50% - 8px);
+  right: 15px;
+  width: 8px;
+  height: 16px;
+  transition: transform 0.2s ease;
+}
+.pg-faq__item[open] > .pg-faq__q .pg-faq__icon { transform: rotate(90deg); }
+.pg-faq__a { padding: 0 24px 24px; font-size: 15px; line-height: 21px; color: var(--pg-ink); overflow-wrap: break-word; }
+.store-root .pg-faq__a a { color: #0000ee; text-decoration: underline; }
+.store-root .pg-faq__a a:hover { text-decoration: none; }
+.pg-faq__a strong { font-weight: 700; }
+.pg-faq .home-closing { padding-top: 0; }
+/* En esta página PageFly pinta el fondo de la llamada final a tamaño natural desde la esquina (logo arriba a la
+   derecha) y el botón lleva 8 px de margen derecho. */
+.pg-faq .home-closing__box { background-size: auto; background-position: 0 0; }
+.pg-faq .home-closing .home-btn { margin-right: 8px; }
+
+/* ───────────── Contacto ───────────── */
+.pg-contact__section { padding: 34px 0 96px; background: var(--pg-grey); }
+.pg-contact__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 60px; padding-top: 30px; padding-bottom: 30px; }
+.pg-card-box { min-width: 0; border: 1px solid #eee; border-radius: 20px; background: #fff; }
+.pg-contact__info { padding: 32px; }
+.pg-contact__form { padding: 22px 32px 32px; }
+.store-root .pg-contact__title { margin: 0 0 16px; font-size: 33px; line-height: 38px; font-weight: 700; color: var(--pg-ink); }
+.pg-pf .pg-contact__text { margin-bottom: 20px; font-size: 15px; line-height: 21px; }
+.pg-contact__lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pg-contact__list { margin: 0 0 24px; font-size: 15px; line-height: 17px; }
+.pg-contact__list li { display: flex; align-items: center; margin-bottom: 8px; }
+.pg-contact__list li:last-child { margin-bottom: 0; }
+.pg-contact__list--phones .pg-contact__icon { margin-right: 8px; }
+.pg-contact__list--emails .pg-contact__icon { margin-right: 8px; }
+.pg-contact__icon { flex: none; width: 14px; height: 14px; color: var(--pg-ink); }
+.store-root .pg-contact__list a { color: var(--pg-ink); text-decoration: none; overflow-wrap: anywhere; }
+.store-root .pg-contact__list a:hover { text-decoration: underline; }
+.store-root .pg-contact__subtitle { margin: 0 0 12px; font-size: 16px; line-height: 20.8px; font-weight: 700; color: var(--pg-teal); }
+.pg-pf .pg-contact__sede { margin-bottom: 12px; font-size: 15px; line-height: 21px; }
+.pg-pf .pg-contact__sede:last-child { margin-bottom: 24px; }
+.pg-contact__sede strong { font-weight: 700; }
+.pg-contact__social { display: flex; align-items: center; margin: 0; padding: 3px 0 0; }
+.pg-contact__social li { display: flex; }
+.pg-contact__social li + li { margin-left: 20px; }
+.pg-contact__social a { display: flex; color: var(--pg-ink); transition: color 0.2s; }
+.pg-contact__social a:hover { color: var(--pg-teal); }
+.pg-contact__social a:focus-visible { outline: 2px solid var(--pg-teal); outline-offset: 2px; }
+
+/* Formulario */
+.pg-form__trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.pg-form__row { display: grid; gap: 16px; }
+.pg-form__row--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pg-form__field { min-width: 0; padding: 8px 0; }
+.pg-form__field label { display: block; margin: 0 0 8px; font-size: 15px; line-height: 17px; color: var(--pg-ink); }
+.pg-form__field sup { position: relative; top: -8px; font-size: 12.5px; line-height: 0; color: #f00; vertical-align: baseline; }
+.pg-form__field input,
+.pg-form__field textarea {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #c4c4c4;
+  border-radius: 8px;
+  background: #fdfdfd;
+  color: #000;
+  font: 400 16px/normal var(--font-inter), Inter, sans-serif;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.pg-form__field input { height: 46px; }
+.pg-form__field textarea { height: 134px; padding: 6px 12px; resize: none; }
+.pg-form__field input::placeholder,
+.pg-form__field textarea::placeholder { color: #d1d5db; opacity: 1; }
+.pg-form__field input:focus,
+.pg-form__field textarea:focus { outline: none; border-color: var(--pg-teal); box-shadow: 0 0 0 1px var(--pg-teal); }
+.pg-form__field [aria-invalid="true"] { border-color: #d72c0d; }
+.pg-form__field [aria-invalid="true"]:focus { box-shadow: 0 0 0 1px #d72c0d; }
+.pg-pf .pg-form__error { margin-top: 6px; font-size: 13px; line-height: 17px; color: #d72c0d; }
+.pg-pf .pg-form__status { margin: 8px 0 0; padding: 12px 16px; border-radius: 12px; font-size: 15px; line-height: 21px; outline: none; }
+.pg-pf .pg-form__status:empty { display: none; }
+.pg-pf .pg-form__status--ok { background: #e6f7f7; color: #05696a; }
+.pg-pf .pg-form__status--error { background: #fdecea; color: #b42318; }
+.pg-form__actions { padding-top: 8px; }
+.pg-form__actions .pg-btn { margin-top: 8px; }
+
+/* ───────────── Nuestros cursos ───────────── */
+.pg-courses__section { padding: 80px 0 96px; background: #fff; }
+.store-root .pg-courses__title { margin: 0 0 64px; font-size: 48px; line-height: 55px; font-weight: 700; color: var(--pg-ink); }
+.pg-tabs__bar { display: flex; width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.pg-tabs__bar::-webkit-scrollbar { display: none; }
+.pg-tabs__tab {
+  flex: none;
+  margin: 0;
+  padding: 18px 24px;
+  border: 0;
+  border-radius: 20px 20px 0 0;
+  background: #fff;
+  color: var(--pg-ink);
+  font: 700 19px/22px var(--font-inter), Inter, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.pg-tabs__tab:hover { background-color: rgba(0, 30, 43, 0.1); }
+.pg-tabs__tab[aria-selected="true"] { background: var(--pg-grey); }
+.pg-tabs__tab:focus-visible { outline: 2px solid var(--pg-teal); outline-offset: -2px; }
+/* 40 px del panel + 8 px de relleno de las diapositivas de PageFly arriba y abajo. */
+.pg-tabs__panel { padding: 48px; border-radius: 32px; background: var(--pg-grey); }
+.pg-tabs__panel--first { border-top-left-radius: 0; }
+.pg-tabs__panel[hidden] { display: none; }
+
+.pg-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; margin: 0; padding: 0; }
+.pg-card { min-width: 0; padding: 16px; border: 1px solid #eee; border-radius: 20px; background: #fff; }
+.pg-card__media { display: block; margin-bottom: 15px; overflow: hidden; border: 1px solid #eee; border-radius: 8px; line-height: 0; background: #fff; }
+.pg-card__media img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
+.store-root .pg-card__title { margin: -4px 0 8px; font-size: 16px; line-height: 18px; font-weight: 700; color: var(--pg-ink); overflow-wrap: break-word; }
+.store-root .pg-card__title a { color: inherit; text-decoration: none; }
+.store-root .pg-card__title a:hover { text-decoration: underline; }
+.pg-pf .pg-card__note { font-size: 12px; line-height: 14px; color: var(--pg-muted); }
+.pg-pf .pg-card__note--closed { color: #b42318; }
+.pg-card__btn {
+  display: inline-block;
+  margin-top: 24px;
+  padding: 12px 20px;
+  border-radius: 100px;
+  background: var(--pg-teal);
+  color: #fff;
+  font-size: 14px;
+  line-height: 17px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+.store-root .pg-card__btn,
+.store-root .pg-card__btn:visited { color: #fff; text-decoration: none; }
+.pg-card__btn:hover { background: var(--pg-teal-hover); }
+.pg-card__btn:focus-visible { outline: 2px solid var(--pg-ink); outline-offset: 2px; }
+
+/* ───────────── portátil (1024.5–1199.5) ───────────── */
+@media (min-width: 1024.5px) and (max-width: 1199.4999px) {
+  .pg-about__hero { padding: 156px 0; }
+  .pg-about__box { padding: 48px; }
+  .pg-about__copy { margin-right: 32px; }
+  .pg-about__media { margin-left: 32px; }
+  .pg-team { padding-top: 64px; }
+  .pg-team__head { margin-bottom: 56px; }
+  .pg-faq__section { padding-left: 12%; padding-right: 12%; }
+}
+
+/* ───────────── tableta (767.5–1024.5) ───────────── */
+@media (min-width: 767.5px) and (max-width: 1024.4999px) {
+  .pg-about__intro { padding: 64px 0; }
+  .store-root .pg-about__title { font-size: 46px; line-height: 53px; }
+  .pg-about__hero { padding: 80px 0; }
+  .pg-play img { width: 72px; }
+  .store-root .pg-h2 { font-size: 33px; line-height: 38px; }
+  .pg-about__story { padding-top: 64px; }
+  .pg-pf .pg-about__text { margin-bottom: 24px; }
+  .pg-about__copy { margin-right: 24px; }
+  .pg-about__media { margin-left: 24px; }
+  .pg-team { padding: 64px 10% 64px; }
+  .pg-team__head { margin-bottom: 40px; }
+  .pg-pf .pg-team__text { padding: 0; }
+  .pg-team__grid { gap: 20px; }
+
+  .pg-faq__section { padding: 64px 104px 48px; }
+  .store-root .pg-faq__title { margin-bottom: 40px; font-size: 33px; line-height: 38px; }
+  .pg-faq__q { padding: 20px; font-size: 15px; line-height: 17px; }
+  .pg-faq__a { padding: 0 20px 16px; }
+
+  .pg-contact__section { padding: 36px 0 52px; }
+  .pg-contact__grid { gap: 30px; }
+  .pg-contact__info { padding: 24px; }
+  .pg-contact__form { padding: 18px 24px 24px; }
+  .pg-contact__lists { grid-template-columns: 1fr; }
+  .pg-contact__list--phones { margin-bottom: 8px; }
+
+  .pg-courses__section { padding: 64px 0; }
+  .store-root .pg-courses__title { margin-bottom: 40px; font-size: 29px; line-height: 33px; }
+  .pg-tabs__tab { padding: 16px 20px; font-size: 16px; line-height: 18px; }
+  .pg-tabs__panel { padding: 32px; }
+  .pg-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+}
+
+/* ───────────── móvil (< 767.5) ───────────── */
+@media (max-width: 767.4999px) {
+  .pg-about__intro { padding: 48px 0; }
+  .pg-pf .pg-eyebrow { margin-bottom: 16px; }
+  .store-root .pg-about__title { font-size: 33px; line-height: 39px; }
+  .pg-about__hero { padding: 64px 0; }
+  .pg-play img { width: 72px; }
+  .store-root .pg-h2 { font-size: 29px; line-height: 33px; }
+  .pg-about__story { padding-top: 48px; }
+  .pg-about__box { display: block; padding: 20px; border-radius: 24px; }
+  .pg-about__copy { margin: 0 0 32px; }
+  .pg-about__media { margin: 0; }
+  .pg-pf .pg-about__text { margin-bottom: 24px; }
+  .pg-team { padding: 48px 0 48px; }
+  .pg-team__head { margin-bottom: 32px; }
+  .store-root .pg-team__title { margin-bottom: 8px; }
+  .pg-pf .pg-team__text { padding: 0; }
+  .pg-team__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .pg-member__photo { margin-bottom: 8px; border-radius: 12px; }
+  .store-root .pg-member__name { font-size: 14px; line-height: 16px; }
+  .pg-pf .pg-member__role { font-size: 12px; line-height: 14px; }
+
+  .pg-faq__section { padding: 48px 0 32px; }
+  .store-root .pg-faq__title { margin-bottom: 32px; font-size: 33px; line-height: 38px; }
+  .pg-faq__q { margin-bottom: 12px; padding: 16px; border-radius: 16px; }
+  .pg-faq__a { padding: 0 16px 16px; }
+
+  .pg-contact__section { padding: 48px 0; }
+  .pg-contact__grid { display: block; padding-top: 0; padding-bottom: 0; }
+  .pg-contact__info { margin-bottom: 16px; padding: 20px; }
+  .pg-contact__form { padding: 12px 20px 20px; }
+  .store-root .pg-contact__title { margin-bottom: 8px; font-size: 29px; line-height: 33px; }
+  .pg-contact__lists { grid-template-columns: 1fr; }
+  .pg-contact__list--phones { margin-bottom: 8px; }
+  .pg-form__row--2 { grid-template-columns: 1fr; gap: 0; }
+
+  .pg-courses__section { padding: 40px 0 48px; }
+  .store-root .pg-courses__title { margin-bottom: 32px; font-size: 29px; line-height: 33px; }
+  .pg-tabs__tab { padding: 12px 16px; font-size: 16px; line-height: 18px; border-radius: 12px 12px 0 0; }
+  .pg-tabs__panel { padding: 10px; border-top-right-radius: 0; }
+  .pg-tabs__panel--first { border-top-right-radius: 32px; }
+  .pg-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .pg-card { padding: 10px; }
+  .store-root .pg-card__title { margin: -8px 0 0; }
+  .pg-pf .pg-card__note--status { display: none; }
+  .pg-card__btn { display: block; width: 100%; margin-top: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-play, .pg-faq__icon, .pg-tabs__tab { transition: none; }
+  .pg-play:hover { transform: none; }
+}
