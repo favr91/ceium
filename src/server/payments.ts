@@ -88,6 +88,16 @@ async function applyConfirmedPayment(tx: Tx, paymentId: string, actor: Actor, no
       const r = await satisfyFirstPayment(tx, order.id, actor, now, { balanceCents: balance });
       result.seatProblem = r.seatProblem;
       result.shouldEnroll = !result.seatProblem;
+      // Otro pago del mismo primer pago sigue en verificación (p.ej. PayPal cobrado a la vez que se registraba un
+      // pago móvil): el médico pagó dos veces. El staff debe rechazar ese comprobante o devolver el dinero.
+      const others = await tx.payment.findMany({ where: { orderId: order.id, id: { not: p.id }, status: "AWAITING_VERIFICATION" }, select: { id: true, method: true, reference: true, amountUsdCents: true } });
+      if (others.length > 0) {
+        const refs = others.map((a) => `${T.METHOD_LABELS[a.method] ?? a.method} ref. ${a.reference ?? "—"} (${(a.amountUsdCents / 100).toFixed(2)} USD)`).join(", ");
+        await addOrderEvent(tx, order.id, "ATTENTION", SYSTEM, `El pedido quedó pagado, pero hay otro pago por verificar: ${refs}. Si también se cobró, recházalo y devuelve el dinero (o apruébalo y reembolsa el excedente).`, {
+          paymentId: p.id,
+          awaitingPaymentIds: others.map((a) => a.id),
+        });
+      }
     } else {
       const stillAwaiting = await tx.payment.count({ where: { orderId: order.id, status: "AWAITING_VERIFICATION" } });
       if (order.status === "AWAITING_VERIFICATION" && stillAwaiting === 0) {
@@ -710,6 +720,9 @@ export async function capturePaypalReturn(d: Deps, paypalOrderId: string, source
   if (!p) throw new DomainError("NOT_FOUND", "No encontramos ese pago de PayPal.");
   const done = (status: ReturnCaptureStatus) => ({ status, orderId: p.orderId, orderToken: p.order.token });
   if (p.status === "COMPLETED" || p.status === "REFUNDED" || p.status === "PARTIALLY_REFUNDED") return done("COMPLETED");
+  if (p.status !== "PENDING" || p.providerStatus !== "CAPTURE_PENDING") {
+    if (await skipCaptureWhileManualAwaiting(d, p.id)) return done("FAILED");
+  }
 
   let res;
   try {
@@ -734,6 +747,35 @@ export async function capturePaypalReturn(d: Deps, paypalOrderId: string, source
   }
   await onPaypalCaptureDenied(d, { captureId: res.captureId, paypalOrderId, raw: res.raw, source });
   return done("FAILED");
+}
+
+/**
+ * El primer pago del pedido ya está en verificación con un pago manual (el médico abrió PayPal, lo dejó en otra
+ * pestaña y registró un pago móvil con comprobante; luego volvió y aprobó PayPal): capturar le cobraría dos
+ * veces. No se captura (la orden aprobada sin capturar caduca sola en PayPal) y queda en el historial. Si el
+ * admin rechaza el comprobante, el médico puede volver a pagar con PayPal desde su pedido.
+ */
+async function skipCaptureWhileManualAwaiting(d: Deps, paymentId: string): Promise<boolean> {
+  return withTx(d, async (tx) => {
+    const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { orderId: true, paypalOrderId: true } });
+    const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true } });
+    if (order.status !== "AWAITING_VERIFICATION") return false;
+    const awaiting = await tx.payment.findMany({ where: { orderId: p.orderId, status: "AWAITING_VERIFICATION" }, select: { id: true, method: true, reference: true } });
+    if (awaiting.length === 0) return false;
+    const n = await tx.payment.updateMany({
+      where: { id: paymentId, status: { in: ["PENDING", "CANCELLED", "FAILED"] }, NOT: { providerStatus: "NOT_CAPTURED" } },
+      data: { status: "CANCELLED", providerStatus: "NOT_CAPTURED" },
+    });
+    if (n.count === 1) {
+      const refs = awaiting.map((a) => `${T.METHOD_LABELS[a.method] ?? a.method} ref. ${a.reference ?? "—"}`).join(", ");
+      await addOrderEvent(tx, p.orderId, "PAYMENT_NOT_CAPTURED", SYSTEM, `No se capturó el pago de PayPal ${p.paypalOrderId}: el pedido ya tiene un pago en verificación (${refs}). No se cobró al comprador.`, {
+        paymentId,
+        paypalOrderId: p.paypalOrderId,
+        awaitingPaymentIds: awaiting.map((a) => a.id),
+      });
+    }
+    return true;
+  });
 }
 
 /**

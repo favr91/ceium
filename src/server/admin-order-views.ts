@@ -14,7 +14,9 @@ const PAID: OrderStatus[] = ["PAID", "PARTIALLY_PAID", "ENROLLED"];
 /** Vistas (pestañas) del índice. `status` (uno o varios estados exactos) es un filtro aparte. */
 export const ORDER_VIEWS = {
   ALL: { label: "Todos", where: {} },
-  AWAITING_VERIFICATION: { label: "Por verificar", where: { status: "AWAITING_VERIFICATION" } },
+  // Por pago, no solo por estado del pedido: un pago manual en verificación sobre un pedido ya pagado (cuota o
+  // saldo, o un segundo pago del médico) también espera al staff, y el aviso del índice ya lo cuenta.
+  AWAITING_VERIFICATION: { label: "Por verificar", where: { OR: [{ status: "AWAITING_VERIFICATION" }, { payments: { some: { status: "AWAITING_VERIFICATION" } } }] } },
   PENDING_PAYMENT: { label: "Pago pendiente", where: { status: "PENDING_PAYMENT" } },
   BALANCE: { label: "Con saldo", where: { status: { in: PAID }, balanceCents: { gt: 0 } } },
   ENROLLED: { label: "Inscritos", where: { status: "ENROLLED" } },

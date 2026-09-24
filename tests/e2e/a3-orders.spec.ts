@@ -87,7 +87,12 @@ test.describe("panel · pedidos", () => {
     await expect(page.getByRole("tab", { name: /^Por verificar/ })).toHaveAttribute("aria-selected", "true");
     const rows = mobile ? page.getByTestId("orders-list").getByRole("listitem") : page.getByTestId("orders-table").locator("tbody tr");
     await expect(rows.first()).toBeVisible();
-    for (const t of await rows.allTextContents()) expect(t).toContain("Por verificar");
+    // Cada fila tiene un pago por verificar: el pedido está «Por verificar» o (pedido ya pagado con otro pago, p.ej.
+    // PayPal cobrado a la vez que se registraba un pago móvil) lleva la marca de pago por verificar.
+    for (const row of await rows.all()) {
+      const pending = (await row.textContent())?.includes("Por verificar") || (await row.locator(".dot-attn").count()) > 0;
+      expect(pending, (await row.textContent()) ?? "").toBe(true);
+    }
 
     // Filtro por método (PayPal) en «Todos» y orden por total (mayor a menor).
     await page.getByRole("tab", { name: /^Todos/ }).click();
