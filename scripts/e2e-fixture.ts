@@ -6,7 +6,7 @@
 //   npx tsx scripts/e2e-fixture.ts setting '{"key":"enrollment.retry","value":{"maxAttempts":8,"baseDelaySeconds":5}}'
 // Imprime una sola línea `@@JSON <resultado>` (lo demás es log).
 import "dotenv/config";
-import { services } from "../src/server/services";
+import { createDefaultDeps, createServices, services } from "../src/server/services";
 import type { SessionUser } from "../src/server/auth";
 
 const DEFAULT_DIPLOMA = "diplomado-universitario-de-ecografia-integral-en-el-diagnostico-medico";
@@ -137,6 +137,43 @@ const commands: Record<string, (input: Input) => Promise<unknown>> = {
       idempotencyKey: String(input.idempotencyKey ?? `e2e-${Date.now()}`),
     });
     return { refundId: r.refund.id, status: r.refund.status, fullyRefunded: r.fullyRefunded };
+  },
+
+  /**
+   * Reembolso desde el panel cuya llamada a PayPal se queda SIN RESPUESTA (timeout): con `paypalDid` PayPal sí
+   * lo hace (el mock lo registra con el PayPal-Request-Id de la fila) y la respuesta se pierde; sin él, falla antes
+   * de llegar. Mismo servicio de dominio que el panel, con el puerto de PayPal real envuelto (el mock no simula
+   * timeouts). Después «pasan» `ageMinutes` minutos para esa fila (como age-order), para que el job la retome.
+   */
+  async "refund-lost-response"(input) {
+    const base = createDefaultDeps();
+    const paypal: typeof base.paypal = {
+      ...base.paypal,
+      async refundCapture(captureId, amountCents, opts) {
+        if (input.paypalDid) await base.paypal.refundCapture(captureId, amountCents, opts);
+        throw new Error("fetch failed: ETIMEDOUT (respuesta de PayPal perdida)");
+      },
+    };
+    const s = createServices({ ...base, paypal });
+    let error = "";
+    try {
+      await s.payments.refundPayment(await adminSession(), {
+        paymentId: String(input.paymentId),
+        amountCents: input.amountCents == null ? undefined : Number(input.amountCents),
+        reason: String(input.reason ?? "e2e"),
+        unenroll: Boolean(input.unenroll ?? true),
+        releaseSeat: Boolean(input.releaseSeat ?? true),
+        keepCertificate: false,
+        idempotencyKey: String(input.idempotencyKey ?? `e2e-lost-${Date.now()}`),
+      });
+    } catch (e) {
+      error = String((e as Error)?.message ?? e);
+    }
+    const db = base.db;
+    const row = await db.refund.findFirstOrThrow({ where: { paymentId: String(input.paymentId) }, orderBy: { createdAt: "desc" } });
+    const ms = Number(input.ageMinutes ?? 10) * 60_000;
+    await db.refund.update({ where: { id: row.id }, data: { createdAt: new Date(row.createdAt.getTime() - ms) } });
+    return { refundId: row.id, status: row.status, error };
   },
 
   /** Cambia una configuración como lo hace el panel (auditado) y devuelve el valor anterior. */

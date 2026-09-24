@@ -53,7 +53,6 @@ interface CourseCohort { productId: string; moodleCourseId: number; sedeSlug: st
 interface Placed { orderId: string; token: string; number: number; dueNowCents: number; totalCents: number }
 let settingsBefore: unknown = null;
 let retryBefore: unknown = null;
-let approveOnRefundedToast: string | undefined;
 
 function proofPng(): Buffer {
   const chunk = (type: string, data: Buffer) => {
@@ -280,7 +279,19 @@ for (const second of ["approve", "reject"] as const) {
         // Dinero recibido en un pedido cerrado: el staff debe verlo (ATTENTION) y el panel no debe decir «al día».
         expect(events(o.orderId, "ATTENTION").some((e) => /pedido cerrado/.test(e.note ?? ""))).toBe(true);
         expect(order(o.orderId)).toMatchObject({ amountPaidCents: o.totalCents, balanceCents: 0 });
-        approveOnRefundedToast = toast; // el texto del panel se juzga aparte (fuera de src/server)
+        // El panel no dice «al día»: avisa que el pedido está cerrado y que ese dinero hay que devolverlo.
+        expect(toast).not.toMatch(/quedó al día|quedó pagado|se inició la matrícula/);
+        expect(toast).toMatch(/pedido está reembolsado/);
+        expect(toast).toMatch(/devolverle este pago/);
+        // …y el admin puede devolverlo desde la misma ficha: el 2.º pago queda REFUNDED, el pedido sigue cerrado.
+        const tRefund2 = await refundInPanel(A.page, o.orderId, r2);
+        expect(tRefund2).toMatch(/Reembolso completado/);
+        const p2 = paymentRows(o.orderId).find((p) => p.reference === r2)!;
+        expect(p2).toMatchObject({ status: "REFUNDED", refundedCents: p2.amountUsdCents });
+        expect(order(o.orderId).status).toBe("REFUNDED");
+        expect(reservationOf(o.orderId).status).toBe("RELEASED");
+        expectCohortConsistent(C.cohortId);
+        expect(await moodleCoursesOf(request, o.orderId)).toEqual([]);
       } else {
         // El correo de rechazo no invita a «registrar el pago de nuevo» en un pedido que ya no admite pagos.
         const rej = emails(o.orderId).filter((m) => m.template === "payment_rejected").pop()!;
@@ -294,13 +305,6 @@ for (const second of ["approve", "reject"] as const) {
   });
 }
 
-test("panel: aprobar un comprobante en un pedido ya reembolsado no dice «El pedido quedó al día» (el dinero hay que devolverlo)", async () => {
-  // Defecto abierto del panel (src/app/admin/(panel)/orders/actions.ts → approvalMessage), fuera de src/server:
-  // el servicio deja ATTENTION «pago en un pedido cerrado», pero el toast le dice al admin que todo quedó al día.
-  test.fail(true, "approvalMessage no distingue pedidos cerrados (REFUNDED/CANCELLED)");
-  expect(approveOnRefundedToast).toBeTruthy();
-  expect(approveOnRefundedToast).not.toMatch(/quedó al día|quedó pagado/);
-});
 
 // ───────────── 2b. comprobante duplicado rechazado en un pedido ya pagado / con otro en verificación ─────────────
 

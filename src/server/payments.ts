@@ -1518,7 +1518,7 @@ async function executeRefund(d: Deps, input: RefundInput, actor: Actor): Promise
       }
       if (!p.paypalCaptureId) throw new DomainError("INVALID_STATE", "El pago PayPal no tiene captura asociada.");
       const row = await tx.refund.create({
-        data: { paymentId: p.id, amountCents: amount, reason: input.reason ?? null, status: "PENDING", manual: false, createdById: adminId, requestKey, options: optionsJson(options) },
+        data: { paymentId: p.id, amountCents: amount, reason: input.reason ?? null, status: "PENDING", manual: false, createdById: adminId, requestKey, options: optionsJson(options), createdAt: now },
       });
       await addOrderEvent(tx, p.orderId, "REFUND_REQUESTED", actor, input.reason ?? null, { paymentId: p.id, refundId: row.id, amountCents: amount, options: optionsJson(options) as Prisma.InputJsonValue });
       return { kind: "call", rowId: row.id, captureId: p.paypalCaptureId, amountCents: amount, reason: row.reason, options };
@@ -1568,6 +1568,59 @@ async function executeRefund(d: Deps, input: RefundInput, actor: Actor): Promise
   }
   await afterRefund(d, result, head.method, prep.options.unenroll, actor);
   return result;
+}
+
+/**
+ * Job: reembolsos PayPal que quedaron PENDING (PayPal no respondió / timeout y el webhook PAYMENT.CAPTURE.REFUNDED
+ * nunca llegó). Se retoman con el MISMO PayPal-Request-Id (`refund-<fila>`), así que si PayPal ya lo hizo devuelve
+ * ese mismo reembolso y se aplica una sola vez con las opciones que eligió el admin (cupo, matrícula, certificado);
+ * si no lo hizo, lo hace ahora. Un rechazo definitivo deja la fila FAILED y un ATTENTION en el pedido; si sigue sin
+ * respuesta después de `attentionAfterMs`, también se avisa (una vez) para que el equipo lo revise en PayPal.
+ */
+export async function reconcilePendingRefunds(d: Deps, opts: { minAgeMs?: number; attentionAfterMs?: number } = {}) {
+  const now = d.now().getTime();
+  const rows = await d.db.refund.findMany({
+    where: { status: "PENDING", manual: false, createdAt: { lte: new Date(now - (opts.minAgeMs ?? 5 * 60_000)) } },
+    select: { id: true, paymentId: true, amountCents: true, requestKey: true, createdAt: true, payment: { select: { orderId: true } } },
+    orderBy: { createdAt: "asc" },
+    take: 50,
+  });
+  const out = { checked: rows.length, completed: 0, pending: 0, failed: 0, errors: 0 };
+  const usd = (c: number) => `${(c / 100).toFixed(2)} USD`;
+  const attention = async (orderId: string, rowId: string, note: string) => {
+    const seen = await d.db.orderEvent.findFirst({ where: { orderId, type: "ATTENTION", note: { contains: rowId } }, select: { id: true } });
+    if (!seen) await withTx(d, (tx) => addOrderEvent(tx, orderId, "ATTENTION", SYSTEM, note, { refundId: rowId }));
+  };
+  for (const r of rows) {
+    // Solo si sigue PENDING (otro proceso o el webhook pudo resolverla mientras tanto).
+    if ((await d.db.refund.findUnique({ where: { id: r.id }, select: { status: true } }))?.status !== "PENDING") continue;
+    try {
+      await executeRefund(d, { paymentId: r.paymentId, idempotencyKey: r.requestKey }, SYSTEM);
+      out.completed++;
+    } catch (e) {
+      const row = await d.db.refund.findUnique({ where: { id: r.id }, select: { status: true, error: true } });
+      const det = isDomainError(e) ? (e.details ?? {}) : {};
+      if (row?.status === "COMPLETED") {
+        out.completed++;
+      } else if (row?.status === "FAILED") {
+        out.failed++;
+        await attention(r.payment.orderId, r.id, `PayPal rechazó el reembolso de ${usd(r.amountCents)} (fila ${r.id}): ${String(row.error ?? "").slice(0, 200)}. El dinero NO se devolvió: revísalo e inicia uno nuevo.`);
+      } else if (isDomainError(e) && e.code === "INVALID_STATE") {
+        // El pago ya no es reembolsable (p.ej. se reembolsó completo por otra vía): la fila no puede completarse.
+        await d.db.refund.updateMany({ where: { id: r.id, status: "PENDING" }, data: { status: "FAILED", error: e.message } });
+        out.failed++;
+        await attention(r.payment.orderId, r.id, `El reembolso de ${usd(r.amountCents)} (fila ${r.id}) no se pudo confirmar: ${e.message} Revisa en PayPal si el dinero se devolvió.`);
+      } else {
+        if (det.pending === true) out.pending++;
+        else out.errors++;
+        d.log.warn(`[paypal] reembolso ${r.id} sigue sin confirmar`, e);
+        if (now - r.createdAt.getTime() >= (opts.attentionAfterMs ?? 24 * 3600_000)) {
+          await attention(r.payment.orderId, r.id, `El reembolso PayPal de ${usd(r.amountCents)} (fila ${r.id}) sigue sin confirmar desde ${r.createdAt.toISOString()}: PayPal no responde. Revísalo en PayPal.`);
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /** Webhook PAYMENT.CAPTURE.REFUNDED: registra reembolsos hechos desde PayPal (o confirma los nuestros). */

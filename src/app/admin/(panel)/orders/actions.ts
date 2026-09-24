@@ -44,6 +44,11 @@ async function approvalMessage(orderId: string, before: string | null, seatLostB
     select: { status: true, amountPaidCents: true, dueNowCents: true, balanceCents: true },
   });
   if (!o) return "Pago aprobado.";
+  if (o.status === "REFUNDED" || o.status === "CANCELLED") {
+    // El servicio no reabre un pedido cerrado (sin cupo, sin Moodle, sin correo) y deja un ATTENTION: este dinero
+    // hay que devolverlo al cliente o reabrir el pedido a mano.
+    return `Pago aprobado, pero el pedido está ${o.status === "REFUNDED" ? "reembolsado" : "cancelado"}: no se matriculó ni se reservó cupo. Hay que devolverle este pago al cliente (Reembolsar) o reabrir el pedido a mano.`;
+  }
   if (["PENDING_PAYMENT", "AWAITING_VERIFICATION", "REJECTED", "EXPIRED"].includes(o.status)) {
     const missing = Math.max(0, o.dueNowCents - o.amountPaidCents);
     return missing > 0
