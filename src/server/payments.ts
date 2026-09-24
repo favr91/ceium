@@ -345,6 +345,13 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
     const acceptsFirst = PREPAID_STATES.includes(order.status);
     const acceptsInstallment = PAID_STATES.includes(order.status) && order.balanceCents > 0;
     if (!acceptsFirst && !acceptsInstallment) throw new DomainError("INVALID_STATE", "Este pedido no admite nuevos pagos.");
+    if (isCustomer && acceptsFirst) {
+      // PayPal ya retiene el dinero del primer pago (CAPTURE_PENDING): igual que startPaypalPayment, no se acepta
+      // otro pago (p.ej. desde una pestaña del pedido abierta antes). Pagaría dos veces y, si el staff rechazaba ese
+      // comprobante, el pedido se cerraba y liberaba el cupo con el dinero de PayPal aún retenido.
+      const held = await tx.payment.findFirst({ where: { orderId: order.id, method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" }, select: { id: true } });
+      if (held) throw new DomainError("INVALID_STATE", "PayPal está revisando tu pago anterior de este pedido. Te avisaremos por correo cuando se confirme; no hace falta pagar de nuevo.", { paymentId: held.id });
+    }
     if (isCustomer && input.currency === "VES" && configuredRate) {
       // La tasa pudo cambiar entre el monto que se le indicó al médico y el registro del comprobante.
       quotedRate = await quotedRateForPayment(tx, order, input.amountCents, configuredRate, input.paidAt ?? now, now, holdTtl);
@@ -597,15 +604,22 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
     await addOrderEvent(tx, p.orderId, "PAYMENT_REJECTED", actor, input.note!.trim(), { paymentId: p.id });
     const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId } });
     const stillAwaiting = await tx.payment.count({ where: { orderId: order.id, status: "AWAITING_VERIFICATION" } });
+    // Captura de PayPal retenida (CAPTURE_PENDING) del mismo pedido: su dinero sigue en camino. Rechazar el comprobante
+    // no cierra el pedido ni libera el cupo (si no, otro médico lo toma y, al confirmar PayPal, este queda cobrado sin
+    // cupo): vuelve a «pago pendiente» y el cupo sigue protegido (seats.ts / expireStaleOrders) hasta que PayPal decida.
+    const paypalHeld = await tx.payment.count({ where: { orderId: order.id, method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" } });
     let orderClosed = false;
     if (order.status === "AWAITING_VERIFICATION" && stillAwaiting === 0) {
-      if (order.amountPaidCents <= 0) {
+      if (order.amountPaidCents <= 0 && paypalHeld === 0) {
         await releaseOrderReservations(tx, order.id, "REJECTED", now, actor);
         await transitionOrder(tx, order.id, "REJECTED", { actor, note: `Pago rechazado: ${input.note!.trim()}` });
         orderClosed = true;
       } else {
         await transitionOrder(tx, order.id, "PENDING_PAYMENT", { actor, note: `Pago rechazado: ${input.note!.trim()}` });
-        await flagUnderpaidOrder(tx, order.id, actor);
+        if (order.amountPaidCents > 0) await flagUnderpaidOrder(tx, order.id, actor);
+        if (paypalHeld > 0) {
+          await addOrderEvent(tx, order.id, "ATTENTION", SYSTEM, "Pago rechazado, pero PayPal retiene otro pago de este pedido (en revisión): el cupo se mantiene hasta que PayPal lo confirme o lo rechace.", { paymentId: p.id });
+        }
       }
     }
     // Qué le dice el correo al médico: «registra el pago de nuevo» solo si el pedido admite otro pago. Un comprobante
@@ -617,7 +631,7 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
         ? "closed"
         : PAID_STATES.includes(after.status) && after.balanceCents <= 0
           ? "paid"
-          : stillAwaiting > 0
+          : stillAwaiting > 0 || paypalHeld > 0
             ? "other_pending"
             : "retry";
     return { approved: false as const, apply: null, orderClosed, next };
