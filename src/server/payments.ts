@@ -719,6 +719,12 @@ export interface StartPaypalResult {
  */
 export async function startPaypalPayment(d: Deps, orderId: string, urls?: { returnUrl?: string; cancelUrl?: string; installmentId?: string | null }): Promise<StartPaypalResult> {
   const now = d.now();
+  // PayPal desactivado en Configuración: ningún camino abre un cobro nuevo (el checkout ya lo impide; aquí también
+  // los enlaces de pago de la página del pedido y de los recordatorios de cuota enviados antes de desactivarlo).
+  // Lo ya aprobado en PayPal se sigue capturando (captura/webhook/conciliación no pasan por aquí).
+  if (!(await readSetting(d.db, SETTING_KEYS.paypal, { enabled: true })).enabled) {
+    throw new DomainError("VALIDATION", "El pago con PayPal no está disponible en este momento. Elige otro método de pago o escríbenos.");
+  }
   const ttl = await reservationTtlMs(d, "PAYPAL");
   const { paymentId, amountCents, order } = await withTx(d, async (tx) => {
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: { include: { reservation: true } } } });
