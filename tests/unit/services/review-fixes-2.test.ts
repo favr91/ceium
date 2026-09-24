@@ -112,7 +112,7 @@ describe("reembolsos y certificados", () => {
 });
 
 describe("PayPal: capturas tardías, en exceso y en otra moneda", () => {
-  it("dos pestañas aprobadas: la captura del intento reemplazado se aplica, se avisa y el excedente se reembolsa solo", async () => {
+  it("dos pestañas aprobadas: la segunda aprobación (pedido ya pagado) no se captura; si PayPal la captura igual, se avisa y el excedente se reembolsa solo", async () => {
     const o = await createCheckout(ctx.d, { customer: buyer(), items: [{ productId: ctx.fx.course, modality: "ONLINE", planKind: "FULL" }], paymentMethod: "PAYPAL" });
     const a = await startPaypalPayment(ctx.d, o.id);
     const b = await startPaypalPayment(ctx.d, o.id); // A queda CANCELLED
@@ -120,16 +120,22 @@ describe("PayPal: capturas tardías, en exceso y en otra moneda", () => {
     ctx.paypal.approve(a.paypalOrderId);
     ctx.paypal.approve(b.paypalOrderId);
     await capturePaypalReturn(ctx.d, b.paypalOrderId);
-    await capturePaypalReturn(ctx.d, a.paypalOrderId);
+    // x2 crítico 15: el pedido ya está pagado → la aprobación de A no se cobra (ni se cobra y reembolsa).
+    expect(await capturePaypalReturn(ctx.d, a.paypalOrderId)).toMatchObject({ status: "FAILED", notCaptured: "NOT_CAPTURED" });
+    let pa = await ctx.db.payment.findUniqueOrThrow({ where: { id: a.paymentId } });
+    expect([pa.status, pa.providerStatus, pa.paypalCaptureId]).toEqual(["CANCELLED", "NOT_CAPTURED", null]);
+    expect(ctx.paypal.refunds).toHaveLength(0);
 
+    // Carrera (las dos capturas salieron a la vez) o PayPal capturó por su cuenta: se imputa, se avisa y se reembolsa.
+    const captureId = ctx.paypal.captureOutOfBand(a.paypalOrderId, "COMPLETED");
+    await onPaypalCaptureCompleted(ctx.d, { captureId, paypalOrderId: a.paypalOrderId, amountCents: 10000, currency: "USD", source: "webhook" });
     const order = await ctx.db.order.findUniqueOrThrow({ where: { id: o.id } });
     expect([order.status, order.amountPaidCents, order.balanceCents]).toEqual(["ENROLLED", 10000, 0]);
     expect(ctx.paypal.refunds).toHaveLength(1);
-    const pa = await ctx.db.payment.findUniqueOrThrow({ where: { id: a.paymentId } });
+    pa = await ctx.db.payment.findUniqueOrThrow({ where: { id: a.paymentId } });
     expect(ctx.paypal.refunds[0].captureId).toBe(pa.paypalCaptureId);
     expect([pa.status, pa.refundedCents]).toEqual(["REFUNDED", 10000]);
     const notes = (await ctx.db.orderEvent.findMany({ where: { orderId: o.id, type: "ATTENTION" } })).map((e) => e.note).join("\n");
-    expect(notes).toContain("había sido reemplazado");
     expect(notes).toContain("Pago PayPal en exceso");
   });
 

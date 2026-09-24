@@ -797,8 +797,16 @@ export async function onPaypalCaptureCompleted(
       await addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `El monto capturado (${(amount / 100).toFixed(2)}) difiere del esperado (${(p.amountCents / 100).toFixed(2)}).`, { paymentId: p.id });
     }
     if (before.status === "CANCELLED") {
-      // El comprador aprobó un intento que ya había sido reemplazado (p.ej. dos pestañas).
-      await addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `Se capturó un intento de PayPal que había sido reemplazado por otro (${input.captureId}).`, { paymentId: p.id, captureId: input.captureId });
+      // El comprador aprobó un intento que ya había sido reemplazado (p.ej. dos pestañas) o cuyo pedido venció.
+      const newer = await tx.payment.count({ where: { orderId: p.orderId, method: "PAYPAL", id: { not: p.id }, createdAt: { gte: p.createdAt } } });
+      await addOrderEvent(
+        tx,
+        p.orderId,
+        "ATTENTION",
+        SYSTEM,
+        newer > 0 ? `Se capturó un intento de PayPal que había sido reemplazado por otro (${input.captureId}).` : `Se capturó un pago de PayPal aprobado después de que venciera el plazo del pedido (${input.captureId}).`,
+        { paymentId: p.id, captureId: input.captureId },
+      );
     }
     const apply = await applyConfirmedPayment(tx, p.id, actor, now);
     const o = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { balanceCents: true } });
@@ -875,6 +883,12 @@ export async function capturePaypalReturn(
   if (p.status !== "PENDING" || p.providerStatus !== "CAPTURE_PENDING") {
     if (await skipCaptureWhileManualAwaiting(d, p.id)) return done("FAILED", "MANUAL_AWAITING");
   }
+  // Una orden aprobada y NO capturada no mueve dinero: si el pedido ya no puede recibir este pago (cerrado,
+  // o su reserva venció y la cohorte se llenó), no se captura en vez de cobrar y reembolsar después.
+  if (p.status !== "PENDING" || p.providerStatus !== "CAPTURE_PENDING") {
+    const blocked = await secureSeatBeforeCapture(d, p.id);
+    if (blocked) return done("FAILED", "NOT_CAPTURED");
+  }
 
   let res;
   try {
@@ -899,6 +913,76 @@ export async function capturePaypalReturn(
   }
   await onPaypalCaptureDenied(d, { captureId: res.captureId, paypalOrderId, raw: res.raw, source });
   return done("FAILED");
+}
+
+const NOT_CAPTURED = "NOT_CAPTURED";
+class SeatGone extends Error {}
+
+/**
+ * Antes de capturar una orden PayPal aprobada: ¿puede el pedido recibir este pago?
+ *  - pedido cerrado (cancelado o reembolsado) → no;
+ *  - pedido ya pagado (saldo ≤ 0) o pago mayor que el saldo pendiente → no (cobrar y reembolsar el excedente
+ *    duplica el cargo al médico y pierde la comisión de PayPal);
+ *  - primer pago de un pedido cuya reserva ya se liberó (venció mientras el comprador estaba en PayPal):
+ *    se vuelve a tomar el cupo AHORA (UPDATE condicional) para que la captura no lo pierda; si la cohorte se
+ *    llenó entretanto → no.
+ * Si no se puede, el pago queda CANCELLED/NOT_CAPTURED con un evento, y devuelve el motivo (la orden de PayPal
+ * aprobada sin capturar caduca sola: al comprador no se le cobra). Devuelve null si se puede capturar.
+ */
+async function secureSeatBeforeCapture(d: Deps, paymentId: string): Promise<string | null> {
+  const now = d.now();
+  const ttl = await reservationTtlMs(d, "PAYPAL");
+  let reason: string | null = null;
+  try {
+    await withTx(d, async (tx) => {
+      const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { orderId: true, amountUsdCents: true } });
+      const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { items: { include: { reservation: true } } } });
+      // Mismo criterio que applyConfirmedPayment (closedOrder): un pedido REJECTED sí admite un pago nuevo.
+      if (order.status === "CANCELLED" || order.status === "REFUNDED") {
+        reason = `el pedido está ${order.status === "CANCELLED" ? "cancelado" : "reembolsado"}`;
+        throw new SeatGone();
+      }
+      // Pedido ya pagado (p.ej. con pago móvil aprobado mientras una orden PayPal vieja seguía abierta en otra
+      // pestaña): capturar y luego reembolsar el excedente le cobra dos veces al médico y la comisión de PayPal
+      // no se recupera. No se captura si no se debe nada o si el pago supera lo que se debe.
+      if (PAID_STATES.includes(order.status)) {
+        if (order.balanceCents <= 0) {
+          reason = "el pedido ya está pagado por completo";
+          throw new SeatGone();
+        }
+        if (p.amountUsdCents > order.balanceCents) {
+          reason = `el pago (USD ${(p.amountUsdCents / 100).toFixed(2)}) supera el saldo pendiente (USD ${(order.balanceCents / 100).toFixed(2)})`;
+          throw new SeatGone();
+        }
+        return;
+      }
+      if (order.amountPaidCents > 0 || !PREPAID_STATES.includes(order.status)) return;
+      for (const it of order.items) {
+        const r = it.reservation;
+        if (it.modality !== "SEMIPRESENCIAL" || !r || r.status !== "RELEASED") continue;
+        if (!(await acquireSeat(tx, r.cohortId, "HELD", { requireOpen: false }))) {
+          reason = `la reserva de «${it.productTitle}» venció y la cohorte ya no tiene cupo`;
+          throw new SeatGone();
+        }
+        await tx.seatReservation.update({ where: { id: r.id }, data: { status: "HELD", expiresAt: new Date(now.getTime() + ttl), releasedAt: null, releasedReason: null } });
+        await addOrderEvent(tx, order.id, "SEAT_REACQUIRED", SYSTEM, `Cupo vuelto a tomar para «${it.productTitle}» antes de capturar el pago de PayPal (la reserva había vencido).`, { orderItemId: it.id, paymentId });
+      }
+    });
+    return null;
+  } catch (e) {
+    if (!(e instanceof SeatGone)) throw e;
+  }
+  await withTx(d, async (tx) => {
+    const n = await tx.payment.updateMany({
+      where: { id: paymentId, status: { in: ["PENDING", "CANCELLED", "FAILED"] }, NOT: { providerStatus: NOT_CAPTURED } },
+      data: { status: "CANCELLED", providerStatus: NOT_CAPTURED },
+    });
+    if (n.count === 1) {
+      const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { orderId: true, paypalOrderId: true } });
+      await addOrderEvent(tx, p.orderId, "PAYMENT_NOT_CAPTURED", SYSTEM, `No se capturó el pago de PayPal ${p.paypalOrderId}: ${reason}. No se cobró al comprador.`, { paymentId, paypalOrderId: p.paypalOrderId });
+    }
+  });
+  return reason;
 }
 
 /**
@@ -1062,14 +1146,17 @@ async function applyParkedPaypalRefunds(d: Deps, captureId: string): Promise<num
  * Devuelve `retry: true` solo ante errores transitorios (la ruta debe responder 5xx para que PayPal reintente).
  */
 export async function handlePaypalWebhook(d: Deps, headers: Record<string, string | string[] | undefined> | Headers, rawBody: string) {
-  const verified = await d.paypal.verifyWebhookSignature(headers, rawBody);
-  if (!verified) throw new DomainError("UNAUTHORIZED", "Firma de webhook inválida.");
+  // Cuerpo ilegible → 400 (no es transitorio: PayPal no debe reintentarlo). Se valida ANTES de la firma, que
+  // también lo parsea y, si fallara allí, se trataría como error transitorio (500 → reintentos sin fin).
   let evt: { id?: string; event_type?: string; resource?: Record<string, any> }; // eslint-disable-line @typescript-eslint/no-explicit-any
   try {
     evt = JSON.parse(rawBody);
   } catch {
     throw new DomainError("VALIDATION", "Cuerpo de webhook inválido.");
   }
+  if (!evt || typeof evt !== "object") throw new DomainError("VALIDATION", "Cuerpo de webhook inválido.");
+  const verified = await d.paypal.verifyWebhookSignature(headers, rawBody);
+  if (!verified) throw new DomainError("UNAUTHORIZED", "Firma de webhook inválida.");
   if (!evt.id || !evt.event_type) throw new DomainError("VALIDATION", "Evento de webhook incompleto.");
   const resource = evt.resource ?? {};
 

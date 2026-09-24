@@ -85,7 +85,11 @@ describe("pedido pagado sin cupo: corrección del admin", () => {
     await runJobs(ctx.d, ["expire"]); // el comprador no volvió a tiempo: pedido EXPIRED, cupo liberado
     expect((await getOrder(ctx.d, o.id)).status).toBe("EXPIRED");
     const others = [await semiCourse("PAGO_MOVIL"), await semiCourse("PAGO_MOVIL"), await semiCourse("PAGO_MOVIL")]; // llenan la cohorte
-    await capturePaypalReturn(ctx.d, s.paypalOrderId); // cobra tarde
+    // PayPal completa la captura por su cuenta (p.ej. carrera entre el barrido y una captura en curso): la app
+    // ya no captura una aprobación tardía sin cupo (capturePaypalReturn la rechaza sin cobrar), pero el
+    // webhook de una captura hecha igual debe imputarse y dejar el pedido para corrección del admin.
+    const captureId = ctx.paypal.captureOutOfBand(s.paypalOrderId, "COMPLETED");
+    await onPaypalCaptureCompleted(ctx.d, { captureId, paypalOrderId: s.paypalOrderId, amountCents: s.amountCents, currency: "USD", source: "webhook" }); // cobra tarde
     const paid = await getOrder(ctx.d, o.id);
     expect(paid.status).toBe("PAID");
     expect(paid.items[0].reservation!.status).toBe("RELEASED");

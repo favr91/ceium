@@ -180,6 +180,8 @@ for (const via of ["retorno", "webhook", "conciliación"] as const) {
       const a = await (await request.post(`${PAYPAL}/__mock/approve/${pp}?json=1`)).json();
       const r = await request.get(a.redirect, { maxRedirects: 0 });
       expect(r.status()).toBeGreaterThanOrEqual(300);
+      // El médico vuelve a su pedido con «no lo cobramos» (no «PayPal no aprobó el pago»).
+      expect(r.headers()["location"] ?? "").toContain("paypal=no-cobrado");
       // Recargar el retorno tampoco cobra.
       await request.get(a.redirect, { maxRedirects: 0 });
     } else {
@@ -199,7 +201,7 @@ for (const via of ["retorno", "webhook", "conciliación"] as const) {
 
     const st = await ppState(request);
     const ppOrder = st.orders.find((x) => x.id === pp);
-    const captured = listOf(st.captures as never).filter((c: { orderId?: string; order_id?: string; id: string }) => JSON.stringify(c).includes(pp));
+    const captured = listOf<unknown>(st.captures as never).filter((c) => JSON.stringify(c).includes(pp));
     const pays = paymentRows(o.orderId);
     const paypalPay = pays.find((p) => p.method === "PAYPAL")!;
     // El resultado que importa: al médico NO se le cobró otra vez.

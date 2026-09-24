@@ -218,3 +218,60 @@ describe("Moodle creó la cuenta pero la respuesta se perdió", () => {
     expect((await getOrder(ctx.d, o.id)).status).toBe("ENROLLED");
   });
 });
+
+describe("aprobación de PayPal que llega tarde: se asegura el cupo ANTES de capturar", () => {
+  const fillCohort = async (capacity: number) => ctx.db.cohort.update({ where: { id: ctx.fx.diplomaCohort }, data: { capacity } });
+
+  it("reserva vencida y cohorte llena: no se captura (no se cobra), no hay sobreventa ni correos", async () => {
+    await fillCohort(1);
+    const a = await diplomaSemi("FULL", "PAYPAL", "tarde.a@example.com");
+    const s = await startPaypalPayment(ctx.d, a.id);
+    ctx.clock.advance(TTL + MINUTE);
+    await runJobs(ctx.d, ["expire"]);
+    expect((await getOrder(ctx.d, a.id)).status).toBe("EXPIRED");
+    // Otro médico toma y paga el último cupo.
+    const b = await diplomaSemi("FULL", "PAYPAL", "tarde.b@example.com");
+    const sb = await startPaypalPayment(ctx.d, b.id);
+    ctx.paypal.approve(sb.paypalOrderId);
+    expect((await capturePaypalReturn(ctx.d, sb.paypalOrderId)).status).toBe("COMPLETED");
+
+    ctx.paypal.approve(s.paypalOrderId);
+    const sent = mailer.sent.length;
+    expect((await capturePaypalReturn(ctx.d, s.paypalOrderId)).status).toBe("FAILED");
+    // Otra vez (webhook CHECKOUT.ORDER.APPROVED / conciliación): tampoco.
+    expect((await capturePaypalReturn(ctx.d, s.paypalOrderId, "webhook")).status).toBe("FAILED");
+    expect(ctx.paypal.calls.filter((c) => c.fn === "captureOrder" && JSON.stringify(c.args ?? c).includes(s.paypalOrderId))).toHaveLength(0);
+    const pay = await ctx.db.payment.findUniqueOrThrow({ where: { paypalOrderId: s.paypalOrderId } });
+    expect(pay).toMatchObject({ status: "CANCELLED", providerStatus: "NOT_CAPTURED" });
+    expect(await ctx.db.orderEvent.count({ where: { orderId: a.id, type: "PAYMENT_NOT_CAPTURED" } })).toBe(1);
+    expect(await getOrder(ctx.d, a.id)).toMatchObject({ status: "EXPIRED", amountPaidCents: 0 });
+    const c = await cohort();
+    expect([c.capacity, c.seatsHeld, c.seatsConfirmed]).toEqual([1, 0, 1]);
+    expect(mailer.sent.length).toBe(sent);
+  });
+
+  it("reserva vencida con cupo libre: se retoma el cupo antes de capturar y se matricula", async () => {
+    await fillCohort(1);
+    const a = await diplomaSemi();
+    const s = await startPaypalPayment(ctx.d, a.id);
+    ctx.clock.advance(TTL + MINUTE);
+    await runJobs(ctx.d, ["expire"]);
+    expect((await cohort()).seatsHeld).toBe(0);
+    ctx.paypal.approve(s.paypalOrderId);
+    expect((await capturePaypalReturn(ctx.d, s.paypalOrderId)).status).toBe("COMPLETED");
+    expect(await ctx.db.orderEvent.count({ where: { orderId: a.id, type: "SEAT_REACQUIRED" } })).toBe(1);
+    const c = await cohort();
+    expect([c.seatsHeld, c.seatsConfirmed]).toEqual([0, 1]);
+    expect((await getOrder(ctx.d, a.id)).status).toBe("ENROLLED");
+  });
+
+  it("pedido cancelado: la aprobación tardía no se captura", async () => {
+    const a = await diplomaSemi();
+    const s = await startPaypalPayment(ctx.d, a.id);
+    await ctx.db.order.update({ where: { id: a.id }, data: { status: "CANCELLED" } });
+    ctx.paypal.approve(s.paypalOrderId);
+    expect((await capturePaypalReturn(ctx.d, s.paypalOrderId)).status).toBe("FAILED");
+    expect(await ctx.db.payment.findUniqueOrThrow({ where: { paypalOrderId: s.paypalOrderId } })).toMatchObject({ status: "CANCELLED", providerStatus: "NOT_CAPTURED" });
+    expect((await getOrder(ctx.d, a.id)).amountPaidCents).toBe(0);
+  });
+});
