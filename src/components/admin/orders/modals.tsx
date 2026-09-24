@@ -6,6 +6,7 @@ import { Icon } from "../Icon";
 import type { OrderDetail } from "@/server/admin-order-views";
 import { Spinner } from "./bits";
 import { COHORT_STATUS, calDate, usd } from "./format";
+import { parseMoney } from "../products/money";
 
 function useEscape(onClose: () => void) {
   useEffect(() => {
@@ -188,7 +189,7 @@ export function AdjustModal({ o, busy, onClose, onSubmit }: { o: O; busy: boolea
   const [kind, setKind] = useState<"discount" | "charge">("discount");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
-  const cents = Math.round(Number(amount.replace(",", ".")) * 100);
+  const cents = parseMoney(amount) ?? NaN;
   const valid = Number.isFinite(cents) && cents > 0 && (kind === "charge" || cents <= Math.max(0, o.balanceCents));
   const after = Math.max(0, o.balanceCents) + (valid ? (kind === "discount" ? -cents : cents) : 0);
   return (

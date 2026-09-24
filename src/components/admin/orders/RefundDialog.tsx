@@ -12,18 +12,15 @@ import type { OrderDetail } from "@/server/admin-order-views";
 import { MethodIcon, Spinner } from "./bits";
 import { useOrder } from "./context";
 import { METHOD, usd } from "./format";
+import { parseMoney } from "../products/money";
 
 type O = OrderDetail;
 type P = O["payments"][number];
 
 const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `k${Date.now()}${Math.random()}`);
 const money = (cents: number) => (cents / 100).toFixed(2);
-function toCents(s: string): number {
-  let t = s.trim().replace(/[\s$]/g, "");
-  if (t.includes(",")) t = t.replace(/\./g, "").replace(",", ".");
-  const n = Number(t);
-  return Number.isFinite(n) ? Math.round(n * 100) : NaN;
-}
+// «1,278.00» (como lo muestra el panel) y «1.278,00» se leen igual; «1.278» es ambiguo y se rechaza (NaN).
+const toCents = (s: string): number => parseMoney(s) ?? NaN;
 
 export function RefundDialog({ o, p }: { o: O; p: P }) {
   const { run, busy } = useOrder();
@@ -97,7 +94,7 @@ export function RefundDialog({ o, p }: { o: O; p: P }) {
             aria-label="Reembolsar pago"
             onSubmit={async (e) => {
               e.preventDefault();
-              if (!valid) return setError(`El monto debe estar entre $0.01 y ${usd(available)}.`);
+              if (!valid) return setError(Number.isNaN(cents) ? "Monto no válido o ambiguo: escríbelo con decimales, p. ej. 1,278.00 o 1.278,00." : `El monto debe estar entre $0.01 y ${usd(available)}.`);
               setError(null);
               const r = await run(k, () => refundPayment(o.id, { paymentId: p.id, amount: money(cents), reason, unenroll, releaseSeat: hasSeat ? releaseSeat : false, keepCertificate: keepCert, confirmRepeat, idempotencyKey: key }));
               if (r.ok) {

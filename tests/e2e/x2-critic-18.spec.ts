@@ -5,10 +5,9 @@
 // monto en Bs. del médico). Resultado real, comprobado: PayPal devuelve 1,28 USD en vez de 1.278 USD, el pedido
 // sigue «Inscrito» con cupo y Moodle (las opciones por defecto de un reembolso parcial no retiran) y el correo de
 // reembolso dice 1,28 USD. «1.278,00» sí se lee bien.
-// DEFECTO ABIERTO DEL PANEL (fuera de src/server): src/components/admin/orders/RefundDialog.tsx (toCents) y
-// src/app/admin/(panel)/orders/actions.ts (parseCents: reembolso, equivalente USD al aprobar, ajuste de saldo).
-// El panel de catálogo ya tiene el parser correcto (src/components/admin/products/money.ts parseMoney: «1,420.50» y
-// «1.420,50» bien, «1.420» ambiguo → NaN). Marcados con test.fail: al corregirlo, quitar el .fail.
+// CORREGIDO: RefundDialog, AdjustModal y orders/actions.ts (reembolso, equivalente USD al aprobar, ajuste de saldo)
+// usan parseMoney del catálogo: «1,278.00» y «1.278,00» → 1.278 USD; «1.278» es ambiguo → campo inválido, sin
+// reembolso de otro monto.
 // Carril: E2E_LANE=e2e E2E_PORT=3104 npx playwright test tests/e2e/x2-critic-18.spec.ts --project=desktop
 import fs from "node:fs";
 import path from "node:path";
@@ -53,8 +52,7 @@ const usdUS = (cents: number) => (cents / 100).toLocaleString("en-US", { minimum
 const usdVE = (cents: number) => (cents / 100).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 for (const variant of ["en-US «1,278.00» (como lo muestra el panel)", "es-VE «1.278,00»", "es-VE sin decimales «1.278»"] as const) {
-  const broken = !variant.startsWith("es-VE «");
-  (broken ? test.fail : test)(`reembolso total de un diplomado > 1.000 USD escribiendo el monto ${variant} → se reembolsa ese monto, no mil veces menos`, async ({ browser, page }) => {
+  test(`reembolso total de un diplomado > 1.000 USD escribiendo el monto ${variant} → se reembolsa ese monto, no mil veces menos`, async ({ browser, page }) => {
     const c = fixture<DiplomaCohort>("diploma-cohort", { capacity: 3, sede: "barquisimeto" });
     const email = uniqueEmail("x2c18");
     const o = fixture<Checkout>("checkout", { productId: c.productId, cohortId: c.cohortId, planKind: "FULL", email, firstName: "Rosa", lastName: "Linares" });
@@ -87,7 +85,7 @@ for (const variant of ["en-US «1,278.00» (como lo muestra el panel)", "es-VE �
   });
 }
 
-test.fail("reembolso enviado con «1,278.00» → PayPal debe devolver 1.278 USD y el pedido quedar reembolsado (hoy: 1,28 USD, sigue inscrito con cupo y Moodle, correo de 1,28)", async ({ browser, page, request }) => {
+test("reembolso enviado con «1,278.00» → PayPal devuelve 1.278 USD, el pedido queda reembolsado y el correo dice 1,278.00", async ({ browser, page, request }) => {
   const c = fixture<DiplomaCohort>("diploma-cohort", { capacity: 3, sede: "barquisimeto" });
   const email = uniqueEmail("x2c18real");
   const o = fixture<Checkout>("checkout", { productId: c.productId, cohortId: c.cohortId, planKind: "FULL", email, firstName: "Rosa", lastName: "Linares" });
@@ -115,4 +113,5 @@ test.fail("reembolso enviado con «1,278.00» → PayPal debe devolver 1.278 USD
   test.info().annotations.push({ type: "outcome", description: JSON.stringify({ paypal: mine.map((r) => r.amount.value), order: order(o.orderId).status, mail: refundMail?.text.match(/\$?[\d.,]+\s*USD|\$[\d.,]+/g)?.slice(0, 3) }) });
   expect(mine.map((r) => Math.round(Number(r.amount.value) * 100))).toEqual([pay.amountUsdCents]);
   expect(order(o.orderId).status).toBe("REFUNDED");
+  expect(refundMail?.text ?? "").toContain(usdUS(pay.amountUsdCents));
 });

@@ -6,6 +6,7 @@
 import { revalidatePath } from "next/cache";
 import { isDomainError } from "@/server/errors";
 import { services } from "@/server/services";
+import { parseMoney } from "@/components/admin/products/money";
 import { requireAdminAction } from "../../_lib/session";
 
 export type ActionResult = { ok: true; message: string } | { ok: false; error: string; needsConfirmRepeat?: boolean; pending?: boolean };
@@ -26,13 +27,10 @@ function done(orderId: string, message: string): ActionResult {
   return { ok: true, message };
 }
 
-/** Convierte "1.234,56" / "1234.56" / "1234" en centavos (NaN si no es un número). */
+/** Monto escrito por el admin → centavos: «1,234.56» (formato del panel) y «1.234,56» se leen igual; «1.234»
+ *  (ambiguo: ¿mil o uno?) y cualquier otra cosa → NaN. Vacío → undefined. Mismo parser que el catálogo. */
 function parseCents(raw: unknown): number | undefined {
-  let s = String(raw ?? "").trim().replace(/[\s$]/g, "");
-  if (!s) return undefined;
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
-  const n = Number(s);
-  return Number.isFinite(n) ? Math.round(n * 100) : NaN;
+  return parseMoney(String(raw ?? "")) ?? undefined;
 }
 
 const usdText = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -97,7 +95,7 @@ export interface RefundForm {
 export async function refundPayment(orderId: string, f: RefundForm): Promise<ActionResult> {
   const user = await requireAdminAction();
   const amountCents = parseCents(f.amount);
-  if (amountCents === undefined || !Number.isInteger(amountCents) || amountCents <= 0) return { ok: false, error: "Indica el monto a reembolsar." };
+  if (amountCents === undefined || !Number.isInteger(amountCents) || amountCents <= 0) return { ok: false, error: "Indica el monto a reembolsar con decimales, p. ej. 1,278.00 o 1.278,00." };
   try {
     const pay = await services().deps.db.payment.findUnique({ where: { id: f.paymentId }, select: { orderId: true, method: true } });
     if (!pay || pay.orderId !== orderId) return { ok: false, error: "El pago no pertenece a este pedido." };

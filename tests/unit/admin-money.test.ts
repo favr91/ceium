@@ -33,6 +33,13 @@ describe("panel · montos de vista previa", () => {
     expect(parseMoney("12,5")).toBe(1250);
     expect(parseMoney("abc")).toBeNaN();
     expect(parseMoney("1.2.3")).toBeNaN();
+    // Montos de reembolso/ajuste del panel de pedidos (mismo parser): el formato en que el panel muestra los montos
+    // y el venezolano se leen igual; «1.278» (¿mil o uno?) se rechaza en vez de reembolsar 1,28.
+    expect(parseMoney("1,278.00")).toBe(127800);
+    expect(parseMoney("1.278,00")).toBe(127800);
+    expect(parseMoney("1278.00")).toBe(127800);
+    expect(parseMoney("1.278")).toBeNaN();
+    expect(parseMoney("1.27800")).toBeNaN();
     expect(centsToInput(142000)).toBe("1420");
     expect(centsToInput(142050)).toBe("1420.50");
   });
