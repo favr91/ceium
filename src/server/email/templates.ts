@@ -473,13 +473,31 @@ export function paymentApproved(v: OrderView, pay: PaymentView): RenderedEmail {
   return { subject, html, text };
 }
 
-export function paymentRejected(v: OrderView, pay: PaymentView, reason: string | null | undefined, orderClosed: boolean): RenderedEmail {
+/**
+ * Qué puede hacer el médico tras el rechazo, según cómo quedó el pedido:
+ *  - retry: el pedido admite otro pago (sigue pendiente o con saldo) → «registra el pago de nuevo»;
+ *  - released: este rechazo cerró el pedido y liberó el cupo;
+ *  - closed: el pedido ya estaba cerrado (reembolsado o cancelado) y no admite pagos;
+ *  - paid: el pedido ya está pagado por completo con otro pago (p.ej. comprobante duplicado);
+ *  - other_pending: hay otro pago del mismo pedido aún en verificación (la página no pide otro pago).
+ * `true`/`false` = released/retry (compatibilidad).
+ */
+export type RejectedNextStep = "retry" | "released" | "closed" | "paid" | "other_pending";
+
+export function paymentRejected(v: OrderView, pay: PaymentView, reason: string | null | undefined, outcome: boolean | RejectedNextStep): RenderedEmail {
+  const next: RejectedNextStep = outcome === true ? "released" : outcome === false ? "retry" : outcome;
   const subject = `No pudimos verificar tu pago — Pedido #${v.number}`;
   const intro = `Hola ${esc(v.customerFirstName)}, revisamos el pago que registraste y no pudimos confirmarlo.`;
   const why = reason ? notice(`<strong style="font-weight:700;">Motivo:</strong> ${esc(reason)}`, "warn") : "";
-  const nextText = orderClosed
-    ? "El cupo reservado fue liberado. Si crees que se trata de un error, responde a este correo con tu comprobante y te ayudaremos."
-    : "Puedes registrar nuevamente el pago desde la página de tu pedido.";
+  const debited = "Si este monto también se debitó de tu cuenta, responde a este correo con tu comprobante y te lo devolvemos.";
+  const nextText = {
+    retry: "Puedes registrar nuevamente el pago desde la página de tu pedido.",
+    released: "El cupo reservado fue liberado. Si crees que se trata de un error, responde a este correo con tu comprobante y te ayudaremos.",
+    closed: `Este pedido ya está cerrado, así que no tienes que registrar ningún pago. ${debited}`,
+    paid: `Tu pedido ya está pagado con otro pago, así que no tienes que pagar ni registrar nada más. ${debited}`,
+    other_pending: "Seguimos verificando el otro pago que registraste para este pedido: no hace falta que pagues de nuevo. Te avisaremos por correo.",
+  }[next];
+  const canRetry = next === "retry";
   const rows: [string, string][] = [["Método", pay.methodLabel], ["Monto declarado", pay.amountLabel]];
   if (pay.reference) rows.push(["Referencia", pay.reference]);
   const body =
@@ -487,7 +505,7 @@ export function paymentRejected(v: OrderView, pay: PaymentView, reason: string |
     why +
     kv(rows, { boxed: true, mono: ["Referencia"] }) +
     p(nextText) +
-    button(v.statusUrl, orderClosed ? "Ver mi pedido" : "Registrar el pago de nuevo", { secondary: orderClosed ? storeLink(v) : { href: `mailto:${CONTACT_EMAIL}`, label: "escríbenos" } }) +
+    button(v.statusUrl, canRetry ? "Registrar el pago de nuevo" : "Ver mi pedido", { secondary: next === "released" ? storeLink(v) : { href: `mailto:${CONTACT_EMAIL}`, label: "escríbenos" } }) +
     section("Resumen del pedido", itemsBlock(v));
   const html = layout({ title: "No pudimos verificar tu pago", preheader: "Tu pago no pudo ser verificado", tag: orderTag(v.number), body });
   const text = `${stripTags(intro)}\n${reason ? `Motivo: ${reason}\n` : ""}\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${nextText}\n\nPedido: ${v.statusUrl}`;

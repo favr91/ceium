@@ -15,6 +15,7 @@ import { DomainError, isDomainError, isUniqueViolation } from "@/server/errors";
 import { normalizeCapture, normalizeRefund } from "@/server/ports";
 import {
   addOrderEvent,
+  CLOSED_STATES,
   flagUnderpaidOrder,
   PAID_STATES,
   PREPAID_STATES,
@@ -591,7 +592,7 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
       if (!apply.closedOrder && balanceCents < 0) {
         await addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `El cliente pagó ${(-balanceCents / 100).toFixed(2)} USD de más: devuelve el excedente con un reembolso manual o aplícalo.`, { paymentId: p.id, creditCents: -balanceCents });
       }
-      return { approved: true as const, apply, orderClosed: false };
+      return { approved: true as const, apply, orderClosed: false, next: undefined };
     }
     await addOrderEvent(tx, p.orderId, "PAYMENT_REJECTED", actor, input.note!.trim(), { paymentId: p.id });
     const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId } });
@@ -607,7 +608,19 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
         await flagUnderpaidOrder(tx, order.id, actor);
       }
     }
-    return { approved: false as const, apply: null, orderClosed };
+    // Qué le dice el correo al médico: «registra el pago de nuevo» solo si el pedido admite otro pago. Un comprobante
+    // duplicado rechazado en un pedido ya pagado (o ya reembolsado/cancelado) no debe invitarlo a pagar otra vez.
+    const after = await tx.order.findUniqueOrThrow({ where: { id: order.id }, select: { status: true, balanceCents: true } });
+    const next: T.RejectedNextStep = orderClosed
+      ? "released"
+      : CLOSED_STATES.includes(after.status)
+        ? "closed"
+        : PAID_STATES.includes(after.status) && after.balanceCents <= 0
+          ? "paid"
+          : stillAwaiting > 0
+            ? "other_pending"
+            : "retry";
+    return { approved: false as const, apply: null, orderClosed, next };
   });
 
   const payment = await d.db.payment.findUniqueOrThrow({ where: { id: input.paymentId } });
@@ -616,7 +629,7 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
   } else {
     await safeNotify(d, "payment_rejected", async () => {
       const { view, email, customerId } = await buildOrderView(d, payment.orderId);
-      await sendEmail(d, { template: "payment_rejected", to: email, rendered: T.paymentRejected(view, await buildPaymentView(d, payment.id), payment.rejectionReason, out.orderClosed), dedupeKey: `payment_rejected:${payment.id}`, orderId: payment.orderId, customerId });
+      await sendEmail(d, { template: "payment_rejected", to: email, rendered: T.paymentRejected(view, await buildPaymentView(d, payment.id), payment.rejectionReason, out.next), dedupeKey: `payment_rejected:${payment.id}`, orderId: payment.orderId, customerId });
     });
   }
   return payment;
