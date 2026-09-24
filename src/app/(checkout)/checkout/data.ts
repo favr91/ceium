@@ -57,6 +57,8 @@ export interface MethodView {
   label: string;
   currency: "USD" | "VES";
   vesPerUsd: number | null;
+  /** Origen y fecha de la tasa Bs/USD fijada en el panel: «BCV · 23 sep 2026». */
+  rateLabel?: string | null;
   /** Datos para pagar (solo con un pedido en curso: se muestran después de reservar el cupo). */
   details?: { label: string; value: string }[];
   instructions?: string;
@@ -151,13 +153,22 @@ export async function findPendingOrder(lines: CartLine[], ref: { token: string; 
   return order;
 }
 
+async function rateLabel(): Promise<string | null> {
+  const r = await readSetting<{ source?: string; updatedAt?: string } | null>(prisma, SETTING_KEYS.exchangeRate, null);
+  const ts = r?.updatedAt ? Date.parse(r.updatedAt) : NaN;
+  const parts = [r?.source?.trim() || null, Number.isFinite(ts) ? shortDate(new Date(ts)) : null].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 export async function paymentMethods(withDetails = false): Promise<MethodView[]> {
   const opts = await services().orders.listPaymentOptions();
+  const rate = opts.some((o) => o.currency === "VES") ? await rateLabel() : null;
   return opts.map((o) => ({
     method: o.method as MethodKey,
     label: o.label,
     currency: o.currency,
     vesPerUsd: o.currency === "VES" && Number.isFinite(o.vesPerUsd) ? Number(o.vesPerUsd) : null,
+    rateLabel: o.currency === "VES" ? rate : null,
     ...(withDetails && o.method !== "PAYPAL"
       ? { details: Object.entries(o.details ?? {}).map(([k, value]) => ({ label: DETAIL_LABELS[k] ?? k, value })), instructions: o.instructions }
       : {}),

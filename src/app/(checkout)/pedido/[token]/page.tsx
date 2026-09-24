@@ -120,8 +120,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
   const closed = ["CANCELLED", "EXPIRED", "REFUNDED", "REJECTED"].includes(order.status);
   const paid = PAID_STATES.includes(order.status);
   const awaiting = order.payments.some((p) => p.status === "AWAITING_VERIFICATION");
+  const proof = order.payments.filter((p) => p.status === "AWAITING_VERIFICATION").sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
   const reviewing = order.payments.some((p) => p.method === "PAYPAL" && p.status === "PENDING" && p.providerStatus === "CAPTURE_PENDING");
-  const firstPayment = order.status === "PENDING_PAYMENT";
+  // Primer pago: pendiente o con el comprobante en verificación (mientras se verifica no se ofrece pagar otra vez).
+  const firstPayment = order.status === "PENDING_PAYMENT" || order.status === "AWAITING_VERIFICATION";
   const amountDueCents = closed
     ? 0
     : firstPayment
@@ -266,7 +268,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
 
             {banner ? <Banner tone={banner.tone}>{banner.text}</Banner> : null}
             {pago === "error" ? <Banner tone="error">{motivo || "No pudimos procesar el pago. Intenta de nuevo."}</Banner> : null}
-            {pago === "registrado" ? <Banner tone="ok">Recibimos los datos de tu pago. Lo verificaremos y te avisaremos por correo.</Banner> : null}
+            {pago === "registrado" ? (
+              <Banner tone="ok">
+                Recibimos tu pago{proof ? ` por ${methodLabel(proof.method)}` : ""} y su comprobante. Te enviamos la confirmación a {c.email}.
+              </Banner>
+            ) : null}
 
             {paid ? (
               <section className="co-card" aria-labelledby="co-confirm-title" data-testid="order-confirmation">
@@ -344,12 +350,44 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                 </ol>
                 <LiveRefresh everyMs={5000} forMs={15 * 60_000} />
               </section>
-            ) : awaiting ? (
-              <section className="co-card" aria-labelledby="co-verify-title">
+            ) : awaiting && proof ? (
+              <section className="co-card" aria-labelledby="co-verify-title" data-testid="order-verifying">
                 <h2 id="co-verify-title" className="co-card-title">
                   Estamos verificando tu pago
                 </h2>
-                <p className="co-card-text">Te avisaremos por correo a {c.email} al aprobarlo y te enviaremos tu acceso al aula virtual.</p>
+                <p className="co-card-text">
+                  Recibimos tu comprobante. Lo confirmamos con el banco en horario laboral, normalmente el mismo día, y te avisaremos por correo a <strong>{c.email}</strong>. No hace falta que pagues de nuevo.
+                </p>
+                <ol className="co-steps">
+                  <Step state="done" title="Comprobante recibido" testId="step-proof">
+                    {methodLabel(proof.method)}
+                    {proof.reference ? <> · ref. <strong>{proof.reference}</strong></> : null}
+                    <br />
+                    {proof.currency === "VES" ? (
+                      <>
+                        <strong>{formatVES(proof.amountCents)}</strong> ≈ {usd(proof.amountUsdCents)} USD
+                      </>
+                    ) : (
+                      <strong>{usd(proof.amountCents)} USD</strong>
+                    )}
+                    {proof.paidAt ? ` · pagado el ${formatDate(proof.paidAt)}` : ""}
+                    {proof.bank ? ` · desde ${proof.bank}` : ""}
+                  </Step>
+                  <Step state="active" title="Verificación del pago" testId="step-verify">
+                    El equipo de CEIUM revisa tu comprobante. Esta página se actualiza sola.
+                  </Step>
+                  {semiItems.map((it) =>
+                    it.reservation?.status === "HELD" ? (
+                      <Step key={it.id} state="done" title="Cupo apartado">
+                        {it.cohort!.name} · {it.sede?.name ?? ""} · {formatDate(it.cohort!.startDate)} – {formatDate(it.cohort!.endDate)}. Lo mantenemos para ti mientras verificamos el pago.
+                      </Step>
+                    ) : null,
+                  )}
+                  <Step state="todo" title="Acceso al aula virtual">
+                    Al aprobar el pago te enviaremos tu usuario de Moodle y los datos para entrar a {c.email}.
+                  </Step>
+                </ol>
+                <LiveRefresh everyMs={20_000} forMs={30 * 60_000} />
               </section>
             ) : closed ? (
               <section className="co-card">
@@ -494,7 +532,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                       </p>
                     ))
                   ) : (
-                    <p>{order.paymentMethod ? `${methodLabel(order.paymentMethod)} · pendiente` : "Pendiente"}</p>
+                    <p>{proof ? `${methodLabel(proof.method)} · en verificación` : order.paymentMethod ? `${methodLabel(order.paymentMethod)} · pendiente` : "Pendiente"}</p>
                   )}
                 </div>
                 <div>
@@ -508,7 +546,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                   ))}
                 </div>
               </div>
-              {awaiting && !paid ? <p className="co-card-text co-card-note">Tenemos un pago tuyo en verificación. Te avisaremos por correo al aprobarlo.</p> : null}
+              {awaiting && paid ? <p className="co-card-text co-card-note">Tenemos otro pago tuyo en verificación. Te avisaremos por correo al aprobarlo.</p> : null}
             </section>
 
             {installmentsPlan ? (

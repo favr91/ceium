@@ -402,3 +402,88 @@
 .co-cuota .co-pay-form .co-pay { margin-top: 8px; }
 .co-root button.co-pay:not(.co-pay-paypal) { color: #fff; }
 .co-manual-method > summary strong { white-space: nowrap; }
+
+/* ═════════════ c4 · pago móvil / transferencia: datos de CEIUM, monto Bs./USD y registro con comprobante ═════════════ */
+.co-pay-manual { margin-top: 32px; }
+.co-manual-panel { display: grid; }
+.co-method-intro { font-size: 14px; line-height: 19px; color: var(--co-ink); }
+
+/* monto a pagar (moneda del método + equivalente) */
+.co-due { margin-top: 14px; padding: 14px 14px 12px; border: 1px solid var(--co-border); border-radius: 10px; background: #fff; }
+.co-due-main { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.co-due-label { font-size: 12px; line-height: 16px; color: var(--co-muted); }
+.co-due-value { margin-top: 2px; font-size: 22px; line-height: 28px; font-weight: 700; color: var(--co-ink); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.co-due-rows { display: grid; gap: 4px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #ececec; }
+.co-due-rows > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 18px; }
+.co-due-rows dt { color: var(--co-muted); }
+.co-due-rows dd { color: var(--co-ink); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* datos de CEIUM */
+.co-payee { margin-top: 14px; }
+.co-payee-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.co-payee-title { font-size: 13px; line-height: 18px; font-weight: 700; color: var(--co-ink); }
+.co-payee .co-bank { margin-top: 8px; }
+.co-bank dd > span { font-variant-numeric: tabular-nums; }
+.co-copy { transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease; }
+.co-copy[data-done] { border-color: rgba(9, 176, 176, 0.45); background: var(--co-teal-bg); }
+.co-copy-all { height: 28px; }
+.co-manual-panel > .co-instructions { margin-top: 12px; font-size: 13px; line-height: 18px; }
+
+/* registro del pago */
+.co-report { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+.co-report-title { font-size: 16px; line-height: 22px; font-weight: 700; color: var(--co-ink); }
+.co-report-sub { margin-top: 2px; font-size: 13px; line-height: 18px; color: #4d5b61; }
+.co-report .co-grid { margin-top: 12px; }
+.co-field-suffix input { padding-right: 48px; }
+.co-suffix { position: absolute; right: 14px; top: 15px; font-size: 14px; line-height: 19px; color: var(--co-muted); pointer-events: none; }
+.co-field-suffix input:not(:placeholder-shown) ~ .co-suffix, .co-field-suffix input:focus ~ .co-suffix { top: 22px; font-size: 14px; }
+.co-field input[type="date"] { padding-top: 21px; padding-bottom: 6px; }
+.co-field input[type="date"] + label { top: 7px; font-size: 12px; line-height: 16px; }
+.co-field input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; cursor: pointer; }
+.co-field-note { margin-top: 6px; font-size: 12px; line-height: 16px; color: #8a6100; }
+
+/* comprobante: arrastrar o elegir, con vista previa */
+.co-drop { position: relative; border: 1.5px dashed #c5cdd0; border-radius: var(--co-radius); background: #fff; transition: border-color 0.15s ease, background-color 0.15s ease; }
+.co-drop:hover, .co-drop[data-drag] { border-color: var(--co-teal); }
+.co-drop[data-drag] { background: var(--co-teal-bg); }
+.co-drop[data-file] { border-style: solid; border-width: 1px; border-color: var(--co-border); }
+.co-drop[data-invalid] { border-color: var(--co-error); background: #fffafa; }
+.co-drop-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; clip: rect(0 0 0 0); }
+.co-drop:has(.co-drop-input:focus-visible) { outline: 2px solid var(--co-teal); outline-offset: 2px; }
+.co-drop-zone { display: grid; justify-items: center; gap: 3px; padding: 18px 16px 17px; text-align: center; cursor: pointer; }
+.co-drop-icon { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 5px; border-radius: 50%; background: var(--co-teal-bg); color: var(--co-teal); }
+.co-drop-icon svg { width: 21px; height: 21px; }
+.co-drop-title { font-size: 14px; line-height: 19px; font-weight: 600; color: var(--co-ink); }
+.co-drop-hint { font-size: 12px; line-height: 17px; color: var(--co-muted); }
+.co-drop-cta { color: var(--co-teal-ink); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.co-drop-file { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px 10px 10px; }
+.co-drop-thumb { display: grid; place-items: center; width: 52px; height: 52px; overflow: hidden; border-radius: 8px; background: #f2f4f4; color: var(--co-muted); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06); }
+.co-drop-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.co-drop-thumb svg { width: 24px; height: 24px; }
+.co-drop-info { display: grid; gap: 2px; min-width: 0; }
+.co-drop-name { font-size: 14px; line-height: 19px; font-weight: 600; color: var(--co-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.co-drop-meta { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: var(--co-teal-ink); }
+.co-drop-meta svg { width: 12px; height: 12px; }
+.co-drop-actions { display: flex; gap: 14px; }
+.co-link-btn { padding: 0; border: 0; background: none; color: var(--co-teal-ink); font-size: 13px; line-height: 18px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.co-link-btn:hover { color: var(--co-ink); }
+@media (max-width: 749px) {
+  .co-drop-desk { display: none; }
+  .co-drop-cta { display: inline-block; }
+  .co-drop-cta::first-letter { text-transform: uppercase; }
+}
+@media (max-width: 420px) {
+  .co-drop-file { grid-template-columns: 48px minmax(0, 1fr); }
+  .co-drop-thumb { width: 48px; height: 48px; }
+  .co-drop-actions { grid-column: 2; }
+  .co-due-value { font-size: 20px; line-height: 26px; }
+}
+
+/* envío */
+.co-banner-send { margin-top: 20px; }
+.co-banner-top { margin-bottom: 20px; }
+.co-pay[data-pending] > span:last-child { font-size: 15px; font-weight: 600; }
+.co-later { margin-top: 16px; font-size: 13px; line-height: 18px; color: var(--co-muted); text-align: center; }
+.co-later a { text-decoration: underline; text-underline-offset: 2px; }
+.co-payee .co-bank > div { grid-template-columns: 136px minmax(0, 1fr); }
+@media (max-width: 420px) { .co-payee .co-bank > div { grid-template-columns: 1fr; } }

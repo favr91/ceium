@@ -12,6 +12,7 @@ import { CheckoutForm, type HoldCohort } from "@/components/checkout/CheckoutFor
 import { ChevronDownIcon } from "@/components/checkout/icons";
 import { NextSteps, SummaryLines, SummaryTotalsBlock, usd } from "@/components/checkout/OrderSummary";
 import { PendingPayment } from "@/components/checkout/PendingPayment";
+import { todayCaracas } from "@/components/checkout/manual-payment-fields";
 import { payPendingWithPaypal, placeOrder } from "./actions";
 import { getCheckoutView } from "./data";
 
@@ -29,6 +30,10 @@ export default async function CheckoutPage({ searchParams }: PageProps<"/checkou
     .map((l) => ({ title: l.title, cohort: l.cohort!.name, sede: l.cohort!.sede, dates: `${l.cohort!.startLabel} – ${l.cohort!.endLabel}`, available: l.cohort!.available }));
   const totals = { count: view.count, listCents: view.listCents, discountCents: view.discountCents, totalCents: view.totalCents, dueNowCents: view.pending?.dueNowCents ?? view.dueNowCents };
   const metodo = one("metodo")?.toUpperCase() ?? null;
+  // Registro del pago sin JavaScript: /api/checkout/comprobante vuelve aquí con el motivo.
+  const pago = one("pago");
+  const payError = pago === "error" ? one("motivo")?.slice(0, 300) || "No pudimos registrar tu pago. Intenta de nuevo." : null;
+  const expiredNotice = pago === "vencido" && !view.pending;
 
   return (
     <div className="co-page">
@@ -50,9 +55,16 @@ export default async function CheckoutPage({ searchParams }: PageProps<"/checkou
       <div className="co-main" id="co-main">
         <div className="co-main-inner">
           {view.pending ? (
-            <PendingPayment pending={view.pending} methods={view.methods} holds={holds} serverNow={new Date().toISOString()} justCreated={one("pedido") === "creado"} paypalCancelled={one("paypal") === "cancelado"} paypalHoldMinutes={view.ttl.paypalMinutes} payWithPaypal={payPendingWithPaypal} />
+            <PendingPayment pending={view.pending} methods={view.methods} holds={holds} serverNow={new Date().toISOString()} justCreated={one("pedido") === "creado"} paypalCancelled={one("paypal") === "cancelado"} paypalHoldMinutes={view.ttl.paypalMinutes} payWithPaypal={payPendingWithPaypal} today={todayCaracas()} payError={payError} />
           ) : (
-            <CheckoutForm action={placeOrder} methods={view.methods} initialMethod={metodo === "PAYPAL" ? "PAYPAL" : null} ttl={view.ttl} holds={holds} dueNowCents={view.dueNowCents} count={view.count} blocked={view.blocked} />
+            <>
+              {expiredNotice ? (
+                <p className="co-banner co-banner-info co-banner-top" role="status">
+                  Tu reserva ya no está vigente o el pedido ya tiene un pago registrado. Revisa tus datos y vuelve a confirmar, o revisa el correo de tu pedido.
+                </p>
+              ) : null}
+              <CheckoutForm action={placeOrder} methods={view.methods} initialMethod={metodo === "PAYPAL" ? "PAYPAL" : null} ttl={view.ttl} holds={holds} dueNowCents={view.dueNowCents} count={view.count} blocked={view.blocked} />
+            </>
           )}
           <footer className="co-footer">
             <Link href="/cart">Volver al carrito</Link>

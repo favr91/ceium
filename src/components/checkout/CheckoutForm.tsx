@@ -11,6 +11,7 @@ import { COUNTRIES, FIELD_ORDER, OTHER_SPECIALTY, SPECIALTIES, validateCheckout,
 import { ChevronDownIcon, ClockIcon, FieldErrorIcon, HelpIcon, LockIcon, PayPalWordmark } from "./icons";
 import { PaypalButton, PaypalRedirectNotice, type PaypalHandoff } from "./paypal";
 import { usd } from "./OrderSummary";
+import { ManualAmount } from "./ManualPayment";
 
 export interface HoldCohort {
   title: string;
@@ -38,10 +39,6 @@ const EMPTY: CheckoutValues = { email: "", phone: "", country: "VE", firstName: 
 function ttlText(method: string, ttl: CheckoutFormProps["ttl"]): { short: string; long: string } {
   if (method === "PAYPAL") return { short: `${String(ttl.paypalMinutes).padStart(2, "0")}:00`, long: `${ttl.paypalMinutes} minutos` };
   return { short: `${ttl.manualHours} h`, long: `${ttl.manualHours} horas` };
-}
-
-function ves(cents: number): string {
-  return "Bs. " + (cents / 100).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // ───────────── campos ─────────────
@@ -320,29 +317,20 @@ export function CheckoutForm({ action, methods, initialMethod, ttl, holds, dueNo
   );
 }
 
+const METHOD_VERB: Record<string, string> = { PAGO_MOVIL: "el pago móvil", TRANSFERENCIA: "la transferencia bancaria", ZELLE: "el pago por Zelle", EFECTIVO: "el pago en la sede" };
+
 function MethodBody({ m, dueNowCents, semi, holdLong }: { m: MethodView; dueNowCents: number; semi: boolean; holdLong: string }) {
   if (m.method === "PAYPAL") {
     return <PaypalRedirectNotice />;
   }
-  const amount = m.currency === "VES" && m.vesPerUsd ? ves(Math.round(dueNowCents * m.vesPerUsd)) : usd(dueNowCents);
   const reserve = semi ? `reservamos tu cupo por ${holdLong} y ` : "";
   return (
-    <>
-      <p>
-        Al confirmar, {reserve}te mostramos los datos de {m.label} de CEIUM. Luego registras la referencia y el comprobante; cuando lo verifiquemos, recibirás tu acceso al aula virtual.
+    <div className="co-manual-panel">
+      <p className="co-method-intro">
+        Al finalizar el pedido, {reserve}te mostraremos los datos de {m.label} de CEIUM para hacer {METHOD_VERB[m.method] ?? "el pago"}.{" "}
+        {m.method === "EFECTIVO" ? "El personal de la sede registra tu pago" : "Luego registras aquí mismo la referencia y el comprobante"}; una vez que el pago sea verificado, tendrás acceso al curso o diplomado en la plataforma Moodle.
       </p>
-      <dl className="co-amount">
-        <div>
-          <dt>Monto a pagar</dt>
-          <dd data-testid="method-amount">{amount}</dd>
-        </div>
-        {m.currency === "VES" && m.vesPerUsd ? (
-          <div>
-            <dt>Tasa del día</dt>
-            <dd>Bs. {m.vesPerUsd.toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} por USD · {usd(dueNowCents)}</dd>
-          </div>
-        ) : null}
-      </dl>
-    </>
+      <ManualAmount m={m} dueNowCents={dueNowCents} />
+    </div>
   );
 }
