@@ -144,7 +144,61 @@ export async function satisfyFirstPayment(tx: Tx, orderId: string, actor: Actor,
   }
   const to = opts.balanceCents <= 0 ? "PAID" : "PARTIALLY_PAID";
   await transitionOrder(tx, order.id, to, { actor, note: opts.note ?? (to === "PAID" ? "Pago total recibido" : "Primer pago recibido; queda saldo pendiente") });
+  await flagDuplicatePurchase(tx, order.id);
   return { seatProblem };
+}
+
+/**
+ * El mismo cliente (mismo correo) ya tiene OTRO pedido vivo del mismo programa: cupo en la misma cohorte (pagado
+ * o reservado) o, en online, el mismo producto ya pagado. Típico: registró el pago móvil y, mientras se verificaba,
+ * volvió a comprar con PayPal para entrar ya; o compró dos veces. Nada lo impedía: dos cobros y dos cupos de la
+ * cohorte para una sola persona (una sola cuenta de Moodle) sin que el staff se enterara. No se bloquea el pago (el
+ * dinero ya entró); se deja un ATTENTION en ambos pedidos, nombrando el otro, para rechazar/reembolsar uno.
+ */
+async function flagDuplicatePurchase(tx: Tx, orderId: string): Promise<void> {
+  const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { id: true, number: true, customerId: true, items: { select: { productId: true, productTitle: true, modality: true, cohortId: true } } } });
+  const seen = new Set<string>();
+  for (const it of o.items) {
+    const others =
+      it.modality === "SEMIPRESENCIAL" && it.cohortId
+        ? (
+            await tx.seatReservation.findMany({
+              where: { cohortId: it.cohortId, status: { in: ["HELD", "CONFIRMED"] }, orderId: { not: o.id }, order: { customerId: o.customerId } },
+              select: { status: true, cohort: { select: { name: true } }, order: { select: { id: true, number: true } } },
+            })
+          ).map((r) => ({ id: r.order.id, number: r.order.number, paid: r.status === "CONFIRMED", where: `la cohorte ${r.cohort.name}` }))
+        : (
+            await tx.order.findMany({
+              where: { id: { not: o.id }, customerId: o.customerId, status: { in: [...PAID_STATES] }, items: { some: { productId: it.productId, modality: it.modality } } },
+              select: { id: true, number: true },
+            })
+          ).map((x) => ({ ...x, paid: true, where: `«${it.productTitle}» (online)` }));
+    for (const other of others) {
+      if (seen.has(other.id)) continue;
+      seen.add(other.id);
+      const dup = { duplicateOf: other.id, duplicateNumber: other.number, productId: it.productId, cohortId: it.cohortId };
+      await addOrderEvent(
+        tx,
+        o.id,
+        "ATTENTION",
+        SYSTEM,
+        other.paid
+          ? `Probable compra duplicada: este cliente ya tiene ${it.modality === "SEMIPRESENCIAL" ? "cupo pagado" : "pagado"} ${it.modality === "SEMIPRESENCIAL" ? "en " : ""}${other.where} por el pedido #${other.number}. Cobró dos veces${it.modality === "SEMIPRESENCIAL" ? " y ocupa dos cupos" : ""}: reembolsa uno de los dos pedidos (liberando su cupo).`
+          : `Probable compra duplicada: este cliente tiene además el pedido #${other.number} con cupo reservado en ${other.where}. Si también paga ese pedido, rechaza su comprobante o reembolsa; si no, cancélalo para liberar el cupo.`,
+        dup,
+      );
+      await addOrderEvent(
+        tx,
+        other.id,
+        "ATTENTION",
+        SYSTEM,
+        other.paid
+          ? `Probable compra duplicada: el cliente volvió a pagar ${other.where} en el pedido #${o.number}. Cobró dos veces${it.modality === "SEMIPRESENCIAL" ? " y ocupa dos cupos" : ""}: reembolsa uno de los dos pedidos (liberando su cupo).`
+          : `Probable compra duplicada: el cliente ya pagó ${other.where} en el pedido #${o.number}. No apruebes el comprobante de este pedido sin revisarlo: si también se cobró, recházalo y devuelve el dinero; si no, cancela este pedido para liberar el cupo.`,
+        { duplicateOf: o.id, duplicateNumber: o.number, productId: it.productId, cohortId: it.cohortId },
+      );
+    }
+  }
 }
 
 /**
