@@ -8,7 +8,8 @@ import { requireAdmin, type SessionUser } from "@/server/auth";
 import { recordAudit } from "@/server/audit";
 import { withTx, type Deps } from "@/server/deps";
 import { DomainError } from "@/server/errors";
-import { SETTING_KEYS } from "@/server/settings";
+import { exchangeRateStatus, isPlaceholderText, manualMethodProblems, SETTING_KEYS, type ExchangeRateSetting, type ManualMethodConfig } from "@/server/settings";
+import { readSetting } from "@/server/deps";
 
 const manualMethod = z.object({
   method: z.enum(["PAGO_MOVIL", "TRANSFERENCIA", "ZELLE", "EFECTIVO"]),
@@ -26,10 +27,22 @@ export const EDITABLE_SETTINGS = {
   [SETTING_KEYS.manualMethods]: z
     .array(manualMethod)
     .max(10)
-    .refine((a) => new Set(a.map((m) => m.method)).size === a.length, "Método repetido"),
+    .refine((a) => new Set(a.map((m) => m.method)).size === a.length, "Método repetido")
+    // No se puede habilitar un método cuyos datos (banco, cuenta, titular…) están vacíos o son de ejemplo:
+    // el comprador los recibe en el correo de confirmación para pagar.
+    .superRefine((a, ctx) => {
+      a.forEach((m, i) => {
+        if (!m.enabled) return;
+        for (const msg of manualMethodProblems(m)) ctx.addIssue({ code: "custom", path: [i, "details"], message: `${msg} Complétalo o deja el método deshabilitado.` });
+      });
+    }),
   [SETTING_KEYS.paypal]: z.object({ enabled: z.boolean() }).strict(),
   [SETTING_KEYS.exchangeRate]: z
-    .object({ vesPerUsd: z.number().positive("La tasa debe ser mayor que 0").max(1e9), source: z.string().max(300).optional(), updatedAt: z.string().optional() })
+    .object({
+      vesPerUsd: z.number().positive("La tasa debe ser mayor que 0").max(1e9),
+      source: z.string().max(300).refine((v) => !isPlaceholderText(v), "Indica la fuente de la tasa (p. ej. BCV)").optional(),
+      updatedAt: z.string().optional(),
+    })
     .strict(),
   [SETTING_KEYS.enrollmentRetry]: z.object({ maxAttempts: z.number().int().min(1).max(30), baseDelaySeconds: z.number().int().min(5).max(86_400) }).strict(),
   [SETTING_KEYS.installmentReminders]: z
@@ -60,4 +73,30 @@ export async function updateSetting(d: Deps, actor: SessionUser, key: string, va
     await recordAudit(tx, { actor, action: "setting.update", entityType: "Setting", entityId: key, before: before?.value ?? null, after: after.value, note, force: !before });
     return after;
   });
+}
+
+export interface SettingsWarning {
+  key: string;
+  severity: "error" | "warning";
+  message: string;
+}
+
+/**
+ * Avisos para el panel sobre la configuración de cobro: métodos manuales con datos de ejemplo y tasa Bs/USD
+ * de ejemplo o desactualizada (el equivalente en USD de cada pago en bolívares depende de ella; el personal
+ * puede corregirla al verificar cada pago).
+ */
+export async function getSettingsWarnings(d: Deps, actor: SessionUser): Promise<SettingsWarning[]> {
+  await requireAdmin(d.db, actor, "orders.view");
+  const out: SettingsWarning[] = [];
+  const methods = await readSetting<ManualMethodConfig[]>(d.db, SETTING_KEYS.manualMethods, []);
+  for (const m of methods) {
+    const problems = manualMethodProblems(m);
+    if (m.enabled && problems.length) for (const message of problems) out.push({ key: SETTING_KEYS.manualMethods, severity: "error", message: `${message} El método no se ofrece en la tienda hasta corregirlo.` });
+  }
+  if (methods.some((m) => m.enabled && m.currency === "VES")) {
+    const st = exchangeRateStatus(await readSetting<ExchangeRateSetting | null>(d.db, SETTING_KEYS.exchangeRate, null), d.now());
+    for (const message of st.problems) out.push({ key: SETTING_KEYS.exchangeRate, severity: st.usable ? "warning" : "error", message: st.usable ? message : `${message} Los métodos en bolívares no se ofrecen hasta corregirla.` });
+  }
+  return out;
 }

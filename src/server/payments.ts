@@ -27,7 +27,7 @@ import {
   type Actor,
 } from "@/server/orders";
 import { acquireSeat, confirmReservation, releaseOrderReservations } from "@/server/seats";
-import { SETTING_KEYS } from "@/server/settings";
+import { manualMethodProblems, SETTING_KEYS } from "@/server/settings";
 import { enrollOrder, unenrollOrder } from "@/server/enrollment";
 import { reallocateInstallments } from "@/server/installments";
 import { buildOrderView, buildPaymentView, safeNotify, sendEmail } from "@/server/email";
@@ -237,7 +237,7 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
   const isCustomer = actor.type !== "ADMIN";
   if (isCustomer) {
     const cfg = await getManualMethod(d, input.method);
-    if (!cfg?.enabled) throw new DomainError("VALIDATION", "El método de pago seleccionado no está disponible.");
+    if (!cfg?.enabled || manualMethodProblems(cfg).length) throw new DomainError("VALIDATION", "El método de pago seleccionado no está disponible.");
     if (cfg.currency && cfg.currency !== input.currency) throw new DomainError("VALIDATION", `Este método se paga en ${cfg.currency === "VES" ? "bolívares" : "dólares"}.`, { field: "currency" });
   }
   if (input.currency !== "USD" && input.currency !== "VES") throw new DomainError("VALIDATION", "Moneda no válida.", { field: "currency" });

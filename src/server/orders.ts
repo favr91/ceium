@@ -8,7 +8,7 @@ import { HOUR, MINUTE, readSetting, withTx } from "@/server/deps";
 import { DomainError } from "@/server/errors";
 import { quote, type Quote } from "@/server/quote";
 import { releaseOrderReservations, reserveSeat } from "@/server/seats";
-import { SETTING_KEYS, type ManualMethodConfig } from "@/server/settings";
+import { exchangeRateStatus, manualMethodProblems, SETTING_KEYS, type ExchangeRateSetting, type ManualMethodConfig } from "@/server/settings";
 import { buildOrderView, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
 import { requireAdmin, type SessionUser } from "@/server/auth";
@@ -154,6 +154,45 @@ async function assertMethodEnabled(d: Deps, method: PaymentMethod) {
   }
   const m = await getManualMethod(d, method);
   if (!m || !m.enabled) throw new DomainError("VALIDATION", "El método de pago seleccionado no está disponible.");
+  const why = await manualMethodUnavailableReason(d, m);
+  if (why) {
+    d.log.warn(`[checkout] método ${m.method} habilitado pero no ofrecible: ${why}`);
+    throw new DomainError("VALIDATION", "El método de pago seleccionado no está disponible en este momento. Elige otro método.");
+  }
+}
+
+/** Motivo por el que un método manual habilitado no se puede ofrecer (datos de ejemplo, tasa Bs/USD de ejemplo). */
+async function manualMethodUnavailableReason(d: Pick<Deps, "db" | "now">, m: ManualMethodConfig): Promise<string | null> {
+  const problems = manualMethodProblems(m);
+  if (problems.length) return problems.join(" ");
+  if (m.currency === "VES") {
+    const st = exchangeRateStatus(await readSetting<ExchangeRateSetting | null>(d.db, SETTING_KEYS.exchangeRate, null), d.now());
+    if (!st.usable) return st.problems.join(" ");
+  }
+  return null;
+}
+
+export interface PaymentOption {
+  method: PaymentMethod;
+  label: string;
+  currency: "USD" | "VES";
+  /** Métodos manuales: datos para pagar e instrucciones (ya validados: sin datos de ejemplo). */
+  details?: Record<string, string>;
+  instructions?: string;
+  /** Métodos en bolívares: tasa Bs/USD vigente. */
+  vesPerUsd?: number;
+}
+
+/** Métodos de pago que la tienda puede ofrecer ahora (PayPal si está activo + manuales habilitados y completos). */
+export async function listPaymentOptions(d: Deps): Promise<PaymentOption[]> {
+  const out: PaymentOption[] = [];
+  if ((await readSetting(d.db, SETTING_KEYS.paypal, { enabled: true })).enabled) out.push({ method: "PAYPAL", label: "PayPal", currency: "USD" });
+  const rate = await readSetting<ExchangeRateSetting | null>(d.db, SETTING_KEYS.exchangeRate, null);
+  for (const m of await readSetting<ManualMethodConfig[]>(d.db, SETTING_KEYS.manualMethods, [])) {
+    if (!m.enabled || (await manualMethodUnavailableReason(d, m))) continue;
+    out.push({ method: m.method, label: m.label, currency: m.currency, details: m.details, instructions: m.instructions, ...(m.currency === "VES" ? { vesPerUsd: Number(rate?.vesPerUsd) } : {}) });
+  }
+  return out;
 }
 
 async function nextOrderNumber(tx: Tx): Promise<number> {
@@ -287,6 +326,10 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
         },
       });
       itemIds.push(oi.id);
+      if (q.productType === "DIPLOMA") {
+        if (q.diplomaCourses.length === 0) throw new DomainError("VALIDATION", `El diplomado «${q.productTitle}» no tiene cursos configurados.`);
+        await tx.orderItemCourse.createMany({ data: q.diplomaCourses.map((c, i) => ({ orderItemId: oi.id, courseId: c.productId, position: i + 1 })) });
+      }
       if (item.modality === "SEMIPRESENCIAL") await reserveSeat(tx, { cohortId: item.cohortId!, orderId: order.id, orderItemId: oi.id, ttlMs: ttl, now });
     }
     for (const [i, s] of schedule.entries()) {

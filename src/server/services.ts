@@ -2,6 +2,7 @@
 //   import { services } from "@/server/services";
 //   await services().orders.createCheckout({...});
 // Los tests NO usan este módulo: construyen Deps con fakes (ver tests/unit/services/helpers).
+import { config as loadDotenv } from "dotenv";
 import { getMoodleClient } from "@/server/moodle";
 import { getPayPal } from "@/server/paypal";
 import { moodlePort, paypalPort } from "@/server/adapters";
@@ -23,6 +24,9 @@ import * as catalog from "@/server/catalog";
 import * as adminSettings from "@/server/admin-settings";
 import * as adminUsers from "@/server/admin-users";
 import * as audit from "@/server/audit";
+
+// Next.js ya carga .env; los scripts (tsx scripts/*.ts, REPL) no. dotenv no pisa variables ya definidas.
+if (!process.env.NEXT_RUNTIME && !process.env.VITEST) loadDotenv({ quiet: true });
 
 export function createDefaultDeps(overrides: Partial<Deps> = {}): Deps {
   return {
@@ -59,7 +63,7 @@ export function createServices(d: Deps) {
       ...bind(d, seats, ["expireStaleReservations", "getCohortAvailability"]),
     },
     orders: {
-      ...bind(d, orders, ["createCheckout", "getOrder", "getOrderByToken", "expireStaleOrders", "cancelOrder", "addNote", "notifyOrderReceived", "listUnderpaidOrders"]),
+      ...bind(d, orders, ["createCheckout", "getOrder", "getOrderByToken", "expireStaleOrders", "cancelOrder", "addNote", "notifyOrderReceived", "listUnderpaidOrders", "listPaymentOptions"]),
       ...bind(d, corrections, ["adjustBalance", "adjustBalanceDetailed", "waiveInstallment", "reassignCohort"]),
     },
     corrections: bind(d, corrections, ["adjustBalance", "adjustBalanceDetailed", "waiveInstallment", "reassignCohort"]),
@@ -108,7 +112,7 @@ export function createServices(d: Deps) {
       "upsertProductChoice",
       "deleteProductChoice",
     ]),
-    settings: bind(d, adminSettings, ["updateSetting"]),
+    settings: bind(d, adminSettings, ["updateSetting", "getSettingsWarnings"]),
     adminUsers: bind(d, adminUsers, ["createAdminUser", "updateAdminUser", "resetAdminPassword"]),
     audit: { list: (q: audit.AuditQuery = {}) => audit.listAuditLog(d, q) },
   };

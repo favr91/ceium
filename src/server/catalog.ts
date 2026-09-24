@@ -14,6 +14,9 @@ import { withTx, type Deps, type Tx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
 import { priceScopeKey } from "@/server/pricing";
 
+/** Pedidos que siguen su curso (en pago, pagados o matriculados). */
+const LIVE_ORDER_STATES = ["PENDING_PAYMENT", "AWAITING_VERIFICATION", "PAID", "PARTIALLY_PAID", "ENROLLED"] as const;
+
 function parse<T>(schema: z.ZodType<T>, input: unknown): T {
   const r = schema.safeParse(input);
   if (!r.success) throw new DomainError("VALIDATION", r.error.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ` : "") + i.message).join(". "), { issues: r.error.issues });
@@ -292,7 +295,11 @@ export async function upsertSede(d: Deps, actor: SessionUser, input: UpsertSedeI
 
 /**
  * Reemplaza la lista ordenada de cursos de un diplomado. Mantiene «Paga mes a mes» coherente: una cuota por
- * curso (PaymentPlan MONTHLY.installments = nº de cursos). Los pedidos ya creados conservan su calendario.
+ * curso (PaymentPlan MONTHLY.installments = nº de cursos). Solo afecta a las compras NUEVAS: cada pedido
+ * congela su lista al comprar (OrderItemCourse) y con ella se matricula, se comprueba la finalización y se
+ * imprime el certificado; los pedidos ya creados conservan también su calendario de cuotas. Los pedidos
+ * antiguos sin lista congelada se congelan aquí con la lista anterior antes de aplicar el cambio.
+ * Devuelve cuántas compras vigentes conservan el programa anterior (el panel lo muestra al guardar).
  */
 export async function setDiplomaCourses(d: Deps, actor: SessionUser, diplomaId: string, courseIds: string[], note?: string) {
   actor = await requireAdmin(d.db, actor, "catalog.manage");
@@ -305,6 +312,11 @@ export async function setDiplomaCourses(d: Deps, actor: SessionUser, diplomaId: 
     if (courses.length !== ids.length || courses.some((c) => c.type !== "COURSE")) throw new DomainError("VALIDATION", "Todos deben ser cursos existentes.");
     if (courses.some((c) => c.moodleCourseId == null)) throw new DomainError("VALIDATION", "Todos los cursos del diplomado deben tener curso de Moodle.");
     const before = (await tx.diplomaCourse.findMany({ where: { diplomaId }, orderBy: { position: "asc" }, select: { courseId: true } })).map((r) => r.courseId);
+    // Congelar la lista anterior en las compras que aún no la tienen (pedidos previos a OrderItemCourse).
+    const unfrozen = await tx.orderItem.findMany({ where: { productId: diplomaId, courses: { none: {} } }, select: { id: true } });
+    if (before.length) for (const it of unfrozen) await tx.orderItemCourse.createMany({ data: before.map((courseId, i) => ({ orderItemId: it.id, courseId, position: i + 1 })) });
+    const changed = before.length !== ids.length || before.some((c, i) => c !== ids[i]);
+    const livePurchases = changed ? await tx.orderItem.count({ where: { productId: diplomaId, order: { status: { in: [...LIVE_ORDER_STATES] } } } }) : 0;
     const keep = new Map((await tx.diplomaCourse.findMany({ where: { diplomaId } })).map((r) => [r.courseId, r]));
     await tx.diplomaCourse.deleteMany({ where: { diplomaId, courseId: { notIn: ids } } });
     for (let i = 0; i < ids.length; i++) {
@@ -316,8 +328,9 @@ export async function setDiplomaCourses(d: Deps, actor: SessionUser, diplomaId: 
       const updated = await tx.paymentPlan.update({ where: { id: monthly.id }, data: { installments: ids.length } });
       await recordAudit(tx, { actor, action: "plan.update", entityType: "PaymentPlan", entityId: monthly.id, before: monthly, after: updated, note: "Cuotas = nº de cursos del diplomado" });
     }
-    await recordAudit(tx, { actor, action: "diploma.courses", entityType: "DiplomaCourse", entityId: diplomaId, before: { courseIds: before }, after: { courseIds: ids }, note });
-    return { courseIds: ids };
+    const frozenNote = livePurchases ? `${livePurchases} compra(s) vigente(s) conservan la lista de cursos anterior` : undefined;
+    await recordAudit(tx, { actor, action: "diploma.courses", entityType: "DiplomaCourse", entityId: diplomaId, before: { courseIds: before }, after: { courseIds: ids }, note: [note, frozenNote].filter(Boolean).join(" · ") || undefined });
+    return { courseIds: ids, livePurchases };
   });
 }
 
@@ -384,16 +397,17 @@ export async function deleteProduct(d: Deps, actor: SessionUser, productId: stri
   actor = await requireAdmin(d.db, actor, "catalog.manage");
   const res = await withTx(d, async (tx) => {
     const before = await mustProduct(tx, productId);
-    const [items, enrollments, certs, asCourse, installments, reservations, images] = await Promise.all([
+    const [items, enrollments, certs, asCourse, purchasedInDiploma, installments, reservations, images] = await Promise.all([
       tx.orderItem.count({ where: { productId } }),
       tx.enrollment.count({ where: { productId } }),
       tx.certificate.count({ where: { diplomaId: productId } }),
       tx.diplomaCourse.count({ where: { courseId: productId } }),
+      tx.orderItemCourse.count({ where: { courseId: productId } }),
       tx.installment.count({ where: { courseId: productId } }),
       tx.seatReservation.count({ where: { cohort: { productId } } }),
       tx.productImage.findMany({ where: { productId }, select: { url: true } }),
     ]);
-    if (items || enrollments || certs || installments || reservations) throw new DomainError("CONFLICT", "El programa ya tiene pedidos, matrículas o certificados: archívalo (despublícalo) en lugar de borrarlo.");
+    if (items || enrollments || certs || purchasedInDiploma || installments || reservations) throw new DomainError("CONFLICT", "El programa ya tiene pedidos, matrículas o certificados: archívalo (despublícalo) en lugar de borrarlo.");
     if (asCourse) throw new DomainError("CONFLICT", "El curso forma parte de un diplomado: quítalo del diplomado antes de borrarlo.");
     await tx.product.delete({ where: { id: productId } });
     await recordAudit(tx, { actor, action: "product.delete", entityType: "Product", entityId: productId, before, after: null, note, force: true });

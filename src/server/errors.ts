@@ -35,8 +35,14 @@ export const HTTP_STATUS: Record<DomainErrorCode, number> = {
   CONFLICT: 409,
 };
 
+/**
+ * `instanceof` no basta: Next empaqueta src/server en más de un chunk (rutas, RSC, server actions) y cada uno
+ * puede traer su propia copia de la clase. Se reconoce también por nombre + código conocido.
+ */
 export function isDomainError(e: unknown, code?: DomainErrorCode): e is DomainError {
-  return e instanceof DomainError && (!code || e.code === code);
+  const c = (e as { code?: unknown } | null)?.code;
+  const ok = e instanceof DomainError || (e instanceof Error && e.name === "DomainError" && typeof c === "string" && Object.prototype.hasOwnProperty.call(HTTP_STATUS, c));
+  return ok && (!code || (e as DomainError).code === code);
 }
 
 /** Violación de restricción única de Prisma (P2002). */

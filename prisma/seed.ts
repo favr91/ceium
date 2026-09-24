@@ -279,11 +279,14 @@ async function main() {
   await prisma.adminUser.create({ data: { email: "staff@ceium.net", name: "Personal CEIUM", role: "STAFF", passwordHash: await bcrypt.hash(staffPass, 10) } });
 
   // Settings
+  // Los datos bancarios reales no están en la referencia: los métodos nacen DESHABILITADOS con datos de
+  // ejemplo («TODO: …»). El panel no deja habilitarlos hasta completarlos (updateSetting) y el checkout
+  // nunca ofrece un método con datos de ejemplo (orders.listPaymentOptions / createCheckout).
   const manual: ManualMethodConfig[] = [
-    { method: "PAGO_MOVIL", enabled: true, label: "Pago móvil", currency: "VES",
+    { method: "PAGO_MOVIL", enabled: false, label: "Pago móvil", currency: "VES",
       details: { banco: "TODO: banco (código)", telefono: "TODO: 04xx-xxxxxxx", cedulaRif: "TODO: V-/J-xxxxxxxx", titular: "TODO: titular" },
       instructions: "Realiza el pago móvil por el monto en bolívares a la tasa indicada y registra el número de referencia y el comprobante." },
-    { method: "TRANSFERENCIA", enabled: true, label: "Transferencia bancaria", currency: "VES",
+    { method: "TRANSFERENCIA", enabled: false, label: "Transferencia bancaria", currency: "VES",
       details: { banco: "TODO: banco", cuenta: "TODO: 0000-0000-00-0000000000", tipo: "TODO: corriente", cedulaRif: "TODO: J-xxxxxxxx", titular: "TODO: titular" },
       instructions: "Transfiere el monto en bolívares a la tasa indicada y registra el número de referencia y el comprobante." },
     { method: "ZELLE", enabled: false, label: "Zelle", currency: "USD", details: { correo: "TODO: correo Zelle", titular: "TODO: titular" }, instructions: "Envía el monto en USD y registra la confirmación." },
@@ -292,9 +295,9 @@ async function main() {
   const settings: [string, unknown, string][] = [
     [SETTING_KEYS.reservationTtlPaypal, { minutes: 30 }, "Minutos que se reserva el cupo durante un pago con PayPal"],
     [SETTING_KEYS.reservationTtlManual, { hours: 72 }, "Horas que se reserva el cupo en pagos manuales hasta la verificación"],
-    [SETTING_KEYS.manualMethods, manual, "Métodos de pago manual y datos mostrados al comprador (TODO: datos bancarios reales)"],
+    [SETTING_KEYS.manualMethods, manual, "Métodos de pago manual y datos mostrados al comprador (deshabilitados hasta cargar los datos bancarios reales)"],
     [SETTING_KEYS.paypal, { enabled: true }, "Pago con PayPal habilitado"],
-    [SETTING_KEYS.exchangeRate, { vesPerUsd: 100, source: "TODO: actualizar con la tasa oficial BCV", updatedAt: new Date().toISOString() }, "Tasa de cambio Bs/USD para pagos en bolívares"],
+    [SETTING_KEYS.exchangeRate, { vesPerUsd: 100, source: "TODO: actualizar con la tasa oficial BCV", updatedAt: new Date().toISOString() }, "Tasa de cambio Bs/USD para pagos en bolívares (de ejemplo: los métodos en Bs. no se ofrecen hasta actualizarla)"],
     [SETTING_KEYS.orderNextNumber, { next: 1001 }, "Siguiente número visible de orden"],
     [SETTING_KEYS.enrollmentRetry, { maxAttempts: 8, baseDelaySeconds: 60 }, "Reintentos con backoff exponencial de la matrícula en Moodle"],
     [SETTING_KEYS.installmentReminders, { daysBefore: 3, overdueGraceDays: 0, overdueEveryDays: 7, maxOverdueReminders: 3 }, "Recordatorios por correo de la siguiente cuota (días antes del vencimiento, gracia y frecuencia de recordatorios vencidos)"],

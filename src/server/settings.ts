@@ -54,3 +54,59 @@ export async function getSetting<T = unknown>(key: string, fallback?: T): Promis
 }
 
 // Escrituras: updateSetting (src/server/admin-settings.ts) — valida por clave y deja auditoría.
+
+// ───────────── Validación de datos de pago mostrados al comprador ─────────────
+
+/** Texto de relleno del seed ("TODO: banco", "04xx-xxxxxxx", "V-/J-xxxxxxxx"): nunca se muestra a un comprador. */
+export function isPlaceholderText(v: unknown): boolean {
+  if (typeof v !== "string") return true;
+  const s = v.trim();
+  return s === "" || /\bTODO\b|x{3,}|^[-/.\s]+$/i.test(s);
+}
+
+/**
+ * Problemas que impiden ofrecer un método manual: datos vacíos o de relleno. Un método con problemas no se
+ * puede habilitar desde el panel (updateSetting) ni se acepta en el checkout aunque esté marcado `enabled`.
+ */
+export function manualMethodProblems(m: Pick<ManualMethodConfig, "method" | "label" | "details" | "instructions">): string[] {
+  const out: string[] = [];
+  const entries = Object.entries(m.details ?? {});
+  if (m.method !== "EFECTIVO" && entries.length === 0) out.push(`${m.label}: faltan los datos para pagar (banco, cuenta/teléfono, titular…).`);
+  for (const [k, v] of entries) if (isPlaceholderText(v)) out.push(`${m.label}: el dato «${k}» está vacío o es de ejemplo («${String(v ?? "").trim()}»).`);
+  if (isPlaceholderText(m.instructions)) out.push(`${m.label}: faltan las instrucciones para el comprador.`);
+  return out;
+}
+
+export interface ExchangeRateSetting {
+  vesPerUsd: number;
+  source?: string;
+  updatedAt?: string;
+}
+
+/** Horas tras las cuales la tasa Bs/USD se considera desactualizada (la tasa BCV cambia a diario). */
+export const EXCHANGE_RATE_STALE_HOURS = 36;
+
+export interface ExchangeRateStatus {
+  vesPerUsd: number;
+  /** Se puede cobrar en bolívares con esta tasa (positiva y no marcada como de ejemplo). */
+  usable: boolean;
+  /** La fuente es texto de relleno del seed («TODO: …»): la tasa es de ejemplo. */
+  placeholder: boolean;
+  /** Más vieja que EXCHANGE_RATE_STALE_HOURS (o sin fecha). Se sigue usando, pero el panel avisa. */
+  stale: boolean;
+  ageHours: number | null;
+  problems: string[];
+}
+
+export function exchangeRateStatus(rate: Partial<ExchangeRateSetting> | null | undefined, now: Date): ExchangeRateStatus {
+  const vesPerUsd = Number(rate?.vesPerUsd ?? 0);
+  const placeholder = rate?.source != null && isPlaceholderText(rate.source);
+  const ts = rate?.updatedAt ? Date.parse(rate.updatedAt) : NaN;
+  const ageHours = Number.isFinite(ts) ? Math.max(0, (now.getTime() - ts) / 3_600_000) : null;
+  const stale = ageHours == null || ageHours > EXCHANGE_RATE_STALE_HOURS;
+  const problems: string[] = [];
+  if (!(vesPerUsd > 0) || !Number.isFinite(vesPerUsd)) problems.push("No hay tasa de cambio Bs/USD configurada.");
+  if (placeholder) problems.push(`La tasa de cambio (Bs. ${vesPerUsd} por USD) es de ejemplo: actualízala con la tasa oficial.`);
+  if (stale) problems.push(ageHours == null ? "La tasa de cambio no tiene fecha de actualización." : `La tasa de cambio tiene ${Math.floor(ageHours)} h sin actualizarse.`);
+  return { vesPerUsd, usable: vesPerUsd > 0 && Number.isFinite(vesPerUsd) && !placeholder, placeholder, stale, ageHours, problems };
+}

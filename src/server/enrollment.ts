@@ -60,6 +60,7 @@ async function loadOrderForEnrollment(d: Deps, orderId: string) {
           reservation: true,
           choice: true,
           installments: { select: { courseId: true, status: true } },
+          courses: { orderBy: { position: "asc" }, include: { course: true } },
           product: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } },
         },
       },
@@ -73,6 +74,8 @@ interface ItemLike {
   productTitle: string;
   planKind?: string | null;
   product: CourseLike & { type: string; diplomaCourses: { course: CourseLike }[] };
+  /** Lista de cursos congelada al comprar el diplomado (OrderItemCourse). Vacía solo en pedidos antiguos. */
+  courses?: { course: CourseLike }[];
   choice?: { moodleCourseIds: unknown } | null;
   /** Necesario en diplomados mes a mes: qué cursos tienen su cuota pagada. */
   installments?: { courseId: string | null; status: string }[];
@@ -83,9 +86,18 @@ interface ItemLike {
  * taller transfontanelar) o el curso del producto. Diplomado MES A MES: solo los cursos con su cuota
  * pagada (o condonada), salvo `all` (p.ej. para desmatricular todo lo que otorgó el pedido).
  */
+/**
+ * Cursos de un diplomado COMPRADO: los congelados en el pedido (OrderItemCourse). Si el administrador edita
+ * el diplomado después, este cliente conserva el programa que pagó. Pedidos anteriores a la congelación
+ * (sin filas) usan la lista actual.
+ */
+export function purchasedDiplomaCourses<C>(it: { courses?: { course: C }[]; product: { diplomaCourses: { course: C }[] } }): C[] {
+  return (it.courses?.length ? it.courses : it.product.diplomaCourses).map((x) => x.course);
+}
+
 export function itemMoodleCourses(it: ItemLike, opts: { all?: boolean } = {}): { productId: string; moodleCourseId: number | null; title: string }[] {
   if (it.product.type === "DIPLOMA") {
-    let courses = it.product.diplomaCourses.map((dc) => ({ productId: dc.course.id, moodleCourseId: dc.course.moodleCourseId, title: dc.course.title }));
+    let courses = purchasedDiplomaCourses(it).map((c) => ({ productId: c.id, moodleCourseId: c.moodleCourseId, title: c.title }));
     if (!opts.all && it.planKind === "MONTHLY") {
       const paid = new Set((it.installments ?? []).filter((i) => i.courseId && (i.status === "PAID" || i.status === "WAIVED")).map((i) => i.courseId));
       courses = courses.filter((c) => paid.has(c.productId));
@@ -102,7 +114,7 @@ function desiredCourses(order: NonNullable<Awaited<ReturnType<typeof loadOrderFo
   const out: DesiredCourse[] = [];
   const seen = new Set<number>();
   for (const it of order.items) {
-    if (it.product.type === "DIPLOMA" && it.product.diplomaCourses.length === 0) throw new DomainError("VALIDATION", `El diplomado «${it.productTitle}» no tiene cursos configurados.`);
+    if (it.product.type === "DIPLOMA" && purchasedDiplomaCourses(it).length === 0) throw new DomainError("VALIDATION", `El diplomado «${it.productTitle}» no tiene cursos configurados.`);
     const courses = itemMoodleCourses(it, opts);
     for (const c of courses) {
       if (c.moodleCourseId == null) throw new DomainError("VALIDATION", `El curso «${c.title}» no tiene curso de Moodle asociado.`);
@@ -401,7 +413,7 @@ export async function unenrollOrder(d: Deps, orderId: string, actor: Actor = SYS
   const courses = desiredCourses(order, { all: true }).map((c) => c.moodleCourseId);
   const others = await d.db.order.findMany({
     where: { customerId: order.customerId, id: { not: orderId }, status: { in: [...PAID_STATES] } },
-    include: { items: { include: { choice: true, installments: { select: { courseId: true, status: true } }, product: { include: { diplomaCourses: { include: { course: true } } } } } } },
+    include: { items: { include: { choice: true, installments: { select: { courseId: true, status: true } }, courses: { orderBy: { position: "asc" }, include: { course: true } }, product: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } } } } },
   });
   const keep = new Set<number>();
   for (const o of others)

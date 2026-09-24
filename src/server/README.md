@@ -65,3 +65,10 @@ clientes reales → mocks HTTP, rutas reales de retorno y webhook).
   `changePassword` (revoca sesiones), permisos por rol `can` / `assertCan` / `requireAdmin` (STAFF: pedidos, verificar
   pagos, correos, cohortes; solo ADMIN: reembolsos, ajustes de saldo, revocar certificados, catálogo,
   configuración, usuarios), `ADMIN_SESSION_COOKIE` + `adminCookieOptions`.
+
+### Ronda 7
+- **Cursos congelados por compra** (`OrderItemCourse`): `createCheckout` guarda la lista de cursos del diplomado; `enrollment` (`purchasedDiplomaCourses`), `checkDiplomaCompletion`, el PDF y `verifyCertificate` usan esa lista. `setDiplomaCourses` solo afecta compras nuevas, congela primero los pedidos antiguos sin lista y devuelve `livePurchases`. `deleteProduct` rechaza un curso que figura en una compra.
+- **Datos de pago de ejemplo**: `manualMethodProblems` / `exchangeRateStatus` (settings.ts). `updateSetting` no deja habilitar un método con datos vacíos o «TODO», ni guardar una tasa con fuente de ejemplo. El checkout y `recordManualPayment` rechazan esos métodos; los métodos en Bs. se retiran si la tasa es de ejemplo. `orders.listPaymentOptions` = lo que la tienda puede ofrecer; `settings.getSettingsWarnings` = avisos del panel (incluye tasa con más de 36 h). El seed deja pago móvil y transferencia deshabilitados hasta cargar los datos reales.
+- **Rutas del comprador**: `/pedido/[token]` (banners `?paypal=completado|pendiente|fallido|cancelado|error`, `?pago=error&motivo=…`, `?pago=registrado`, `?cuota=<id>#pagar`, pago PayPal y formulario de pago manual) y `/certificados/[code]` (verificación pública). La tienda las re-estiliza sin cambiar rutas ni parámetros.
+- `isDomainError` reconoce la clase aunque Next la duplique entre chunks (antes un token inexistente daba 500 en páginas).
+- `services.ts` carga `.env` fuera de Next (scripts tsx).

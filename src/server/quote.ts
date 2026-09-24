@@ -40,6 +40,8 @@ export interface Quote {
   totalCents: number;
   dueNowCents: number;
   installments: QuoteInstallment[];
+  /** Diplomados: cursos que se compran, en orden (el pedido los congela en OrderItemCourse). */
+  diplomaCourses: { productId: string; moodleCourseId: number | null; title: string }[];
 }
 
 export function addMonths(date: Date, n: number): Date {
@@ -125,5 +127,6 @@ export async function quote(db: Db | Tx, input: QuoteInput, now: Date = new Date
       dueDate: addMonths(now, i),
       course: plan.kind === "MONTHLY" ? { productId: monthlyCourses[i].id, moodleCourseId: monthlyCourses[i].moodleCourseId, title: monthlyCourses[i].title } : null,
     })),
+    diplomaCourses: product.type === "DIPLOMA" ? product.diplomaCourses.map((dc) => ({ productId: dc.course.id, moodleCourseId: dc.course.moodleCourseId, title: dc.course.title })) : [],
   };
 }

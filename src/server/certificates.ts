@@ -16,6 +16,7 @@ import { formatUSD } from "@/server/pricing";
 import { deliverOutboxEmail, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
 import { requireAdmin, type SessionUser } from "@/server/auth";
+import { purchasedDiplomaCourses } from "@/server/enrollment";
 
 export interface CompletionCheck {
   customerId: string;
@@ -53,18 +54,20 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
 
   const diploma = await d.db.product.findUnique({ where: { id: diplomaId }, include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } });
   if (!diploma || diploma.type !== "DIPLOMA") throw new DomainError("NOT_FOUND", "El diplomado no existe.");
-  const courses = diploma.diplomaCourses.map((dc) => dc.course);
-  if (courses.length === 0) return { ...base, reason: "El diplomado no tiene cursos configurados" };
-  if (courses.some((c) => c.moodleCourseId == null)) return { ...base, total: courses.length, reason: "Hay cursos sin curso de Moodle asociado" };
 
   const purchases = await d.db.orderItem.findMany({
     where: { productId: diplomaId, order: { customerId, status: "ENROLLED" } },
-    include: { order: { select: { id: true, balanceCents: true } } },
+    include: { order: { select: { id: true, balanceCents: true } }, courses: { orderBy: { position: "asc" }, include: { course: true } } },
     orderBy: { order: { createdAt: "asc" } },
   });
-  if (purchases.length === 0) return { ...base, total: courses.length, reason: "El cliente no tiene una inscripción vigente en el diplomado" };
+  if (purchases.length === 0) return { ...base, total: diploma.diplomaCourses.length, reason: "El cliente no tiene una inscripción vigente en el diplomado" };
   // Si hay varias compras vigentes, se prefiere la que no tiene saldo pendiente.
   const purchase = purchases.find((p) => p.order.balanceCents <= 0) ?? purchases[0];
+  // Se certifica el programa COMPRADO (lista congelada en el pedido), no la lista actual del diplomado:
+  // agregar o quitar cursos después no bloquea ni altera el certificado de quien ya lo compró.
+  const courses = purchasedDiplomaCourses({ courses: purchase.courses, product: diploma });
+  if (courses.length === 0) return { ...base, reason: "El diplomado no tiene cursos configurados" };
+  if (courses.some((c) => c.moodleCourseId == null)) return { ...base, total: courses.length, reason: "Hay cursos sin curso de Moodle asociado" };
 
   const customer = await d.db.customer.findUniqueOrThrow({ where: { id: customerId } });
   const now = d.now();
@@ -151,7 +154,11 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
 export async function deliverCertificate(d: Deps, certificateId: string): Promise<{ pdf: boolean; emailed: boolean; error?: string }> {
   const cert = await d.db.certificate.findUniqueOrThrow({
     where: { id: certificateId },
-    include: { customer: true, orderItem: { select: { orderId: true } }, diploma: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } } },
+    include: {
+      customer: true,
+      orderItem: { select: { orderId: true, courses: { orderBy: { position: "asc" }, include: { course: true } } } },
+      diploma: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } },
+    },
   });
   if (cert.status !== "ISSUED") return { pdf: !!cert.pdfPath, emailed: !!cert.emailedAt };
   const orderId = cert.orderItem?.orderId ?? null;
@@ -165,7 +172,7 @@ export async function deliverCertificate(d: Deps, certificateId: string): Promis
         code: cert.code,
         fullName,
         diplomaTitle: cert.diploma.title,
-        courses: cert.diploma.diplomaCourses.map((dc) => dc.course.title),
+        courses: purchasedDiplomaCourses({ courses: cert.orderItem?.courses, product: cert.diploma }).map((c) => c.title),
         issuedAt: cert.issuedAt,
         verifyUrl: verifyUrl(d, cert.code),
         endorsement: cert.diploma.endorsementTitle,
@@ -208,13 +215,24 @@ export function verifyUrl(d: Pick<Deps, "config">, code: string) {
 
 /** Verificación pública por código. */
 export async function verifyCertificate(d: Pick<Deps, "db">, code: string) {
-  const c = await d.db.certificate.findUnique({ where: { code: code.trim().toUpperCase() }, include: { customer: true, diploma: true } });
+  const normalized = code.trim().toUpperCase();
+  if (!normalized || normalized.length > 40) return null;
+  const c = await d.db.certificate.findUnique({
+    where: { code: normalized },
+    include: {
+      customer: true,
+      orderItem: { select: { courses: { orderBy: { position: "asc" }, include: { course: true } } } },
+      diploma: { include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } },
+    },
+  });
   if (!c) return null;
   return {
     code: c.code,
     status: c.status,
     holder: `${c.customer.firstName} ${c.customer.lastName}`,
     diploma: c.diploma.title,
+    /** Cursos certificados: los del programa que el titular compró (lista congelada en su pedido). */
+    courses: purchasedDiplomaCourses({ courses: c.orderItem?.courses, product: c.diploma }).map((x) => x.title),
     issuedAt: c.issuedAt,
     revokedAt: c.revokedAt,
     revokeReason: c.revokeReason,

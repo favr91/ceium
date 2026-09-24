@@ -206,6 +206,7 @@ model Product {
   enrollments           Enrollment[]
   certificates          Certificate[]
   installmentsForCourse Installment[]       @relation("InstallmentCourse")
+  inPurchasedDiplomas   OrderItemCourse[]   @relation("OrderItemCourseProduct")
 }
 
 model ProductImage {
@@ -475,8 +476,24 @@ model OrderItem {
   enrollments  Enrollment[]
   certificates Certificate[]
   installments Installment[]
+  /// Diplomados: lista de cursos congelada al comprar (la que se matricula y se certifica).
+  courses      OrderItemCourse[]
 
   @@index([orderId])
+}
+
+/// Cursos del diplomado tal como estaban al comprarlo. Editar el diplomado después (setDiplomaCourses) no
+/// cambia lo que ese cliente compró: matrícula, finalización y PDF del certificado usan esta lista.
+model OrderItemCourse {
+  id          String    @id @default(cuid())
+  orderItemId String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      Product   @relation("OrderItemCourseProduct", fields: [courseId], references: [id], onDelete: Restrict)
+  position    Int
+
+  @@unique([orderItemId, courseId])
+  @@index([courseId])
 }
 
 // ───────────────────────────── Pagos ─────────────────────────────
