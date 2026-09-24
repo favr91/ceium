@@ -520,7 +520,10 @@ export async function expireStaleOrders(d: Deps): Promise<number> {
   let n = 0;
   for (const o of stale) {
     const done = await withTx(d, async (tx) => {
-      const cur0 = await tx.order.findUniqueOrThrow({ where: { id: o.id }, select: { status: true, amountPaidCents: true, dueNowCents: true } });
+      const cur0 = await tx.order.findUniqueOrThrow({ where: { id: o.id }, select: { status: true, amountPaidCents: true, dueNowCents: true, expiresAt: true } });
+      // El plazo pudo extenderse entre la lista y esta transacción (p. ej. se está capturando un pago PayPal
+      // aprobado: secureSeatBeforeCapture aparta el pedido y su cupo durante la captura).
+      if (cur0.expiresAt && cur0.expiresAt.getTime() >= now.getTime()) return false;
       const completed = await tx.payment.count({ where: { orderId: o.id, status: "COMPLETED" } });
       if (cur0.status === "PENDING_PAYMENT" && (cur0.amountPaidCents > 0 || completed > 0)) {
         const flagged = await tx.orderEvent.count({ where: { orderId: o.id, type: "ATTENTION", note: { startsWith: UNDERPAID_STALE_NOTE } } });

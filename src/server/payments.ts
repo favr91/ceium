@@ -1026,6 +1026,8 @@ export async function capturePaypalReturn(
 }
 
 const NOT_CAPTURED = "NOT_CAPTURED";
+/** Tiempo que se aparta la reserva (y el pedido) mientras se captura una orden PayPal aprobada. */
+const CAPTURE_WINDOW_MS = 10 * 60_000;
 class SeatGone extends Error {}
 
 /**
@@ -1076,8 +1078,22 @@ async function secureSeatBeforeCapture(d: Deps, paymentId: string): Promise<{ re
         reason = `el cliente ya ${dup.how} ${dup.where} en el pedido #${dup.number} (compra duplicada)`;
         throw new SeatGone();
       }
+      // La captura en PayPal tarda (red): mientras tanto el barrido de reservas, la liberación perezosa de otro
+      // comprador (reserveSeat) o el vencimiento del pedido podían soltar una reserva HELD ya vencida (o a punto de
+      // vencer) y revenderla → cobro sin cupo. Se aparta durante la ventana de captura: la reserva viva y el plazo
+      // del pedido se llevan al menos a ahora + CAPTURE_WINDOW_MS (una reserva liberada se vuelve a tomar abajo).
+      const captureUntil = new Date(now.getTime() + CAPTURE_WINDOW_MS);
+      if (order.status === "PENDING_PAYMENT" && (!order.expiresAt || order.expiresAt.getTime() < captureUntil.getTime())) {
+        await tx.order.updateMany({ where: { id: order.id, status: "PENDING_PAYMENT" }, data: { expiresAt: captureUntil } });
+      }
       for (const it of order.items) {
         const r = it.reservation;
+        if (it.modality === "SEMIPRESENCIAL" && r?.status === "HELD" && r.expiresAt.getTime() < captureUntil.getTime()) {
+          const n = await tx.seatReservation.updateMany({ where: { id: r.id, status: "HELD" }, data: { expiresAt: captureUntil } });
+          if (n.count === 1) continue;
+          // La soltaron entre la lectura y esta escritura: se trata como liberada (abajo se vuelve a tomar).
+          r.status = (await tx.seatReservation.findUniqueOrThrow({ where: { id: r.id }, select: { status: true } })).status;
+        }
         if (it.modality !== "SEMIPRESENCIAL" || !r || r.status !== "RELEASED") continue;
         if (!(await acquireSeat(tx, r.cohortId, "HELD", { requireOpen: false }))) {
           reason = `la reserva de «${it.productTitle}» venció y la cohorte ya no tiene cupo`;

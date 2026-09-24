@@ -359,10 +359,18 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
     return { status: worst === "FAILED" ? "FAILED" : "RETRY_SCHEDULED", reason: msg, enrolledCourseIds: [], pendingCourseIds: courseIds, createdMoodleUser: created };
   }
 
-  const done = await d.db.enrollment.updateMany({
-    where: { id: { in: claimed.map((r) => r.id) }, status: "PENDING" },
-    data: { status: "ENROLLED", enrolledAt: now, moodleUserId: userId!, lastError: null, nextAttemptAt: null, attempts: { increment: 1 } },
-  });
+  // Fila por fila: saber qué cursos matriculó ESTA llamada. «Rematricular» (force) puede reclamar las mismas filas
+  // mientras la matrícula inline sigue en curso (Moodle lento); la que llega segunda no debe avisar otra vez de un
+  // curso que la primera ya dio por matriculado (el médico recibía dos «Ya estás inscrito»).
+  const newly: number[] = [];
+  for (const r of claimed) {
+    const n = await d.db.enrollment.updateMany({
+      where: { id: r.id, status: "PENDING" },
+      data: { status: "ENROLLED", enrolledAt: now, moodleUserId: userId!, lastError: null, nextAttemptAt: null, attempts: { increment: 1 } },
+    });
+    if (n.count === 1) newly.push(r.moodleCourseId);
+  }
+  const done = { count: newly.length };
   // Un reembolso desmatriculó (UNENROLLED) alguna fila mientras Moodle matriculaba: se deshace en Moodle para
   // que el médico reembolsado no conserve el acceso. Si Moodle falla, queda para el job de desmatrículas. El
   // evento ENROLLMENT va ANTES del deshacer: el job da por resuelta una desmatrícula fallida si después hay
@@ -375,7 +383,9 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
   }
   await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "ENROLLMENT", actor, `Matriculado en ${courseIds.length} curso(s) de Moodle`, { courseIds, moodleUserId: userId }));
   if (undone.length) await undoConcurrentEnrol(d, orderId, userId!, undone, false);
-  return finalize(d, orderId, order.customerId, desired, actor, { userId: userId!, tempPassword, newlyEnrolled: courseIds });
+  // Si otra llamada ya las matriculó, solo se avisa cuando esta creó la cuenta: su contraseña temporal no se guarda
+  // y el médico no la recibiría por ningún otro correo.
+  return finalize(d, orderId, order.customerId, desired, actor, { userId: userId!, tempPassword, newlyEnrolled: newly.length ? newly : tempPassword ? courseIds : [] });
 }
 
 /**
