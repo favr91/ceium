@@ -15,7 +15,7 @@
 //   POST /__mock/reset        {courses?}       → estado inicial (cursos 101..128 por defecto: 26 cursos + 2 niveles del taller transfontanelar)
 //   POST /__mock/complete     {userid, courseid, completed?=true}
 //   POST /__mock/course       {id, fullname?, shortname?, enablecompletion?, criteria?, manualEnrol?}
-//   POST /__mock/fail-next    {wsfunction?, count?=1, type?: "exception"|"http"|"timeout"|"garbage",
+//   POST /__mock/fail-next    {wsfunction?, count?=1, type?: "exception"|"http"|"timeout"|"garbage"|"ok" (lenta: delayMs y responde bien),
 //                              exception?, errorcode?, message?, status?, delayMs?,
 //                              after?: true → la función SE EJECUTA y luego se responde con el fallo
 //                              (respuesta perdida: p.ej. core_user_create_users creó la cuenta)}
@@ -531,6 +531,8 @@ export function createMoodleMock(opts = {}) {
         try { functions[wsfunction](params); } catch { /* el error también se pierde */ }
       }
       switch (f.type ?? 'exception') {
+        case 'ok':
+          break; // lenta pero correcta: tras delayMs se ejecuta y responde con normalidad (abajo)
         case 'timeout':
           return; // nunca responde (el socket queda abierto hasta que el cliente aborta)
         case 'http':

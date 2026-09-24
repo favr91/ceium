@@ -600,7 +600,7 @@ export async function unenrollOrder(
   orderId: string,
   actor: Actor = SYSTEM,
   /** Cursos que se piden a Moodle aunque su fila ya esté UNENROLLED (reintento de un deshacer que falló). */
-  opts: { alsoUnenrolled?: number[] } = {},
+  opts: { alsoUnenrolled?: number[]; reaffirmKept?: boolean } = {},
 ): Promise<{ unenrolledCourseIds: number[]; keptCourseIds: number[] }> {
   const order = await loadOrderForEnrollment(d, orderId);
   if (!order) throw new DomainError("NOT_FOUND", "El pedido no existe.");
@@ -626,11 +626,70 @@ export async function unenrollOrder(
   // a quien no está matriculado es inocuo en Moodle, así que se piden también las que ya se intentaron.
   const unenrolIds = toRemove.filter((r) => r.status === "ENROLLED" || r.status === "UNENROLLED" || r.attempts > 0 || r.nextAttemptAt != null).map((r) => r.moodleCourseId);
   const userId = order.customer.moodleUserId;
-  if (unenrolIds.length && userId != null) await d.moodle.unenrol(userId, unenrolIds);
-  if (toRemove.length) await d.db.enrollment.updateMany({ where: { id: { in: toRemove.map((r) => r.id) } }, data: { status: "UNENROLLED", nextAttemptAt: null, completedAt: null, completionCheckedAt: null } });
+  if (unenrolIds.length && userId != null) {
+    try {
+      await d.moodle.unenrol(userId, unenrolIds);
+    } catch (e) {
+      // Sin respuesta: Moodle pudo ejecutarla igual, también sobre un curso que otro pedido tomó mientras tanto.
+      await reaffirmTakenOver(d, order.number, userId, toRemove.filter((r) => unenrolIds.includes(r.moodleCourseId)));
+      throw e;
+    }
+  }
+  // Solo las filas que siguen siendo de quien eran al leerlas: mientras Moodle desmatriculaba, otro pedido pagado
+  // (recompra del mismo curso) pudo tomar la fila y matricular; pisarla lo dejaba «sin matrícula» en la app.
+  const removed: typeof toRemove = [];
+  for (const r of toRemove) {
+    const n = await d.db.enrollment.updateMany({ where: { id: r.id, orderId: r.orderId }, data: { status: "UNENROLLED", nextAttemptAt: null, completedAt: null, completionCheckedAt: null } });
+    if (n.count === 1) removed.push(r);
+  }
+  if (userId != null && unenrolIds.length) await reaffirmTakenOver(d, order.number, userId, toRemove.filter((r) => unenrolIds.includes(r.moodleCourseId)));
   const kept = rows.filter((r) => keep.has(r.moodleCourseId)).map((r) => r.moodleCourseId);
-  await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "UNENROLLMENT", actor, `Desmatriculado de ${toRemove.length} curso(s)`, { courseIds: toRemove.map((r) => r.moodleCourseId), kept }));
-  return { unenrolledCourseIds: toRemove.map((r) => r.moodleCourseId), keptCourseIds: kept };
+  // Reintento de una desmatrícula que falló sin respuesta: Moodle pudo ejecutarla tarde sobre un curso que ahora
+  // paga otro pedido vigente. Se vuelve a matricular (idempotente) lo que el cliente conserva.
+  if (opts.reaffirmKept && userId != null) {
+    const keptRows = rows.filter((r) => keep.has(r.moodleCourseId) && r.status === "ENROLLED");
+    if (keptRows.length) {
+      try {
+        await d.moodle.enrol(userId, keptRows.map((r) => r.moodleCourseId));
+      } catch (e) {
+        d.log.warn(`[enrollment] no se pudo reafirmar en Moodle la matrícula conservada del pedido ${orderId}`, e);
+        throw e;
+      }
+    }
+  }
+  await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "UNENROLLMENT", actor, `Desmatriculado de ${removed.length} curso(s)`, { courseIds: removed.map((r) => r.moodleCourseId), kept }));
+  return { unenrolledCourseIds: removed.map((r) => r.moodleCourseId), keptCourseIds: kept };
+}
+
+/**
+ * Filas que una desmatrícula iba a quitar y que, mientras Moodle la ejecutaba, tomó OTRO pedido pagado (el médico
+ * volvió a comprar el curso y se aprobó). Su matrícula en Moodle pudo ejecutarse ANTES que la desmatrícula y quedar
+ * borrada por ella: se vuelve a matricular (enrol es idempotente). Si Moodle falla, la fila vuelve a PENDING y el
+ * job de matrículas la reintenta.
+ */
+async function reaffirmTakenOver(d: Deps, fromOrderNumber: number, userId: number, candidates: { id: string; orderId: string | null; moodleCourseId: number }[]) {
+  if (!candidates.length) return;
+  const now = await d.db.enrollment.findMany({ where: { id: { in: candidates.map((r) => r.id) } }, select: { id: true, orderId: true, moodleCourseId: true, status: true, order: { select: { status: true } } } });
+  const before = new Map(candidates.map((r) => [r.id, r.orderId]));
+  const taken = now.filter((r) => r.orderId && r.orderId !== before.get(r.id) && (r.status === "ENROLLED" || r.status === "PENDING") && r.order && PAID_STATES.includes(r.order.status));
+  if (!taken.length) return;
+  const byOrder = new Map<string, typeof taken>();
+  for (const r of taken) byOrder.set(r.orderId!, [...(byOrder.get(r.orderId!) ?? []), r]);
+  for (const [owner, list] of byOrder) {
+    const courseIds = list.map((r) => r.moodleCourseId);
+    try {
+      await d.moodle.enrol(userId, courseIds);
+      await d.db.$transaction((tx) =>
+        addOrderEvent(tx, owner, "ENROLLMENT", SYSTEM, `Matrícula reafirmada en Moodle en ${courseIds.length} curso(s): la desmatrícula del pedido reembolsado #${fromOrderNumber} corría a la vez`, { courseIds, moodleUserId: userId }),
+      );
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? e).slice(0, 300);
+      await d.db.enrollment.updateMany({ where: { id: { in: list.map((r) => r.id) }, orderId: owner, status: { in: ["ENROLLED", "PENDING"] } }, data: { status: "PENDING", attempts: 0, nextAttemptAt: null, lastError: `Reafirmar tras la desmatrícula del pedido #${fromOrderNumber}: ${msg}` } });
+      await d.db.$transaction(async (tx) => {
+        await addOrderEvent(tx, owner, "ENROLLMENT_FAILED", SYSTEM, `No se pudo reafirmar la matrícula en Moodle tras la desmatrícula concurrente del pedido #${fromOrderNumber}: ${msg}. Se reintentará.`, { courseIds });
+      });
+    }
+  }
 }
 
 /** Evento del pedido: la desmatrícula pedida (reembolso) falló en Moodle; el job la reintenta. */
@@ -691,7 +750,7 @@ export async function retryFailedUnenrollments(d: Deps): Promise<{ orders: numbe
     if (settled > 0) continue;
     orders++;
     try {
-      await unenrollOrder(d, orderId, SYSTEM, { alsoUnenrolled: [...new Set(courseIds)] });
+      await unenrollOrder(d, orderId, SYSTEM, { alsoUnenrolled: [...new Set(courseIds)], reaffirmKept: true });
       unenrolled++;
     } catch (e) {
       d.log.warn(`[enrollment] reintento de desmatrícula del pedido ${orderId} falló; se volverá a intentar`, e);
