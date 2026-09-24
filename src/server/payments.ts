@@ -376,7 +376,7 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
     let orderClosed = false;
     if (order.status === "AWAITING_VERIFICATION" && stillAwaiting === 0) {
       if (order.amountPaidCents <= 0) {
-        await releaseOrderReservations(tx, order.id, "REJECTED", now);
+        await releaseOrderReservations(tx, order.id, "REJECTED", now, actor);
         await transitionOrder(tx, order.id, "REJECTED", { actor, note: `Pago rechazado: ${input.note!.trim()}` });
         orderClosed = true;
       } else {
@@ -938,12 +938,12 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date): Promise<
   const agg = await tx.payment.aggregate({ where: { orderId: order.id, status: { in: ["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"] } }, _sum: { amountUsdCents: true, refundedCents: true } });
   const fullyRefunded = (agg._sum.amountUsdCents ?? 0) > 0 && (agg._sum.refundedCents ?? 0) >= (agg._sum.amountUsdCents ?? 0);
   if (fullyRefunded) {
-    if (releaseSeat !== false) await releaseOrderReservations(tx, order.id, "REFUNDED", now);
+    if (releaseSeat !== false) await releaseOrderReservations(tx, order.id, "REFUNDED", now, input.actor);
     if (["PAID", "PARTIALLY_PAID", "ENROLLED"].includes(order.status)) {
       await transitionOrder(tx, order.id, "REFUNDED", { actor: input.actor, note: refund.reason ?? "Reembolso total", patch: { cancelledAt: now } });
     }
   } else if (releaseSeat === true) {
-    await releaseOrderReservations(tx, order.id, "REFUNDED", now);
+    await releaseOrderReservations(tx, order.id, "REFUNDED", now, input.actor);
   }
 
   // Mes a mes: una cuota que vuelve a quedar impaga con su curso ya matriculado → decisión del admin.

@@ -54,6 +54,28 @@ const commands: Record<string, (input: Input) => Promise<unknown>> = {
     };
   },
 
+  /** Cohorte NUEVA (abierta) de un curso semipresencial en una sede, con el cupo pedido (como en el panel). */
+  async "course-cohort"(input) {
+    const s = services();
+    const db = s.deps.db;
+    const product = await db.product.findUniqueOrThrow({ where: { slug: String(input.product) }, select: { id: true, title: true, type: true, moodleCourseId: true } });
+    if (product.type !== "COURSE") throw new Error(`${input.product} no es un curso`);
+    const sede = await db.sede.findUniqueOrThrow({ where: { slug: String(input.sede ?? "barquisimeto") } });
+    const start = new Date(Date.now() + 21 * 24 * 3600_000);
+    const cohort = await s.cohorts.createCohort(await adminSession(), {
+      productId: product.id,
+      sedeId: sede.id,
+      name: String(input.name ?? `Cohorte e2e ${Date.now().toString(36)}`),
+      startDate: start,
+      endDate: new Date(start.getTime() + 28 * 24 * 3600_000),
+      capacity: Number(input.capacity ?? 3),
+      status: "OPEN",
+      sessions: [{ date: start.toISOString().slice(0, 10), title: "Sesión práctica en sede" }],
+      notes: "Cohorte creada por el e2e de pago manual.",
+    });
+    return { productId: product.id, productTitle: product.title, moodleCourseId: product.moodleCourseId, sedeId: sede.id, sedeSlug: sede.slug, sedeName: sede.name, cohortId: cohort.id, cohortName: cohort.name, capacity: cohort.capacity };
+  },
+
   /** Checkout como lo hace la tienda (createCheckout): reserva el cupo y deja el pedido en PENDING_PAYMENT. */
   async checkout(input) {
     const o = await services().orders.createCheckout({

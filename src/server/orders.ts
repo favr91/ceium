@@ -514,7 +514,7 @@ export async function cancelOrder(d: Deps, user: SessionUser, orderId: string, n
     if (o.amountPaidCents > 0) throw new DomainError("INVALID_STATE", "El pedido tiene pagos confirmados: usa un reembolso en lugar de cancelar.");
     const awaiting = await tx.payment.count({ where: { orderId, status: "AWAITING_VERIFICATION" } });
     if (awaiting > 0) throw new DomainError("INVALID_STATE", "Hay pagos pendientes de verificación: recházalos antes de cancelar.");
-    await releaseOrderReservations(tx, orderId, "CANCELLED", now);
+    await releaseOrderReservations(tx, orderId, "CANCELLED", now, actor);
     await tx.payment.updateMany({ where: { orderId, status: "PENDING" }, data: { status: "CANCELLED" } });
     return transitionOrder(tx, orderId, "CANCELLED", { actor, note: note ?? "Pedido cancelado", patch: { cancelledAt: now } });
   });

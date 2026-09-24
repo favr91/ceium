@@ -134,11 +134,35 @@ export async function releaseReservation(tx: Tx, reservationId: string, reason: 
   return true;
 }
 
-/** Libera todas las reservas vivas de un pedido. */
-export async function releaseOrderReservations(tx: Tx, orderId: string, reason: ReleaseReason, now: Date): Promise<number> {
-  const rs = await tx.seatReservation.findMany({ where: { orderId, status: { in: ["HELD", "CONFIRMED"] } }, select: { id: true } });
+const RELEASE_REASON_LABEL: Record<ReleaseReason, string> = {
+  EXPIRED: "venció el plazo de pago",
+  REJECTED: "pago rechazado",
+  REFUNDED: "pedido reembolsado",
+  CANCELLED: "pedido cancelado",
+  REASSIGNED: "cohorte reasignada",
+};
+
+/**
+ * Libera todas las reservas vivas de un pedido. Cada cupo liberado queda en el historial del pedido
+ * (SEAT_RELEASED: cohorte, estado previo del cupo, motivo y quién lo originó).
+ */
+export async function releaseOrderReservations(tx: Tx, orderId: string, reason: ReleaseReason, now: Date, actor: { type: "SYSTEM" | "ADMIN" | "CUSTOMER" | "WEBHOOK"; id?: string | null } = { type: "SYSTEM" }): Promise<number> {
+  const rs = await tx.seatReservation.findMany({ where: { orderId, status: { in: ["HELD", "CONFIRMED"] } }, select: { id: true, status: true, cohortId: true, cohort: { select: { name: true } } } });
   let n = 0;
-  for (const r of rs) if (await releaseReservation(tx, r.id, reason, now)) n++;
+  for (const r of rs) {
+    if (!(await releaseReservation(tx, r.id, reason, now))) continue;
+    n++;
+    await tx.orderEvent.create({
+      data: {
+        orderId,
+        type: "SEAT_RELEASED",
+        actorType: actor.type,
+        actorId: actor.type === "ADMIN" ? (actor.id ?? null) : null,
+        note: `Cupo liberado en ${r.cohort.name} (${RELEASE_REASON_LABEL[reason]}).`,
+        data: { reservationId: r.id, cohortId: r.cohortId, previousStatus: r.status, reason },
+      },
+    });
+  }
   return n;
 }
 
