@@ -110,14 +110,35 @@ test.describe("c1 carrito", () => {
       const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("a")?.getAttribute("aria-label") ?? document.elementFromPoint(x, y)?.closest("a")?.textContent, [box.x + box.width - 20, box.y + box.height / 2]);
       expect(hit).toContain(name === "Pagar pedido" ? "Pagar pedido" : "Pagar con PayPal");
     }
-    // Lejos de los botones vuelve a aparecer.
-    await page.evaluate(() => window.scrollTo(0, 0));
+    // Lejos de los botones (al pie de la página) vuelve a aparecer.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await expect(wa).toBeVisible();
+  });
+
+  test("móvil: el título usa todo el ancho y el WhatsApp no tapa el ahorro", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await fillCart(page);
+    const diploma = page.getByTestId("cart-line").filter({ hasText: "Medicina Materno Fetal" });
+    const name = diploma.locator(".ck-name");
+    const lines = await name.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
+    expect(lines).toBeLessThanOrEqual(3);
+    const pill = diploma.getByTestId("cart-line-discount");
+    const wa = page.locator(".whatsapp-widget");
+    await pill.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom - window.innerHeight + 20));
+    await page.waitForTimeout(400); // transición de ocultarse
+    const box = (await pill.boundingBox())!;
+    if (await wa.isVisible()) {
+      const w = (await wa.boundingBox())!;
+      const overlap = w.x < box.x + box.width && w.x + w.width > box.x && w.y < box.y + box.height && w.y + w.height > box.y;
+      expect(overlap).toBe(false);
+    }
   });
 
   test("un enlace inválido no agrega nada y explica por qué", async ({ page }) => {
     await page.goto(`/cart/add?product=${COURSE}&modality=SEMIPRESENCIAL&plan=FULL`);
-    await expect(page.getByRole("alert")).toContainText("Selecciona una sede");
+    // Solo el aviso del carrito (Next también monta su anunciador de rutas con role="alert").
+    await expect(page.getByRole("alert").filter({ hasText: "Selecciona una sede" })).toHaveCount(1);
+    await expect(page.locator(".ck-banner")).toContainText("Selecciona una sede");
     await expect(page.getByTestId("cart-empty")).toBeVisible();
   });
 

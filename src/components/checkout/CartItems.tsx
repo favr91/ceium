@@ -130,7 +130,6 @@ function CartRow({ line, index, updateQuantity, onStatus }: { line: ResolvedCart
       <td className="ck-details">
         <div className="ck-name-row">
           <a href={line.href} className="ck-name">{line.title}</a>
-          <span className="ck-price ck-price--inline" aria-hidden="true">{price}</span>
         </div>
         <div className="ck-unit" data-testid="cart-unit-price">
           {line.discountCents > 0 && !line.error ? (
@@ -141,7 +140,13 @@ function CartRow({ line, index, updateQuantity, onStatus }: { line: ResolvedCart
             </>
           ) : null}
           <span className="ck-unit-now">{line.error ? "—" : usd(line.programTotalCents)}</span>
-          {!line.error && line.programTotalCents > line.priceCents ? <span className="ck-unit-hint">total del programa</span> : null}
+          {!line.error && line.programTotalCents > line.priceCents ? (
+            <>
+              <span className="ck-unit-hint">total del programa</span>
+              {/* En móvil no hay columna «Total»: el pago de hoy va aquí, bajo el título, sin robarle ancho. */}
+              <span className="ck-unit-today" aria-hidden="true">Hoy pagas <strong>{price}</strong></span>
+            </>
+          ) : null}
         </div>
         <dl className="ck-options">
           {displayOptions(line).map((o) => (
@@ -152,7 +157,7 @@ function CartRow({ line, index, updateQuantity, onStatus }: { line: ResolvedCart
           ))}
         </dl>
         {line.discountCents > 0 && !line.error ? (
-          <p className="ck-save" data-testid="cart-line-discount">
+          <p className="ck-save" data-testid="cart-line-discount" data-ck-wa-avoid>
             <TagIcon />
             <span>Ahorras <strong>{usd(line.discountCents)}</strong> (−{line.discountPct}%)</span>
           </p>

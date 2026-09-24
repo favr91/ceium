@@ -1,6 +1,6 @@
 "use client";
-// El botón flotante de WhatsApp (fijo abajo a la derecha) nunca debe tapar «Pagar pedido» ni PayPal: mientras
-// alguno de los botones de pago se cruce con él, se aparta (cart.css lo oculta con html[data-ck-wa-yield]).
+// El botón flotante de WhatsApp (fijo abajo a la derecha) nunca debe tapar «Pagar pedido», PayPal ni el ahorro
+// de una línea ([data-ck-wa-avoid]): mientras alguno se cruce con él, se aparta (cart.css lo oculta con html[data-ck-wa-yield]).
 import { useEffect } from "react";
 
 const ATTR = "data-ck-wa-yield";
@@ -16,7 +16,7 @@ export function CartCtaGuard() {
     const check = () => {
       frame = 0;
       const wa = document.querySelector(".whatsapp-widget");
-      const ctas = document.querySelectorAll<HTMLElement>("[data-ck-cta]");
+      const ctas = document.querySelectorAll<HTMLElement>("[data-ck-cta], [data-ck-wa-avoid]");
       if (!wa || ctas.length === 0) return root.removeAttribute(ATTR);
       // Rectángulo «de reposo» del botón (sin la transformación de ocultarlo).
       const r = wa.getBoundingClientRect();
