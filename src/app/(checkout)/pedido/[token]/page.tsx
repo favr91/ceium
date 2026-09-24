@@ -19,7 +19,9 @@ import { HoldCountdown } from "@/components/checkout/HoldCountdown";
 import { LiveRefresh } from "@/components/checkout/LiveRefresh";
 import { usd } from "@/components/checkout/OrderSummary";
 import { PaypalButton } from "@/components/checkout/paypal";
-import { CheckIcon, ChevronDownIcon, ClockIcon, FieldErrorIcon, LockIcon } from "@/components/checkout/icons";
+import { BankIcon, CalendarIcon, CheckIcon, ChevronDownIcon, ClockIcon, FieldErrorIcon, LockIcon, MailIcon, MapPinIcon, PayPalWordmark } from "@/components/checkout/icons";
+import { CopyButton } from "@/components/checkout/ManualPayment";
+import { cohortSessions, directionsUrl, sessionDay } from "./cohort";
 import { DETAIL_LABELS } from "../../checkout/data";
 import { payOrderWithPaypal, reportManualPayment } from "./actions";
 
@@ -61,6 +63,48 @@ function Banner({ tone, children }: { tone: "ok" | "info" | "error"; children: R
       <p>{children}</p>
     </div>
   );
+}
+
+/** Distintivo del método de pago (como el de la tarjeta en la página de gracias de Shopify). */
+function MethodBadge({ method }: { method: string }) {
+  return method === "PAYPAL" ? (
+    <span className="co-pm-badge co-pm-paypal" aria-hidden="true">
+      <PayPalWordmark />
+    </span>
+  ) : (
+    <span className="co-pm-badge" aria-hidden="true">
+      <BankIcon />
+    </span>
+  );
+}
+
+/** Correo partible antes de «@» (no a mitad de palabra) en columnas estrechas. */
+function Email({ value }: { value: string }) {
+  const at = value.indexOf("@");
+  if (at < 0) return <>{value}</>;
+  return (
+    <>
+      {value.slice(0, at)}
+      <wbr />
+      {value.slice(at)}
+    </>
+  );
+}
+
+const TZ = "America/Caracas";
+function weekdayDate(d: Date): string {
+  const s = new Intl.DateTimeFormat("es-VE", { weekday: "long", day: "numeric", month: "long", timeZone: TZ }).format(d);
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function sentAt(d: Date): string {
+  const day = new Intl.DateTimeFormat("es-VE", { day: "numeric", month: "short", timeZone: TZ }).format(d).replace(/\./g, "");
+  const time = new Intl.DateTimeFormat("es-VE", { hour: "numeric", minute: "2-digit", timeZone: TZ }).format(d);
+  return `${day}, ${time}`;
+}
+
+/** Asunto del correo sin el número de pedido (ya está en la cabecera de la página). */
+function updateTitle(subject: string, n: number): string {
+  return subject.replace(new RegExp(`\\s*[—-]\\s*Pedido #${n}`), "").replace(new RegExp(`(tu pedido) #${n}`, "i"), "$1");
 }
 
 function shortDate(d: Date): string {
@@ -135,10 +179,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
   const blockedCuota = cuota && target && cuota.id !== target.id && (cuota.status === "PENDING" || cuota.status === "OVERDUE") ? target : null;
 
   const productIds = [...new Set(order.items.map((i) => i.productId))];
-  const [options, images, enrollments] = await Promise.all([
+  const [options, images, enrollments, mails] = await Promise.all([
     s.orders.listPaymentOptions(),
     prisma.productImage.findMany({ where: { productId: { in: productIds } }, orderBy: { position: "asc" }, select: { productId: true, url: true, alt: true } }),
     prisma.enrollment.findMany({ where: { orderId: order.id, status: { not: "UNENROLLED" } }, select: { status: true, product: { select: { title: true } } } }),
+    // «Novedades del pedido»: los correos que ya le llegaron al médico (como «Order updates» de Shopify).
+    prisma.emailOutbox.findMany({ where: { orderId: order.id, status: "SENT" }, orderBy: { sentAt: "desc" }, take: 12, select: { id: true, subject: true, sentAt: true, to: true } }),
   ]);
   const payOptions = canPay ? options : [];
   const hasPaypal = payOptions.some((o) => o.method === "PAYPAL");
@@ -166,6 +212,82 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
   const paidBanner = paypal === "completado" && paid;
   const banner = paypal && PAYPAL_BANNER[paypal] && !paidBanner ? PAYPAL_BANNER[paypal] : null;
   const totalShown = paid || closed ? order.totalCents : Math.max(0, order.dueNowCents - order.amountPaidCents);
+
+  const cohortCards = semiItems
+    .filter((it) => paid || it.reservation?.status === "HELD")
+    .map((it) => {
+      const co = it.cohort!;
+      const sessions = cohortSessions(co.sessions);
+      const maps = directionsUrl(it.sede);
+      return (
+        <section key={it.id} className="co-card co-cohort" aria-labelledby={`co-cohort-${it.id}`} data-testid="order-cohort">
+          <p className="co-cohort-eyebrow">{paid ? "Tu cohorte" : "Cupo apartado"}</p>
+          <h2 id={`co-cohort-${it.id}`} className="co-card-title">
+            {co.name}
+            {it.sede ? ` · Sede ${it.sede.name}` : ""}
+          </h2>
+          <p className="co-card-text">{it.productTitle}</p>
+          <div className="co-cohort-dates">
+            <div>
+              <span>Inicio</span>
+              <strong>{weekdayDate(co.startDate)}</strong>
+              <small>{formatDate(co.startDate)}</small>
+            </div>
+            <div>
+              <span>Fin</span>
+              <strong>{weekdayDate(co.endDate)}</strong>
+              <small>{formatDate(co.endDate)}</small>
+            </div>
+          </div>
+          {it.sede?.address ? (
+            <p className="co-cohort-addr">
+              <MapPinIcon />
+              <span>{it.sede.address}</span>
+            </p>
+          ) : null}
+          {sessions.length ? (
+            <details className="co-sessions" open={sessions.length <= 4}>
+              <summary>
+                {sessions.length === 1 ? "1 sesión presencial" : `${sessions.length} sesiones presenciales`}
+                <ChevronDownIcon />
+              </summary>
+              <ol>
+                {sessions.map((ss, i) => {
+                  const day = sessionDay(ss.date);
+                  return (
+                    <li key={`${ss.date}-${i}`}>
+                      <span className="co-date-chip" aria-hidden="true">
+                        <small>{new Intl.DateTimeFormat("es-VE", { month: "short", timeZone: TZ }).format(day).replace(".", "")}</small>
+                        <b>{new Intl.DateTimeFormat("es-VE", { day: "numeric", timeZone: TZ }).format(day)}</b>
+                      </span>
+                      <span>
+                        <strong>{ss.title || "Sesión presencial"}</strong>
+                        <small>
+                          {weekdayDate(day)}
+                          {ss.startTime ? ` · ${ss.startTime}${ss.endTime ? `–${ss.endTime}` : ""}` : ""}
+                        </small>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </details>
+          ) : null}
+          <div className="co-cohort-actions">
+            <a className="co-btn-line" href={`/pedido/${token}/calendario`} download data-testid="cohort-ics">
+              <CalendarIcon />
+              Agregar al calendario
+            </a>
+            {maps ? (
+              <a className="co-btn-line" href={maps} target="_blank" rel="noopener noreferrer">
+                <MapPinIcon />
+                Cómo llegar
+              </a>
+            ) : null}
+          </div>
+        </section>
+      );
+    });
 
   const summary = (
     <>
@@ -227,10 +349,19 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
               <span>Pagado</span>
               <span data-testid="order-paid">{usd(order.amountPaidCents)}</span>
             </div>
-            <div className="co-cost-row co-cost-strong">
-              <span>Saldo pendiente</span>
-              <span data-testid="order-balance">{usd(Math.max(0, order.balanceCents))}</span>
-            </div>
+            {paid && order.balanceCents <= 0 ? (
+              <div className="co-cost-row co-cost-settled">
+                <span>Saldo pendiente</span>
+                <span data-testid="order-balance">
+                  <CheckIcon /> Pagado por completo
+                </span>
+              </div>
+            ) : (
+              <div className="co-cost-row co-cost-strong">
+                <span>Saldo pendiente</span>
+                <span data-testid="order-balance">{usd(Math.max(0, order.balanceCents))}</span>
+              </div>
+            )}
           </div>
         ) : null}
       </div>
@@ -303,7 +434,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                     <Step state="done" title="Acceso al aula virtual" testId="step-access">
                       {c.moodleUsername ? (
                         <>
-                          Tu usuario es <strong>{c.moodleUsername}</strong>; te enviamos los datos para entrar por correo.
+                          <span className="co-access-user">
+                            <span>
+                              Usuario: <strong data-testid="moodle-username">{c.moodleUsername}</strong>
+                            </span>
+                            <CopyButton value={c.moodleUsername} label="Usuario" />
+                          </span>
+                          Te enviamos los datos para entrar por correo.
                         </>
                       ) : (
                         "Te enviamos tu usuario y los datos para entrar por correo."
@@ -318,7 +455,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                   )}
                   {semiItems.map((it) => (
                     <Step key={it.id} state="done" title="Cupo confirmado">
-                      {it.cohort!.name} · {it.sede?.name ?? ""} · {formatDate(it.cohort!.startDate)} – {formatDate(it.cohort!.endDate)}. Te enviamos la dirección y el horario por correo.
+                      {it.cohort!.name} · {it.sede?.name ?? ""} · desde el {formatDate(it.cohort!.startDate)}. Te enviamos la dirección y el horario por correo.
                     </Step>
                   ))}
                   <Step state="todo" title="Certificado">
@@ -379,7 +516,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                   {semiItems.map((it) =>
                     it.reservation?.status === "HELD" ? (
                       <Step key={it.id} state="done" title="Cupo apartado">
-                        {it.cohort!.name} · {it.sede?.name ?? ""} · {formatDate(it.cohort!.startDate)} – {formatDate(it.cohort!.endDate)}. Lo mantenemos para ti mientras verificamos el pago.
+                        {it.cohort!.name} · {it.sede?.name ?? ""}. Lo mantenemos para ti mientras verificamos el pago.
                       </Step>
                     ) : null,
                   )}
@@ -394,6 +531,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                 <p className="co-card-text">{CLOSED_TEXT[order.status] ?? ""}</p>
               </section>
             ) : null}
+
+            {cohortCards}
 
             {canPay ? (
               <section className="co-card" id="pagar" aria-labelledby="co-pay-title" data-testid="order-pay">
@@ -512,7 +651,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
               <div className="co-details" data-testid="order-details">
                 <div>
                   <h3>Contacto</h3>
-                  <p>{c.email}</p>
+                  <p>
+                    <Email value={c.email} />
+                  </p>
                   {c.phone ? <p>{c.phone}</p> : null}
                 </div>
                 <div>
@@ -527,12 +668,18 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                   <h3>Método de pago</h3>
                   {completed.length ? (
                     completed.map((p) => (
-                      <p key={p.id}>
-                        {methodLabel(p.method)} · {usd(p.amountUsdCents)}
+                      <p key={p.id} className="co-pm">
+                        <MethodBadge method={p.method} />
+                        <span>
+                          {methodLabel(p.method)} · {usd(p.amountUsdCents)}
+                        </span>
                       </p>
                     ))
                   ) : (
-                    <p>{proof ? `${methodLabel(proof.method)} · en verificación` : order.paymentMethod ? `${methodLabel(order.paymentMethod)} · pendiente` : "Pendiente"}</p>
+                    <p className="co-pm">
+                      {proof || order.paymentMethod ? <MethodBadge method={(proof?.method ?? order.paymentMethod)!} /> : null}
+                      <span>{proof ? `${methodLabel(proof.method)} · en verificación` : order.paymentMethod ? `${methodLabel(order.paymentMethod)} · pendiente` : "Pendiente"}</span>
+                    </p>
                   )}
                 </div>
                 <div>
@@ -571,6 +718,28 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                 </ol>
               </section>
             ) : null}
+
+            <section className="co-card" aria-labelledby="co-updates-title" data-testid="order-updates">
+              <h2 id="co-updates-title" className="co-card-title">
+                Novedades del pedido
+              </h2>
+              <p className="co-card-text">
+                Te avisamos por correo a <strong>{c.email}</strong> en cada paso: pago, acceso al aula virtual{semiItems.length ? ", datos de la cohorte" : ""} y certificado.
+              </p>
+              {mails.length ? (
+                <ol className="co-updates">
+                  {mails.map((m) => (
+                    <li key={m.id} data-testid="order-update">
+                      <MailIcon className="co-update-icon" />
+                      <div>
+                        <p className="co-update-subject">{updateTitle(m.subject, order.number)}</p>
+                        <p className="co-update-meta">{m.sentAt ? `Enviado el ${sentAt(m.sentAt)}` : "Enviado"}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+            </section>
 
             <div className="co-ty-actions">
               <p>

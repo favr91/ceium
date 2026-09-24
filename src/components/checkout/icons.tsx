@@ -124,3 +124,49 @@ export function FieldErrorIcon(p: SvgProps) {
     </svg>
   );
 }
+
+// ───────────── Página del pedido ─────────────
+export function MapPinIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 16 16" fill="none" {...p}>
+      <path stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" d="M8 14.5s4.8-4.3 4.8-8A4.8 4.8 0 0 0 3.2 6.5c0 3.7 4.8 8 4.8 8Z" />
+      <circle cx="8" cy="6.5" r="1.7" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+export function CalendarIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 16 16" fill="none" {...p}>
+      <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
+      <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" d="M2 6.5h12M5.5 1.8v2.4M10.5 1.8v2.4" />
+    </svg>
+  );
+}
+
+export function MailIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 16 16" fill="none" {...p}>
+      <rect x="1.8" y="3.2" width="12.4" height="9.6" rx="1.8" stroke="currentColor" strokeWidth="1.3" />
+      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.3" d="m2.4 4.2 5.6 4.3 5.6-4.3" />
+    </svg>
+  );
+}
+
+export function BankIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 16 16" fill="none" {...p}>
+      <path stroke="currentColor" strokeLinejoin="round" strokeWidth="1.2" d="M1.8 5.6 8 2.2l6.2 3.4H1.8Z" />
+      <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" d="M3.4 7.2v4.6M6.4 7.2v4.6M9.6 7.2v4.6M12.6 7.2v4.6M1.8 13.6h12.4" />
+    </svg>
+  );
+}
+
+export function PhoneIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 16 16" fill="none" {...p}>
+      <rect x="4.2" y="1.6" width="7.6" height="12.8" rx="1.6" stroke="currentColor" strokeWidth="1.3" />
+      <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.3" d="M7 12h2" />
+    </svg>
+  );
+}

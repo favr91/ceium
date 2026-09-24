@@ -227,8 +227,14 @@ export async function resendEmail(d: Deps, actor: SessionUser, emailId: string):
 export async function buildOrderView(d: Deps, orderId: string): Promise<{ view: T.OrderView; email: string; customerId: string; token: string }> {
   const o = await d.db.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { customer: true, items: { include: { sede: true, cohort: true, choice: true } } },
+    include: {
+      customer: true,
+      items: { include: { sede: true, cohort: true, choice: true, product: { select: { images: { orderBy: { position: "asc" }, take: 1, select: { url: true } } } } } },
+      installments: { orderBy: { sequence: "asc" }, include: { course: { select: { title: true } } } },
+    },
   });
+  const short = (x: Date) => new Intl.DateTimeFormat("es-VE", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Caracas" }).format(x).replace(/\./g, "");
+  const abs = (u: string | undefined) => (!u ? null : /^https?:\/\//.test(u) ? u : u.startsWith("//") ? `https:${u}` : `${d.config.appUrl}${u.startsWith("/") ? "" : "/"}${u}`);
   const view: T.OrderView = {
     number: o.number,
     statusUrl: `${d.config.appUrl}/pedido/${o.token}`,
@@ -240,8 +246,12 @@ export async function buildOrderView(d: Deps, orderId: string): Promise<{ view: 
       choiceLabel: it.choice?.label ?? null,
       planLabel: it.planLabel,
       cohortName: it.cohort?.name ?? null,
+      cohortDates: it.cohort ? `${short(it.cohort.startDate)} – ${short(it.cohort.endDate)}` : null,
       totalCents: it.totalCents,
       dueNowCents: it.dueNowCents,
+      imageUrl: abs(it.product?.images[0]?.url),
+      quantity: it.quantity,
+      listCents: it.planKind !== "MONTHLY" && it.discountCents > 0 ? it.unitPriceCents * it.quantity : null,
     })),
     totalCents: o.totalCents,
     dueNowCents: o.dueNowCents,
@@ -249,6 +259,14 @@ export async function buildOrderView(d: Deps, orderId: string): Promise<{ view: 
     balanceCents: o.balanceCents,
     paymentMethodLabel: o.paymentMethod ? T.METHOD_LABELS[o.paymentMethod] : null,
     expiresAt: o.expiresAt,
+    customerFullName: `${o.buyerFirstName ?? o.customer.firstName} ${o.buyerLastName ?? o.customer.lastName}`.trim(),
+    customerPhone: o.customer.phone,
+    customerCedula: o.customer.cedula,
+    placedAt: o.placedAt,
+    subtotalCents: o.subtotalCents,
+    discountCents: o.discountCents,
+    storeUrl: d.config.appUrl,
+    installments: o.installments.length > 1 ? o.installments.map((i) => ({ sequence: i.sequence, amountCents: i.amountCents, status: i.status, courseTitle: i.course?.title ?? null, dueDate: i.dueDate })) : undefined,
   };
   return { view, email: o.customer.email, customerId: o.customerId, token: o.token };
 }

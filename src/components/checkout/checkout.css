@@ -487,3 +487,51 @@
 .co-later a { text-decoration: underline; text-underline-offset: 2px; }
 .co-payee .co-bank > div { grid-template-columns: 136px minmax(0, 1fr); }
 @media (max-width: 420px) { .co-payee .co-bank > div { grid-template-columns: 1fr; } }
+
+/* ───────────── Página del pedido (c5): cohorte, novedades, método de pago ───────────── */
+.co-access-user { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 2px 0 4px; }
+.co-access-user strong { overflow-wrap: anywhere; }
+.co-pm { display: flex; align-items: center; gap: 8px; }
+.co-pm + .co-pm { margin-top: 6px; }
+.co-pm-badge { flex: 0 0 auto; display: inline-grid; place-items: center; width: 38px; height: 24px; border: 1px solid var(--co-border); border-radius: 4px; background: #fff; color: var(--co-ink); box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04); }
+.co-pm-badge svg { width: 16px; height: 16px; }
+.co-pm-paypal svg { width: 30px; height: auto; }
+.co-cost-settled span:last-child { display: inline-flex; align-items: center; gap: 5px; color: var(--co-teal-ink); font-weight: 600; }
+.co-cost-settled svg { width: 14px; height: 14px; }
+
+.co-cohort-eyebrow { margin-bottom: 4px; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--co-teal-ink); }
+.co-cohort .co-card-text { margin-top: 2px; }
+.co-cohort-dates { display: grid; grid-template-columns: 1fr 1fr; margin-top: 16px; border: 1px solid var(--co-border); border-radius: 10px; overflow: hidden; }
+.co-cohort-dates > div { display: grid; gap: 1px; padding: 12px 14px; min-width: 0; }
+.co-cohort-dates > div + div { border-left: 1px solid var(--co-border); }
+.co-cohort-dates span { font-size: 11px; line-height: 15px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--co-muted); }
+.co-cohort-dates strong { font-size: 15px; line-height: 21px; font-weight: 700; color: var(--co-ink); }
+.co-cohort-dates small { font-size: 12px; line-height: 17px; color: var(--co-muted-2); }
+.co-cohort-addr { display: flex; gap: 8px; margin-top: 14px; font-size: 14px; line-height: 20px; color: #4d5b61; }
+.co-cohort-addr svg { flex: 0 0 16px; width: 16px; height: 16px; margin-top: 2px; color: var(--co-teal); }
+.co-sessions { margin-top: 14px; border-top: 1px solid #ececec; }
+.co-sessions > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 0 4px; font-size: 14px; line-height: 19px; font-weight: 600; color: var(--co-ink); cursor: pointer; list-style: none; }
+.co-sessions > summary::-webkit-details-marker { display: none; }
+.co-sessions > summary svg { width: 12px; height: 12px; transition: transform 0.15s ease; }
+.co-sessions[open] > summary svg { transform: rotate(180deg); }
+.co-sessions ol { display: grid; margin: 4px 0 0; padding: 0; list-style: none; }
+.co-sessions li { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.co-sessions li + li { border-top: 1px solid #f0f0f0; }
+.co-sessions li > span:last-child { display: grid; min-width: 0; }
+.co-sessions strong { font-size: 14px; line-height: 19px; font-weight: 600; color: var(--co-ink); }
+.co-sessions small { font-size: 12px; line-height: 17px; color: var(--co-muted-2); }
+.co-date-chip { flex: 0 0 42px; display: grid; width: 42px; border: 1px solid var(--co-border); border-radius: 6px; overflow: hidden; text-align: center; background: #fff; }
+.co-date-chip small { display: block; background: var(--co-teal); color: #fff !important; font-size: 10px !important; line-height: 15px !important; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.co-date-chip b { font-size: 16px; line-height: 23px; font-weight: 700; color: var(--co-ink); }
+.co-cohort-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.co-root a.co-btn-line { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border: 1px solid var(--co-border); border-radius: 10px; background: #fff; color: var(--co-ink); font-size: 14px; line-height: 19px; font-weight: 600; text-decoration: none; }
+.co-root a.co-btn-line:hover { border-color: var(--co-teal); color: var(--co-teal-ink); }
+.co-btn-line svg { width: 16px; height: 16px; color: var(--co-teal); }
+@media (max-width: 749px) { .co-cohort-actions > .co-btn-line { flex: 1 1 100%; } }
+
+.co-updates { display: grid; margin: 12px 0 0; padding: 0; list-style: none; }
+.co-updates li { display: flex; gap: 12px; padding: 10px 0; }
+.co-updates li + li { border-top: 1px solid #ececec; }
+.co-update-icon { flex: 0 0 18px; width: 18px; height: 18px; margin-top: 1px; color: var(--co-teal); }
+.co-update-subject { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--co-ink); overflow-wrap: anywhere; }
+.co-update-meta { font-size: 12px; line-height: 17px; color: var(--co-muted-2); }

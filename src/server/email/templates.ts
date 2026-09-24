@@ -1,5 +1,9 @@
 // Plantillas de correo transaccional (español de Venezuela). Funciones puras: datos → {subject, html, text}.
-// Estilo alineado con la tienda: tinta #001E2B, acento teal #09B0B0, Inter con fallbacks de sistema.
+// Diseño de correo de pedido de Shopify (cabecera logo + «PEDIDO #N», título, botón principal + enlace a la
+// tienda, resumen con miniaturas, datos del cliente en dos columnas, pie de contacto) con la marca de ceium.net:
+// tinta #001E2B, teal #09B0B0, Inter con fallbacks de sistema. Además, lo que el médico necesita en cada paso:
+// progreso del pedido, monto y datos para pagar, credenciales del aula virtual, cohorte con dirección y sesiones.
+// HTML de correo: tablas y estilos en línea (Gmail, Outlook, Apple Mail); media query solo para apilar en móvil.
 import { formatUSD } from "@/server/pricing";
 
 export interface RenderedEmail {
@@ -16,6 +20,13 @@ export interface OrderItemView {
   cohortName?: string | null;
   totalCents: number;
   dueNowCents: number;
+  /** Miniatura del programa (URL absoluta). */
+  imageUrl?: string | null;
+  quantity?: number;
+  /** Precio de lista antes del descuento del plan (se muestra tachado si es mayor que el total). */
+  listCents?: number | null;
+  /** Fechas de la cohorte (semipresencial). */
+  cohortDates?: string | null;
 }
 
 export interface OrderView {
@@ -30,6 +41,16 @@ export interface OrderView {
   balanceCents: number;
   paymentMethodLabel?: string | null;
   expiresAt?: Date | null;
+  /** Datos opcionales para el bloque «Datos del médico» y los totales. */
+  customerFullName?: string | null;
+  customerPhone?: string | null;
+  customerCedula?: string | null;
+  placedAt?: Date | null;
+  subtotalCents?: number | null;
+  discountCents?: number | null;
+  storeUrl?: string | null;
+  /** Plan mes a mes: cuotas en orden. */
+  installments?: { sequence: number; amountCents: number; status: string; courseTitle?: string | null; dueDate?: Date | null }[];
 }
 
 export interface PaymentView {
@@ -86,54 +107,244 @@ export function formatDateTime(d: Date | string | null | undefined): string {
 export function formatVES(cents: number): string {
   return "Bs. " + (cents / 100).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-
-// ───────────── Layout ─────────────
-const INK = "#001E2B";
-const TEAL = "#09B0B0";
-const MUTED = "#5c6b73";
-const FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-
-function layout(title: string, preheader: string, body: string): string {
-  return `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title></head>
-<body style="margin:0;padding:0;background:#f4f6f7;font-family:${FONT};color:${INK};">
-<span style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(preheader)}</span>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f7;padding:24px 0;">
-<tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;">
-<tr><td style="background:${INK};padding:20px 32px;"><span style="color:#ffffff;font-size:22px;font-weight:700;letter-spacing:1px;">CEIUM</span>
-<span style="color:${TEAL};font-size:12px;display:block;margin-top:2px;">Centro de Enseñanza e Investigación de Ultrasonido en Medicina</span></td></tr>
-<tr><td style="padding:32px;font-size:15px;line-height:1.6;">
-<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:${INK};">${esc(title)}</h1>
-${body}
-</td></tr>
-<tr><td style="padding:20px 32px;border-top:1px solid #e6ebed;font-size:12px;color:${MUTED};">
-¿Tienes preguntas? Responde a este correo o escríbenos a registroceium@gmail.com.<br>CEIUM · Barquisimeto · Caracas · Maracaibo
-</td></tr></table></td></tr></table></body></html>`;
+function weekdayDate(d: Date | string): string {
+  const s = new Date(d).toLocaleDateString("es-VE", { weekday: "long", day: "numeric", month: "long", timeZone: TZ });
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-const p = (html: string) => `<p style="margin:0 0 14px;">${html}</p>`;
-const button = (href: string, label: string) =>
-  `<p style="margin:24px 0;"><a href="${esc(href)}" style="background:${TEAL};color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:600;display:inline-block;">${esc(label)}</a></p>`;
-const kv = (rows: [string, string][]) =>
-  `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:8px 0 18px;border-collapse:collapse;">${rows
-    .map(([k, v]) => `<tr><td style="padding:6px 0;color:${MUTED};width:42%;vertical-align:top;">${esc(k)}</td><td style="padding:6px 0;font-weight:600;">${esc(v)}</td></tr>`)
-    .join("")}</table>`;
+// ───────────── Sistema visual ─────────────
+const INK = "#001E2B";
+const TEAL = "#09B0B0";
+const TEAL_INK = "#067C7C"; // teal legible sobre blanco (enlaces de texto)
+const MUTED = "#5C6B73";
+const LINE = "#E3E8EA";
+const SOFT = "#F4F7F8";
+const FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const CONTACT_EMAIL = "registroceium@gmail.com";
+const WHATSAPP = { label: "+58 412-0840718", href: "https://wa.me/584120840718" };
 
-function itemsTable(v: OrderView): string {
-  const rows = v.items
-    .map((it) => {
-      const meta = [it.modalityLabel, it.choiceLabel, it.cohortName, it.planLabel].filter(Boolean).map(esc).join(" · ");
-      return `<tr><td style="padding:10px 0;border-bottom:1px solid #e6ebed;"><strong>${esc(it.title)}</strong><br><span style="font-size:13px;color:${MUTED};">${meta}</span></td>
-<td style="padding:10px 0;border-bottom:1px solid #e6ebed;text-align:right;white-space:nowrap;vertical-align:top;">${formatUSD(it.totalCents)}</td></tr>`;
+function base(): string {
+  return (process.env.APP_URL ?? "").replace(/\/$/, "");
+}
+/** Logo PNG (los clientes de correo no muestran SVG). Servido por la app; sin APP_URL, el del CDN de ceium.net. */
+function logoUrl(): string {
+  const b = base();
+  return b ? `${b}/email/logo-ceium.png` : "https://cdn.shopify.com/s/files/1/0653/7986/0524/files/Rediseno-logotipo--CEIUM_4_x320.png?v=1732738364";
+}
+function absolute(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//.test(url)) return url;
+  if (url.startsWith("//")) return `https:${url}`;
+  const b = base();
+  return b && url.startsWith("/") ? `${b}${url}` : null;
+}
+
+interface LayoutOpts {
+  /** <title> y título visible. */
+  title: string;
+  preheader: string;
+  /** Rótulo de la cabecera a la derecha (p. ej. «PEDIDO #1001»). */
+  tag?: string;
+  body: string;
+}
+
+function layout({ title, preheader, tag, body }: LayoutOpts): string {
+  return `<!doctype html>
+<html lang="es" xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${esc(title)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;padding:0;-webkit-text-size-adjust:100%}
+a{color:${TEAL_INK}}
+@media (max-width:600px){
+ .c-shell{padding:0 16px!important}
+ .c-head{padding:24px 0 20px!important}
+ .c-h1{font-size:22px!important}
+ .c-col{display:block!important;width:100%!important;padding:0 0 20px!important}
+ .c-btn-cell{display:block!important;width:100%!important}
+ .c-btn-t,.c-btn-o{width:100%!important}
+ .c-btn{display:block!important;text-align:center!important}
+ .c-or{display:block!important;padding:14px 0 0!important;text-align:center!important}
+ .c-big{font-size:26px!important}
+ .c-hide-m{display:none!important}
+}
+</style></head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:${FONT};color:${INK};">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;font-size:1px;line-height:1px;color:#ffffff;">${esc(preheader)}${"&#847;&zwnj;&nbsp;".repeat(40)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;">
+<tr><td align="center" class="c-shell" style="padding:0 24px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
+<tr><td class="c-head" style="padding:36px 0 28px;border-bottom:1px solid ${LINE};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td valign="middle"><a href="${esc(base() || "https://ceium.net")}" style="text-decoration:none;"><img src="${esc(logoUrl())}" width="132" height="48" alt="CEIUM" style="display:block;border:0;width:132px;height:auto;max-width:132px;"></a></td>
+${tag ? `<td valign="middle" align="right" style="font-size:13px;line-height:18px;color:${MUTED};text-transform:uppercase;letter-spacing:.08em;font-weight:600;white-space:nowrap;">${esc(tag)}</td>` : ""}
+</tr></table>
+</td></tr>
+<tr><td style="padding:32px 0 0;">
+<h1 class="c-h1" style="margin:0 0 12px;font-size:24px;line-height:32px;font-weight:700;color:${INK};letter-spacing:-.01em;">${esc(title)}</h1>
+${body}
+</td></tr>
+${footer()}
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
+function footer(): string {
+  return `<tr><td style="padding:28px 0 40px;border-top:1px solid ${LINE};font-size:13px;line-height:20px;color:${MUTED};">
+<p style="margin:0 0 8px;">¿Tienes preguntas? Responde a este correo, escríbenos a <a href="mailto:${CONTACT_EMAIL}" style="color:${TEAL_INK};text-decoration:none;font-weight:600;">${CONTACT_EMAIL}</a> o por <a href="${WHATSAPP.href}" style="color:${TEAL_INK};text-decoration:none;font-weight:600;white-space:nowrap;">WhatsApp ${WHATSAPP.label}</a>.</p>
+<p style="margin:0;color:#8A979E;">CEIUM · Centro de Enseñanza e Investigación de Ultrasonido en Medicina<br>Barquisimeto · Caracas · Maracaibo</p>
+</td></tr>`;
+}
+
+const p = (html: string) => `<p style="margin:0 0 16px;font-size:16px;line-height:24px;color:${MUTED};">${html}</p>`;
+const strong = (s: string) => `<strong style="color:${INK};font-weight:600;">${s}</strong>`;
+
+function button(href: string, label: string, opts: { secondary?: { href: string; label: string }; paypal?: boolean } = {}): string {
+  const bg = opts.paypal ? "#FFC439" : TEAL;
+  const fg = opts.paypal ? "#111111" : "#ffffff";
+  const sec = opts.secondary
+    ? `<td class="c-or" valign="middle" style="padding:0 0 0 18px;font-size:15px;line-height:20px;color:${MUTED};">o <a href="${esc(opts.secondary.href)}" style="color:${TEAL_INK};text-decoration:none;font-weight:600;">${esc(opts.secondary.label)}</a></td>`
+    : "";
+  return `<table class="c-btn-o" role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 32px;"><tr>
+<td class="c-btn-cell" valign="middle"><table class="c-btn-t" role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="${bg}" style="border-radius:6px;background:${bg};">
+<a class="c-btn" href="${esc(href)}" style="display:inline-block;padding:15px 26px;font-size:16px;line-height:20px;font-weight:600;color:${fg};text-decoration:none;border-radius:6px;font-family:${FONT};">${esc(label)}</a>
+</td></tr></table></td>${sec}
+</tr></table>`;
+}
+
+function section(title: string, content: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid ${LINE};"><tr><td style="padding:28px 0 12px;">
+<h2 style="margin:0 0 18px;font-size:18px;line-height:24px;font-weight:700;color:${INK};">${esc(title)}</h2>
+${content}
+</td></tr></table>`;
+}
+
+/** Filas etiqueta → valor (valores ya escapados como texto). */
+function kv(rows: [string, string][], opts: { boxed?: boolean; mono?: string[] } = {}): string {
+  const trs = rows
+    .map(([k, v], i) => {
+      const mono = opts.mono?.includes(k);
+      const border = i < rows.length - 1 ? `border-bottom:1px solid ${LINE};` : "";
+      return `<tr><td style="padding:10px ${opts.boxed ? "0 10px 16px" : "0"};${border}font-size:14px;line-height:20px;color:${MUTED};width:42%;vertical-align:top;">${esc(k)}</td><td style="padding:10px ${opts.boxed ? "16px 10px 0" : "0"};${border}font-size:15px;line-height:20px;color:${INK};font-weight:600;vertical-align:top;${mono ? "font-family:'SFMono-Regular',Menlo,Consolas,monospace;letter-spacing:.02em;" : ""}word-break:break-word;">${esc(v)}</td></tr>`;
     })
     .join("");
-  const totals: [string, number][] = [["Total del programa", v.totalCents]];
-  if (v.dueNowCents !== v.totalCents) totals.push(["Primer pago", v.dueNowCents]);
-  if (v.amountPaidCents > 0) totals.push(["Pagado", v.amountPaidCents]);
-  if (v.amountPaidCents > 0 && v.balanceCents > 0) totals.push(["Saldo pendiente", v.balanceCents]);
-  const trows = totals.map(([k, c]) => `<tr><td style="padding:6px 0;color:${MUTED};">${k}</td><td style="padding:6px 0;text-align:right;font-weight:600;">${formatUSD(c)}</td></tr>`).join("");
-  return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:8px 0 18px;">${rows}${trows}</table>`;
+  const table = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${trs}</table>`;
+  return opts.boxed
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;border:1px solid ${LINE};border-radius:8px;border-collapse:separate;"><tr><td style="padding:6px 0;">${table}</td></tr></table>`
+    : `<div style="margin:0 0 20px;">${table}</div>`;
+}
+
+/** Recuadro de aviso (motivo de rechazo, plazo de reserva…). */
+function notice(html: string, tone: "info" | "warn" | "ok" = "info"): string {
+  const c = tone === "warn" ? { bg: "#FFF5F5", bar: "#D72C0D" } : tone === "ok" ? { bg: "#EEF9F9", bar: TEAL } : { bg: SOFT, bar: "#9AA7AD" };
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;"><tr><td style="background:${c.bg};border-left:4px solid ${c.bar};border-radius:6px;padding:14px 16px;font-size:15px;line-height:22px;color:${INK};">${html}</td></tr></table>`;
+}
+
+/** Monto destacado (lo que hay que pagar / lo reembolsado). */
+function bigAmount(label: string, amount: string, sub?: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;"><tr><td style="background:${SOFT};border-radius:8px;padding:18px 20px;">
+<div style="font-size:13px;line-height:18px;color:${MUTED};text-transform:uppercase;letter-spacing:.06em;font-weight:600;">${esc(label)}</div>
+<div class="c-big" style="font-size:30px;line-height:38px;font-weight:700;color:${INK};margin-top:4px;">${esc(amount)}</div>
+${sub ? `<div style="font-size:14px;line-height:20px;color:${MUTED};margin-top:2px;">${sub}</div>` : ""}
+</td></tr></table>`;
+}
+
+type StepState = "done" | "active" | "todo";
+/** Barra de progreso del pedido (como la del correo de envío de Shopify, con los pasos de CEIUM). */
+function progress(steps: { label: string; state: StepState }[]): string {
+  const w = Math.floor(100 / steps.length);
+  const cells = steps
+    .map((s) => {
+      const color = s.state === "todo" ? "#C9D2D6" : TEAL;
+      const dot =
+        s.state === "done"
+          ? `<span style="display:inline-block;width:22px;height:22px;line-height:22px;border-radius:11px;background:${TEAL};color:#ffffff;font-size:13px;font-weight:700;text-align:center;">&#10003;</span>`
+          : s.state === "active"
+            ? `<span style="display:inline-block;width:14px;height:14px;border-radius:11px;border:4px solid ${TEAL};background:#ffffff;"></span>`
+            : `<span style="display:inline-block;width:18px;height:18px;border-radius:11px;border:2px solid #C9D2D6;background:#ffffff;"></span>`;
+      return `<td width="${w}%" valign="top" style="padding:0 4px;">
+<div style="height:4px;border-radius:2px;background:${color};margin:0 0 10px;font-size:0;line-height:0;">&nbsp;</div>
+<div style="height:24px;">${dot}</div>
+<div style="font-size:13px;line-height:18px;color:${s.state === "todo" ? MUTED : INK};font-weight:${s.state === "active" ? 700 : 600};margin-top:4px;">${esc(s.label)}</div>
+</td>`;
+    })
+    .join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 8px;table-layout:fixed;"><tr>${cells}</tr></table>`;
+}
+
+function itemMeta(it: OrderItemView): string {
+  return [it.modalityLabel, it.choiceLabel, it.planLabel].filter(Boolean).map(esc).join(" · ");
+}
+
+function itemsBlock(v: OrderView): string {
+  const rows = v.items
+    .map((it) => {
+      const img = absolute(it.imageUrl);
+      const thumb = img
+        ? `<img src="${esc(img)}" width="60" height="60" alt="" style="display:block;width:60px;height:60px;border-radius:8px;border:1px solid ${LINE};object-fit:cover;">`
+        : `<div style="width:60px;height:60px;border-radius:8px;border:1px solid ${LINE};background:${SOFT};"></div>`;
+      const qty = it.quantity && it.quantity > 1 ? ` × ${it.quantity}` : "";
+      const cohort = it.cohortName ? `<div style="font-size:13px;line-height:18px;color:${MUTED};margin-top:2px;">${esc(it.cohortName)}${it.cohortDates ? ` · ${esc(it.cohortDates)}` : ""}</div>` : "";
+      const was = it.listCents && it.listCents > it.totalCents ? `<div style="font-size:13px;line-height:18px;color:#8A979E;text-decoration:line-through;">${formatUSD(it.listCents)}</div>` : "";
+      return `<tr>
+<td width="60" valign="top" style="padding:0 16px 20px 0;">${thumb}</td>
+<td valign="top" style="padding:0 0 20px;"><div style="font-size:15px;line-height:21px;font-weight:600;color:${INK};">${esc(it.title)}${qty}</div>
+<div style="font-size:14px;line-height:20px;color:${MUTED};margin-top:2px;">${itemMeta(it)}</div>${cohort}</td>
+<td valign="top" align="right" style="padding:0 0 20px 16px;white-space:nowrap;">${was}<div style="font-size:15px;line-height:21px;font-weight:600;color:${INK};">${formatUSD(it.totalCents)}</div></td>
+</tr>`;
+    })
+    .join("");
+  const line = (k: string, val: string, o: { strong?: boolean; big?: boolean; top?: boolean } = {}) =>
+    `<tr><td style="padding:${o.top ? "14px" : "5px"} 0 5px;${o.top ? `border-top:1px solid ${LINE};` : ""}font-size:${o.big ? 16 : 15}px;line-height:22px;color:${o.strong || o.big ? INK : MUTED};font-weight:${o.strong || o.big ? 600 : 400};">${esc(k)}</td><td align="right" style="padding:${o.top ? "14px" : "5px"} 0 5px;${o.top ? `border-top:1px solid ${LINE};` : ""}font-size:${o.big ? 22 : 15}px;line-height:${o.big ? 28 : 22}px;color:${INK};font-weight:${o.big || o.strong ? 700 : 600};white-space:nowrap;">${o.big ? `<span style="font-size:13px;color:${MUTED};font-weight:400;">USD</span> ` : ""}${val}</td></tr>`;
+  let totals = "";
+  if (v.subtotalCents != null && v.discountCents) {
+    totals += line(`Subtotal · ${v.items.length === 1 ? "1 programa" : `${v.items.length} programas`}`, formatUSD(v.subtotalCents));
+    totals += line("Descuento por forma de pago", `−${formatUSD(v.discountCents)}`);
+  }
+  totals += line("Total del programa", formatUSD(v.totalCents), { big: true, top: !!(v.subtotalCents != null && v.discountCents) });
+  if (v.dueNowCents !== v.totalCents) totals += line("Primer pago", formatUSD(v.dueNowCents));
+  if (v.amountPaidCents > 0) totals += line("Pagado", formatUSD(v.amountPaidCents));
+  if (v.amountPaidCents > 0 && v.balanceCents > 0) totals += line("Saldo pendiente", formatUSD(v.balanceCents), { strong: true });
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows}</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;border-top:1px solid ${LINE};"><tr><td style="padding-top:10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${totals}</table></td></tr></table>`;
+}
+
+function installmentsBlock(v: OrderView): string {
+  if (!v.installments || v.installments.length < 2) return "";
+  const STATUS: Record<string, [string, string]> = { PAID: ["Pagada", TEAL_INK], WAIVED: ["Exonerada", TEAL_INK], OVERDUE: ["Vencida", "#D72C0D"], PENDING: ["Pendiente", MUTED] };
+  const rows = v.installments
+    .map((i) => {
+      const [label, color] = STATUS[i.status] ?? [i.status, MUTED];
+      return `<tr><td style="padding:9px 0;border-bottom:1px solid ${LINE};font-size:14px;line-height:20px;color:${INK};"><strong style="font-weight:600;">Cuota ${i.sequence}</strong>${i.courseTitle ? `<span style="color:${MUTED};"> · ${esc(i.courseTitle)}</span>` : ""}</td>
+<td align="right" style="padding:9px 0 9px 12px;border-bottom:1px solid ${LINE};font-size:14px;line-height:20px;white-space:nowrap;color:${INK};font-weight:600;">${formatUSD(i.amountCents)}</td>
+<td align="right" style="padding:9px 0 9px 12px;border-bottom:1px solid ${LINE};font-size:13px;line-height:20px;white-space:nowrap;color:${color};font-weight:600;">${label}</td></tr>`;
+    })
+    .join("");
+  return section("Tus cuotas", `<p style="margin:0 0 12px;font-size:14px;line-height:20px;color:${MUTED};">Cada cuota confirmada habilita el siguiente curso del diplomado en el aula virtual.</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 16px;">${rows}</table>`);
+}
+
+/** «Datos del médico» en dos columnas, como «Customer information» del correo de Shopify. */
+function customerBlock(v: OrderView, payment?: string | null): string {
+  const cells: [string, string][] = [];
+  cells.push(["Contacto", [esc(v.customerFullName ?? ""), escEmail(v.customerEmail), esc(v.customerPhone ?? "")].filter(Boolean).join("<br>")]);
+  const pay = payment ?? v.paymentMethodLabel;
+  if (pay) cells.push(["Método de pago", esc(pay)]);
+  cells.push([
+    "Modalidad",
+    v.items
+      .map((it) => [it.modalityLabel, it.cohortName].filter(Boolean).map(esc).join(" · "))
+      .join("<br>"),
+  ]);
+  if (v.placedAt) cells.push(["Fecha del pedido", esc(formatDate(v.placedAt))]);
+  let rows = "";
+  for (let i = 0; i < cells.length; i += 2) {
+    const col = (c?: [string, string]) =>
+      c
+        ? `<td class="c-col" width="50%" valign="top" style="padding:0 16px 20px 0;"><div style="font-size:14px;line-height:20px;font-weight:600;color:${INK};margin-bottom:4px;">${esc(c[0])}</div><div style="font-size:14px;line-height:21px;color:${MUTED};word-break:break-word;">${c[1]}</div></td>`
+        : `<td class="c-col" width="50%"></td>`;
+    rows += `<tr>${col(cells[i])}${col(cells[i + 1])}</tr>`;
+  }
+  return section("Datos del médico", `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows}</table>`);
 }
 
 function itemsText(v: OrderView): string {
@@ -145,7 +356,12 @@ function itemsText(v: OrderView): string {
   return lines.join("\n");
 }
 
+/** Correo con corte permitido antes de «@» (evita partirlo a mitad de palabra en columnas estrechas). */
+const escEmail = (e: string) => esc(e).replace("@", "<wbr>@");
 const stripTags = (s: string) => s.replace(/<[^>]+>/g, "");
+const storeLink = (v: OrderView) => ({ href: v.storeUrl || base() || "https://ceium.net", label: "Visita la tienda" });
+const orderTag = (n: number) => `Pedido #${n}`;
+const hasCohort = (v: OrderView) => v.items.some((i) => i.cohortName);
 
 // ───────────── Plantillas ─────────────
 
@@ -154,18 +370,49 @@ export function orderConfirmation(v: OrderView, opts: { paid: boolean; manual?: 
   const intro = opts.paid
     ? `Hola ${esc(v.customerFirstName)}, ¡gracias por tu compra! Recibimos tu pago y estamos activando tu acceso a la plataforma.`
     : `Hola ${esc(v.customerFirstName)}, recibimos tu pedido. Para completar la inscripción realiza el pago y registra tu comprobante.`;
-  let manual = "";
+  let body = p(intro);
   let manualText = "";
-  if (!opts.paid && opts.manual) {
-    const m = opts.manual;
-    const rows: [string, string][] = [["Monto a pagar", m.amountLabel], ...Object.entries(m.details).map(([k, val]) => [DETAIL_LABELS[k] ?? k, val] as [string, string])];
-    manual = `<h2 style="font-size:17px;margin:24px 0 8px;">Datos para pagar con ${esc(m.label)}</h2>${kv(rows)}${p(esc(m.instructions))}`;
-    if (v.expiresAt) manual += p(`Tu cupo queda reservado hasta el <strong>${esc(formatDateTime(v.expiresAt))}</strong>.`);
-    manualText = `\n\nDatos para pagar con ${m.label}:\n${rows.map(([k, val]) => `${k}: ${val}`).join("\n")}\n${m.instructions}` + (v.expiresAt ? `\nCupo reservado hasta: ${formatDateTime(v.expiresAt)}` : "");
+  if (opts.paid) {
+    body += p(`En unos minutos te llegará otro correo con tu usuario y los datos para entrar al aula virtual${hasCohort(v) ? ", y uno más con la dirección y las fechas de tu cohorte" : ""}.`);
+    body += progress([
+      { label: "Pago confirmado", state: "done" },
+      { label: "Acceso al aula virtual", state: "active" },
+      { label: "Clases", state: "todo" },
+      { label: "Certificado", state: "todo" },
+    ]);
+    body += button(v.statusUrl, "Ver mi pedido", { secondary: storeLink(v) });
+  } else {
+    body += progress([
+      { label: "Pedido recibido", state: "done" },
+      { label: "Pago y comprobante", state: "active" },
+      { label: "Verificación", state: "todo" },
+      { label: "Acceso al aula virtual", state: "todo" },
+    ]);
+    if (opts.manual) {
+      const m = opts.manual;
+      const rows: [string, string][] = [["Monto a pagar", m.amountLabel], ...Object.entries(m.details).map(([k, val]) => [DETAIL_LABELS[k] ?? k, val] as [string, string])];
+      const [amountMain, amountSub] = splitAmount(m.amountLabel);
+      body += `<div style="height:12px;"></div>` + bigAmount(`Monto a pagar por ${m.label}`, amountMain, amountSub ? esc(amountSub) : undefined);
+      body += `<h2 style="margin:0 0 12px;font-size:17px;line-height:24px;font-weight:700;color:${INK};">Datos para pagar con ${esc(m.label)}</h2>`;
+      body += kv(rows.slice(1), { boxed: true, mono: ["Cuenta", "Teléfono", "Cédula / RIF"] });
+      body += p(esc(m.instructions));
+      if (v.expiresAt) body += notice(`Tu cupo queda reservado hasta el ${strong(esc(formatDateTime(v.expiresAt)))}. Si no registramos tu pago antes, se liberará para otro médico.`);
+      manualText = `\n\nDatos para pagar con ${m.label}:\n${rows.map(([k, val]) => `${k}: ${val}`).join("\n")}\n${m.instructions}` + (v.expiresAt ? `\nCupo reservado hasta: ${formatDateTime(v.expiresAt)}` : "");
+    } else if (v.expiresAt) {
+      body += notice(`Tu cupo queda reservado hasta el ${strong(esc(formatDateTime(v.expiresAt)))}.`);
+    }
+    body += button(v.statusUrl, "Registrar mi pago", { secondary: storeLink(v) });
   }
-  const html = layout(subject, stripTags(intro), p(intro) + itemsTable(v) + manual + button(v.statusUrl, opts.paid ? "Ver mi pedido" : "Registrar mi pago"));
+  body += section("Resumen del pedido", itemsBlock(v)) + installmentsBlock(v) + customerBlock(v, opts.paid ? (v.paymentMethodLabel ? `${v.paymentMethodLabel} · ${formatUSD(v.amountPaidCents)}` : null) : opts.manual ? `${opts.manual.label} · pendiente` : null);
+  const html = layout({ title: opts.paid ? "¡Gracias por tu compra!" : "Recibimos tu pedido", preheader: stripTags(intro), tag: orderTag(v.number), body });
   const text = `${stripTags(intro)}\n\nPedido #${v.number}\n${itemsText(v)}${manualText}\n\nVer pedido: ${v.statusUrl}`;
   return { subject, html, text };
+}
+
+/** "Bs. 67.450,00 ($674.50 a Bs. 100 por USD)" → ["Bs. 67.450,00", "$674.50 a Bs. 100 por USD"]. */
+function splitAmount(label: string): [string, string | null] {
+  const m = /^(.*?)\s*\((.*)\)\s*$/.exec(label);
+  return m ? [m[1], m[2]] : [label, null];
 }
 
 export function paymentUnderVerification(v: OrderView, pay: PaymentView): RenderedEmail {
@@ -174,7 +421,21 @@ export function paymentUnderVerification(v: OrderView, pay: PaymentView): Render
   const rows: [string, string][] = [["Método", pay.methodLabel], ["Monto", pay.amountLabel]];
   if (pay.reference) rows.push(["Referencia", pay.reference]);
   if (pay.date) rows.push(["Fecha del pago", formatDate(pay.date)]);
-  const html = layout(subject, "Recibimos tu comprobante", p(intro) + kv(rows) + itemsTable(v) + button(v.statusUrl, "Ver estado del pedido"));
+  const body =
+    p(intro) +
+    progress([
+      { label: "Pedido recibido", state: "done" },
+      { label: "Comprobante", state: "done" },
+      { label: "Verificación", state: "active" },
+      { label: "Acceso al aula virtual", state: "todo" },
+    ]) +
+    `<div style="height:16px;"></div>` +
+    kv(rows, { boxed: true, mono: ["Referencia"] }) +
+    (hasCohort(v) ? notice("Tu cupo sigue apartado mientras verificamos el pago. No hace falta que pagues de nuevo.") : notice("No hace falta que pagues de nuevo.")) +
+    button(v.statusUrl, "Ver estado del pedido", { secondary: storeLink(v) }) +
+    section("Resumen del pedido", itemsBlock(v)) +
+    customerBlock(v, `${pay.methodLabel} · en verificación`);
+  const html = layout({ title: "Estamos verificando tu pago", preheader: "Recibimos tu comprobante", tag: orderTag(v.number), body });
   const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${itemsText(v)}\n\nEstado: ${v.statusUrl}`;
   return { subject, html, text };
 }
@@ -184,7 +445,23 @@ export function paymentApproved(v: OrderView, pay: PaymentView): RenderedEmail {
   const intro = `Hola ${esc(v.customerFirstName)}, verificamos y aprobamos tu pago de ${esc(pay.amountLabel)}.`;
   const rows: [string, string][] = [["Método", pay.methodLabel], ["Monto", pay.amountLabel]];
   if (pay.reference) rows.push(["Referencia", pay.reference]);
-  const html = layout(subject, "Tu pago fue aprobado", p(intro) + kv(rows) + itemsTable(v) + button(v.statusUrl, "Ver mi pedido"));
+  const fully = v.balanceCents <= 0;
+  const body =
+    p(intro) +
+    p(`Si es tu primer pago de este pedido, en unos minutos recibirás tu acceso al aula virtual.${fully ? "" : ` Saldo pendiente: ${strong(formatUSD(v.balanceCents))}.`}`) +
+    progress([
+      { label: "Pedido recibido", state: "done" },
+      { label: "Pago aprobado", state: "done" },
+      { label: "Acceso al aula virtual", state: "active" },
+      { label: "Certificado", state: "todo" },
+    ]) +
+    `<div style="height:16px;"></div>` +
+    kv(rows, { boxed: true, mono: ["Referencia"] }) +
+    button(v.statusUrl, "Ver mi pedido", { secondary: storeLink(v) }) +
+    section("Resumen del pedido", itemsBlock(v)) +
+    installmentsBlock(v) +
+    customerBlock(v, pay.methodLabel);
+  const html = layout({ title: "Tu pago fue aprobado", preheader: "Tu pago fue aprobado", tag: orderTag(v.number), body });
   const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${itemsText(v)}\n\nPedido: ${v.statusUrl}`;
   return { subject, html, text };
 }
@@ -192,14 +469,21 @@ export function paymentApproved(v: OrderView, pay: PaymentView): RenderedEmail {
 export function paymentRejected(v: OrderView, pay: PaymentView, reason: string | null | undefined, orderClosed: boolean): RenderedEmail {
   const subject = `No pudimos verificar tu pago — Pedido #${v.number}`;
   const intro = `Hola ${esc(v.customerFirstName)}, revisamos el pago que registraste y no pudimos confirmarlo.`;
-  const why = reason ? p(`<strong>Motivo:</strong> ${esc(reason)}`) : "";
-  const next = orderClosed
-    ? p("El cupo reservado fue liberado. Si crees que se trata de un error, responde a este correo con tu comprobante y te ayudaremos.")
-    : p("Puedes registrar nuevamente el pago desde la página de tu pedido.");
+  const why = reason ? notice(`<strong style="font-weight:700;">Motivo:</strong> ${esc(reason)}`, "warn") : "";
+  const nextText = orderClosed
+    ? "El cupo reservado fue liberado. Si crees que se trata de un error, responde a este correo con tu comprobante y te ayudaremos."
+    : "Puedes registrar nuevamente el pago desde la página de tu pedido.";
   const rows: [string, string][] = [["Método", pay.methodLabel], ["Monto declarado", pay.amountLabel]];
   if (pay.reference) rows.push(["Referencia", pay.reference]);
-  const html = layout(subject, "Tu pago no pudo ser verificado", p(intro) + why + kv(rows) + next + button(v.statusUrl, "Ver mi pedido"));
-  const text = `${stripTags(intro)}\n${reason ? `Motivo: ${reason}\n` : ""}\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${stripTags(next)}\n\nPedido: ${v.statusUrl}`;
+  const body =
+    p(intro) +
+    why +
+    kv(rows, { boxed: true, mono: ["Referencia"] }) +
+    p(nextText) +
+    button(v.statusUrl, orderClosed ? "Ver mi pedido" : "Registrar el pago de nuevo", { secondary: orderClosed ? storeLink(v) : { href: `mailto:${CONTACT_EMAIL}`, label: "escríbenos" } }) +
+    section("Resumen del pedido", itemsBlock(v));
+  const html = layout({ title: "No pudimos verificar tu pago", preheader: "Tu pago no pudo ser verificado", tag: orderTag(v.number), body });
+  const text = `${stripTags(intro)}\n${reason ? `Motivo: ${reason}\n` : ""}\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${nextText}\n\nPedido: ${v.statusUrl}`;
   return { subject, html, text };
 }
 
@@ -218,16 +502,34 @@ export function platformAccess(a: PlatformAccessView): RenderedEmail {
   const intro = a.activationPending
     ? `Hola ${esc(a.firstName)}, creamos tu cuenta en la plataforma de CEIUM. Tus cursos se activarán en breve.`
     : `Hola ${esc(a.firstName)}, ya estás inscrito. Ingresa a la plataforma para comenzar.`;
-  const rows: [string, string][] = [["Plataforma", a.loginUrl], ["Usuario", a.username]];
-  if (a.tempPassword) rows.push(["Contraseña temporal", a.tempPassword]);
   const pwNote = a.tempPassword
-    ? p("Por seguridad, la plataforma te pedirá cambiar la contraseña temporal en tu primer ingreso.")
-    : p("Usa la contraseña que ya tienes en la plataforma. Si no la recuerdas, usa la opción «¿Olvidó su nombre de usuario o contraseña?».");
+    ? "Por seguridad, la plataforma te pedirá cambiar la contraseña temporal en tu primer ingreso."
+    : "Usa la contraseña que ya tienes en la plataforma. Si no la recuerdas, usa la opción «¿Olvidó su nombre de usuario o contraseña?».";
+  const cred = (label: string, value: string) =>
+    `<tr><td style="padding:12px 20px;border-bottom:1px solid ${LINE};"><div style="font-size:12px;line-height:16px;color:${MUTED};text-transform:uppercase;letter-spacing:.06em;font-weight:600;">${esc(label)}</div><div style="font-size:17px;line-height:24px;color:${INK};font-weight:600;font-family:'SFMono-Regular',Menlo,Consolas,monospace;word-break:break-all;margin-top:2px;">${esc(value)}</div></td></tr>`;
+  const card = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 16px;border:1px solid ${LINE};border-radius:8px;border-collapse:separate;overflow:hidden;">
+<tr><td style="padding:12px 20px;background:${SOFT};border-bottom:1px solid ${LINE};font-size:14px;line-height:20px;color:${INK};font-weight:600;">Aula virtual CEIUM · <a href="${esc(a.loginUrl)}" style="color:${TEAL_INK};text-decoration:none;word-break:break-all;">${esc(a.loginUrl.replace(/^https?:\/\//, ""))}</a></td></tr>
+${cred("Usuario", a.username)}${a.tempPassword ? cred("Contraseña temporal", a.tempPassword) : ""}
+</table>`;
   const courses = a.courses.length
-    ? `<h2 style="font-size:17px;margin:24px 0 8px;">Cursos</h2><ul style="margin:0 0 18px;padding-left:20px;">${a.courses.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`
+    ? section(
+        a.courses.length === 1 ? "Tu curso" : "Tus cursos",
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px;">${a.courses
+          .map(
+            (c) =>
+              `<tr><td width="30" valign="top" style="padding:8px 0;"><span style="display:inline-block;width:20px;height:20px;line-height:20px;border-radius:10px;background:${a.activationPending ? "#C9D2D6" : TEAL};color:#ffffff;font-size:12px;font-weight:700;text-align:center;">&#10003;</span></td><td style="padding:8px 0;font-size:15px;line-height:22px;color:${INK};font-weight:600;border-bottom:1px solid ${LINE};">${esc(c)}</td></tr>`,
+          )
+          .join("")}</table>`,
+      )
     : "";
-  const html = layout(subject, "Acceso a la plataforma", p(intro) + kv(rows) + pwNote + courses + button(a.loginUrl, "Ingresar a la plataforma"));
-  const text = `${stripTags(intro)}\n\nPlataforma: ${a.loginUrl}\nUsuario: ${a.username}${a.tempPassword ? `\nContraseña temporal: ${a.tempPassword}` : ""}\n\n${stripTags(pwNote)}${a.courses.length ? `\n\nCursos:\n${a.courses.map((c) => `- ${c}`).join("\n")}` : ""}`;
+  const body =
+    p(intro) +
+    card +
+    p(esc(pwNote)) +
+    button(a.loginUrl, "Ingresar a la plataforma") +
+    courses;
+  const html = layout({ title: a.activationPending ? "Tu cuenta en el aula virtual" : "Tu acceso al aula virtual", preheader: "Acceso a la plataforma", tag: "Aula virtual", body });
+  const text = `${stripTags(intro)}\n\nPlataforma: ${a.loginUrl}\nUsuario: ${a.username}${a.tempPassword ? `\nContraseña temporal: ${a.tempPassword}` : ""}\n\n${pwNote}${a.courses.length ? `\n\nCursos:\n${a.courses.map((c) => `- ${c}`).join("\n")}` : ""}`;
   return { subject, html, text };
 }
 
@@ -255,13 +557,32 @@ export function cohortDetails(c: CohortView): RenderedEmail {
     ["Fin", formatDate(c.endDate)],
   ];
   if (c.sedeAddress) rows.push(["Dirección", c.sedeAddress]);
+  const maps = c.sedeAddress ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`CEIUM ${c.sedeAddress}`)}` : null;
+  const dateCard = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;border:1px solid ${LINE};border-radius:8px;border-collapse:separate;">
+<tr><td class="c-col" width="50%" valign="top" style="padding:18px 20px;"><div style="font-size:12px;line-height:16px;color:${MUTED};text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Inicio</div><div style="font-size:18px;line-height:26px;color:${INK};font-weight:700;margin-top:2px;">${esc(weekdayDate(c.startDate))}</div><div style="font-size:14px;line-height:20px;color:${MUTED};">${esc(formatDate(c.startDate))}</div></td>
+<td class="c-col" width="50%" valign="top" style="padding:18px 20px;"><div style="font-size:12px;line-height:16px;color:${MUTED};text-transform:uppercase;letter-spacing:.06em;font-weight:600;">Fin</div><div style="font-size:18px;line-height:26px;color:${INK};font-weight:700;margin-top:2px;">${esc(weekdayDate(c.endDate))}</div><div style="font-size:14px;line-height:20px;color:${MUTED};">${esc(formatDate(c.endDate))}</div></td></tr>
+<tr><td colspan="2" style="padding:16px 20px;border-top:1px solid ${LINE};background:${SOFT};border-radius:0 0 8px 8px;">
+<div style="font-size:15px;line-height:22px;color:${INK};font-weight:700;">Sede ${esc(c.sedeName)} · ${esc(c.cohortName)}</div>
+${c.sedeAddress ? `<div style="font-size:14px;line-height:21px;color:${MUTED};margin-top:2px;">${esc(c.sedeAddress)}</div>` : ""}
+${maps ? `<div style="margin-top:8px;"><a href="${esc(maps)}" style="font-size:14px;line-height:20px;color:${TEAL_INK};font-weight:600;text-decoration:none;">Cómo llegar &rarr;</a></div>` : ""}
+</td></tr></table>`;
   const sess = c.sessions.length
-    ? `<h2 style="font-size:17px;margin:24px 0 8px;">Sesiones presenciales</h2><ul style="margin:0 0 18px;padding-left:20px;">${c.sessions
-        .map((s) => `<li>${esc(formatDate(s.date + "T12:00:00-04:00"))}${s.startTime ? ` · ${esc(s.startTime)}${s.endTime ? `–${esc(s.endTime)}` : ""}` : ""}${s.title ? ` — ${esc(s.title)}` : ""}</li>`)
-        .join("")}</ul>`
+    ? section(
+        "Sesiones presenciales",
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 16px;">${c.sessions
+          .map((s) => {
+            const d = new Date(s.date + "T12:00:00-04:00");
+            const day = d.toLocaleDateString("es-VE", { day: "numeric", timeZone: TZ });
+            const mon = d.toLocaleDateString("es-VE", { month: "short", timeZone: TZ }).replace(".", "").toUpperCase();
+            return `<tr><td width="52" valign="top" style="padding:10px 14px 10px 0;border-bottom:1px solid ${LINE};"><div style="width:48px;border:1px solid ${LINE};border-radius:6px;text-align:center;overflow:hidden;"><div style="background:${TEAL};color:#ffffff;font-size:10px;line-height:16px;font-weight:700;letter-spacing:.06em;">${esc(mon)}</div><div style="font-size:18px;line-height:26px;font-weight:700;color:${INK};">${esc(day)}</div></div></td>
+<td valign="middle" style="padding:10px 0;border-bottom:1px solid ${LINE};"><div style="font-size:15px;line-height:21px;color:${INK};font-weight:600;">${esc(s.title || "Sesión presencial")}</div><div style="font-size:14px;line-height:20px;color:${MUTED};">${esc(formatDate(s.date + "T12:00:00-04:00"))}${s.startTime ? ` · ${esc(s.startTime)}${s.endTime ? `–${esc(s.endTime)}` : ""}` : ""}</div></td></tr>`;
+          })
+          .join("")}</table>`,
+      )
     : "";
-  const notes = c.notes ? p(esc(c.notes)) : "";
-  const html = layout(subject, `Cohorte ${c.cohortName} — ${c.sedeName}`, p(intro) + kv(rows) + sess + notes);
+  const notes = c.notes ? notice(esc(c.notes)) : "";
+  const body = p(intro) + `<div style="font-size:17px;line-height:24px;font-weight:700;color:${INK};margin:0 0 4px;">${esc(c.productTitle)}</div>` + dateCard + notes + sess;
+  const html = layout({ title: `Tu cohorte en ${c.sedeName}`, preheader: `Cohorte ${c.cohortName} — ${c.sedeName}`, tag: orderTag(c.orderNumber), body });
   const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}${c.sessions.length ? `\n\nSesiones:\n${c.sessions.map((s) => `- ${formatDate(s.date + "T12:00:00-04:00")}${s.title ? ` — ${s.title}` : ""}`).join("\n")}` : ""}${c.notes ? `\n\n${c.notes}` : ""}`;
   return { subject, html, text };
 }
@@ -283,7 +604,21 @@ export function certificateIssued(c: CertificateView): RenderedEmail {
     ["Código de verificación", c.code],
     ["Fecha de emisión", formatDate(c.issuedAt)],
   ];
-  const html = layout(subject, "Tu certificado está listo", p(intro) + kv(rows) + p("Cualquier persona puede verificar la autenticidad del certificado con el código en el siguiente enlace.") + button(c.verifyUrl, "Verificar certificado"));
+  const diploma = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;"><tr><td style="border:1px solid ${LINE};border-radius:8px;padding:6px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="border:2px solid ${TEAL};border-radius:4px;padding:28px 20px;">
+<div style="font-size:12px;line-height:16px;color:${TEAL_INK};text-transform:uppercase;letter-spacing:.14em;font-weight:700;">Certificado</div>
+<div style="font-size:14px;line-height:20px;color:${MUTED};margin-top:12px;">otorgado a</div>
+<div style="font-size:24px;line-height:32px;color:${INK};font-weight:700;margin-top:2px;">${esc(c.fullName)}</div>
+<div style="font-size:14px;line-height:20px;color:${MUTED};margin-top:10px;">por completar el</div>
+<div style="font-size:16px;line-height:22px;color:${INK};font-weight:600;margin-top:2px;">${esc(c.diplomaTitle)}</div>
+<div style="font-size:13px;line-height:18px;color:${MUTED};margin-top:16px;">${esc(formatDate(c.issuedAt))} · Código <span style="font-family:'SFMono-Regular',Menlo,Consolas,monospace;color:${INK};font-weight:600;">${esc(c.code)}</span></div>
+</td></tr></table></td></tr></table>`;
+  const body =
+    p(intro) +
+    diploma +
+    p("Cualquier persona puede verificar la autenticidad del certificado con el código en el siguiente enlace.") +
+    button(c.verifyUrl, "Verificar certificado") +
+    section("Datos del certificado", kv(rows, { mono: ["Código de verificación"] }));
+  const html = layout({ title: `¡Felicitaciones, ${c.firstName}!`, preheader: "Tu certificado está listo", tag: "Certificado", body });
   const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\nVerificación: ${c.verifyUrl}`;
   return { subject, html, text };
 }
@@ -293,9 +628,16 @@ export function refundIssued(v: OrderView, r: { amountCents: number; methodLabel
   const intro = `Hola ${esc(v.customerFirstName)}, procesamos un reembolso ${r.full ? "total" : "parcial"} de <strong>${formatUSD(r.amountCents)}</strong> de tu pedido #${v.number}.`;
   const rows: [string, string][] = [["Monto", formatUSD(r.amountCents)], ["Método", r.methodLabel]];
   if (r.reason) rows.push(["Motivo", r.reason]);
-  const how = r.methodLabel === "PayPal" ? p("El dinero se acreditará en tu cuenta PayPal; puede tardar algunos días hábiles en reflejarse.") : p("El reembolso se realizó por el mismo medio de pago o el acordado con nuestro equipo.");
-  const html = layout(subject, "Reembolso procesado", p(intro) + kv(rows) + how + button(v.statusUrl, "Ver mi pedido"));
-  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${stripTags(how)}\n\nPedido: ${v.statusUrl}`;
+  const howText = r.methodLabel === "PayPal" ? "El dinero se acreditará en tu cuenta PayPal; puede tardar algunos días hábiles en reflejarse." : "El reembolso se realizó por el mismo medio de pago o el acordado con nuestro equipo.";
+  const body =
+    p(intro) +
+    bigAmount(r.full ? "Reembolso total" : "Reembolso parcial", `${formatUSD(r.amountCents)} USD`, `a tu ${esc(r.methodLabel)}`) +
+    kv(rows.slice(1), { boxed: true }) +
+    p(howText) +
+    button(v.statusUrl, "Ver mi pedido", { secondary: storeLink(v) }) +
+    section("Resumen del pedido", itemsBlock(v));
+  const html = layout({ title: "Procesamos tu reembolso", preheader: "Reembolso procesado", tag: orderTag(v.number), body });
+  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${howText}\n\nPedido: ${v.statusUrl}`;
   return { subject, html, text };
 }
 
@@ -329,9 +671,6 @@ export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
       : `Recordatorio de pago — Pedido #${r.orderNumber}`;
   const when = r.dueDate ? (r.overdue ? `venció el <strong>${esc(formatDate(r.dueDate))}</strong>` : `vence el <strong>${esc(formatDate(r.dueDate))}</strong>`) : "está pendiente";
   const intro = `Hola ${esc(r.firstName)}, la cuota ${r.sequence} de ${r.totalInstallments}${r.programTitle ? ` del <strong>${esc(r.programTitle)}</strong>` : ""} ${when}.`;
-  const unlock = r.courseTitle
-    ? p(`Al confirmarse el pago te matricularemos en <strong>${esc(r.courseTitle)}</strong> en la plataforma y te avisaremos por correo.`)
-    : "";
   const rows: [string, string][] = [
     ["Pedido", `#${r.orderNumber}`],
     ["Cuota", `${r.sequence} de ${r.totalInstallments}`],
@@ -344,20 +683,39 @@ export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
   let buttons = "";
   const textPay: string[] = [];
   if (r.paypalUrl) {
-    buttons += button(r.paypalUrl, `Pagar ${formatUSD(r.amountCents)} con PayPal`);
+    buttons += button(r.paypalUrl, `Pagar ${formatUSD(r.amountCents)} con PayPal`, { paypal: true });
     textPay.push(`Pagar con PayPal: ${r.paypalUrl}`);
   }
   if (r.manualUrl) {
     buttons += r.paypalUrl
-      ? p(`¿Prefieres pagar con ${esc(manualLabel)}? <a href="${esc(r.manualUrl)}" style="color:${TEAL};font-weight:600;">Registra tu pago aquí</a> y nuestro equipo lo verificará.`)
+      ? p(`¿Prefieres pagar con ${esc(manualLabel)}? <a href="${esc(r.manualUrl)}" style="color:${TEAL_INK};font-weight:600;">Registra tu pago aquí</a> y nuestro equipo lo verificará.`)
       : button(r.manualUrl, `Pagar ${formatUSD(r.amountCents)} con ${manualLabel}`) + p("Registra tu pago y nuestro equipo lo verificará.");
     textPay.push(`Pagar con ${manualLabel}: ${r.manualUrl}`);
   }
   if (!r.paypalUrl && !r.manualUrl) {
-    buttons += p(`En este momento no hay métodos de pago en línea disponibles. Responde a este correo o revisa <a href="${esc(r.statusUrl)}" style="color:${TEAL};font-weight:600;">tu pedido</a> y te indicaremos cómo pagar.`);
+    buttons += p(`En este momento no hay métodos de pago en línea disponibles. Responde a este correo o revisa <a href="${esc(r.statusUrl)}" style="color:${TEAL_INK};font-weight:600;">tu pedido</a> y te indicaremos cómo pagar.`);
     textPay.push("En este momento no hay métodos de pago en línea disponibles. Responde a este correo y te indicaremos cómo pagar.");
   }
-  const html = layout(subject, stripTags(`Cuota ${r.sequence} de ${r.totalInstallments}: ${formatUSD(r.amountCents)}`), p(intro) + kv(rows) + unlock + buttons);
+  // Progreso del diplomado: una marca por cuota (pagadas = anteriores a esta).
+  const dots = Array.from({ length: r.totalInstallments }, (_, i) => {
+    const n = i + 1;
+    const bg = n < r.sequence ? TEAL : n === r.sequence ? (r.overdue ? "#D72C0D" : INK) : "#DDE3E6";
+    return `<td style="padding:0 2px;"><div style="height:6px;border-radius:3px;background:${bg};font-size:0;line-height:0;">&nbsp;</div></td>`;
+  }).join("");
+  const track = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;table-layout:fixed;"><tr>${dots}</tr></table><p style="margin:0 0 20px;font-size:13px;line-height:18px;color:${MUTED};">${r.sequence - 1} de ${r.totalInstallments} cuotas pagadas</p>`;
+  const body =
+    p(intro) +
+    (r.courseTitle ? p(`Al confirmarse el pago te matricularemos en <strong style="color:${INK};">${esc(r.courseTitle)}</strong> en la plataforma y te avisaremos por correo.`) : "") +
+    (r.totalInstallments > 1 ? track : "") +
+    bigAmount(r.courseTitle ? `Cuota ${r.sequence} · ${r.courseTitle}` : `Cuota ${r.sequence} de ${r.totalInstallments}`, `${formatUSD(r.amountCents)} USD`, r.dueDate ? `${r.overdue ? "Venció" : "Vence"} el ${esc(formatDate(r.dueDate))}` : undefined) +
+    buttons +
+    section("Detalle", kv(rows));
+  const html = layout({
+    title: r.overdue ? "Tu cuota está vencida" : r.courseTitle ? "Paga tu próximo curso" : "Recordatorio de pago",
+    preheader: stripTags(`Cuota ${r.sequence} de ${r.totalInstallments}: ${formatUSD(r.amountCents)}`),
+    tag: orderTag(r.orderNumber),
+    body,
+  });
   const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n${r.courseTitle ? `\nAl confirmarse el pago te matricularemos en ${r.courseTitle}.\n` : ""}\n${textPay.join("\n")}\n\nPedido: ${r.statusUrl}`;
   return { subject, html, text };
 }
