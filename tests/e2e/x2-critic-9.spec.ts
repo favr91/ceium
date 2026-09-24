@@ -12,7 +12,7 @@
 //      quien ya se le devolvió el dinero ni le envía el acceso.
 //   6. Tras reembolsar un pedido PayPal desde el panel, PayPal reentrega PAYMENT.CAPTURE.COMPLETED (el original y uno
 //      nuevo) → nada revive: ni pago, ni cupo, ni Moodle, ni correos.
-//   7. (Defecto abierto del panel) pago 0,5 % corto: el panel dice «El monto cubre» y «quedó pagado», el pedido no.
+//   7. pago 0,5 % corto: el panel muestra el faltante y no dice «quedó pagado» (el pedido sigue PENDING_PAYMENT).
 // Carril: E2E_LANE=e2e E2E_PORT=3104 npx playwright test tests/e2e/x2-critic-9.spec.ts --project=desktop
 import fs from "node:fs";
 import path from "node:path";
@@ -437,11 +437,10 @@ test("tras reembolsar desde el panel, PayPal reentrega PAYMENT.CAPTURE.COMPLETED
 
 // ───────────── 7. el panel dice «cubre» a un pago corto ─────────────
 
-// DEFECTO ABIERTO (panel, fuera de src/server): PaymentCard.tsx da por cubierto un faltante de hasta max($1, 1 %) y la
-// acción verifyPayment responde «El pedido quedó pagado y se inició la matrícula» aunque el servidor (que exige el
-// primer pago completo) deja el pedido PENDING_PAYMENT sin matrícula. test.fail: avisa cuando se corrija.
+// Antes: PaymentCard.tsx daba por cubierto un faltante de hasta max($1, 1 %) y verifyPayment respondía «El pedido quedó
+// pagado y se inició la matrícula» aunque el servidor (que exige el primer pago completo) deja el pedido
+// PENDING_PAYMENT sin matrícula. Ahora el panel muestra el faltante y el toast sale del estado real del pedido.
 test("pago móvil 0,5 % corto (misma tasa): el panel no debe decir «El monto cubre» ni «el pedido quedó pagado» si no se matricula", async ({ browser, page }) => {
-  test.fail(true, "panel: tolerancia de PaymentCard y mensaje de verifyPayment no coinciden con el servidor");
   const C = newCohort(3);
   const o = checkout(C, uniqueEmail("x2c9tol"));
   const ref = newRef("0171");
@@ -452,6 +451,7 @@ test("pago móvil 0,5 % corto (misma tasa): el panel no debe decir «El monto cu
     const checks = card.getByRole("list", { name: "Comprobaciones" });
     await expect(checks).toBeVisible();
     const covers = await checks.getByText("El monto cubre").count();
+    await expect(checks).toContainText(/Faltan \$\d+\.\d{2}: se esperaba/);
     await card.getByRole("button", { name: "Aprobar pago" }).click();
     const toast = admin.getByRole("status").or(admin.getByRole("alert")).filter({ hasText: /pago/i }).last();
     await expect(toast).toBeVisible();
@@ -459,10 +459,12 @@ test("pago móvil 0,5 % corto (misma tasa): el panel no debe decir «El monto cu
     await waitForOrderStatus(o.orderId, ["PENDING_PAYMENT", "ENROLLED"]);
     const status = order(o.orderId).status;
     console.log(JSON.stringify({ covers, toastText, status }));
-    if (status !== "ENROLLED") {
-      expect(covers, "el panel dijo «El monto cubre» y el pedido quedó sin pagar").toBe(0);
-      expect(toastText).not.toMatch(/quedó pagado|se inició la matrícula/);
-    }
+    // El servidor exige el primer pago completo: el pedido queda sin pagar, y el panel lo dice ANTES y DESPUÉS de aprobar.
+    expect(status).toBe("PENDING_PAYMENT");
+    expect(covers, "el panel dijo «El monto cubre» y el pedido quedó sin pagar").toBe(0);
+    expect(toastText).not.toMatch(/quedó pagado|se inició la matrícula/);
+    expect(toastText).toMatch(/no cubre el primer pago: faltan \$\d+\.\d{2}/);
+    expect(reservationOf(o.orderId).status).toBe("HELD");
   } finally {
     await ctx.close();
   }

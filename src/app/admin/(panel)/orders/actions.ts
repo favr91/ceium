@@ -35,6 +35,31 @@ function parseCents(raw: unknown): number | undefined {
   return Number.isFinite(n) ? Math.round(n * 100) : NaN;
 }
 
+const usdText = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+/** Mensaje del toast según cómo quedó REALMENTE el pedido: un pago corto no deja el pedido pagado ni lo matricula. */
+async function approvalMessage(orderId: string, before: string | null, seatLostBefore: number): Promise<string> {
+  const o = await services().deps.db.order.findUnique({
+    where: { id: orderId },
+    select: { status: true, amountPaidCents: true, dueNowCents: true, balanceCents: true },
+  });
+  if (!o) return "Pago aprobado.";
+  if (["PENDING_PAYMENT", "AWAITING_VERIFICATION", "REJECTED", "EXPIRED"].includes(o.status)) {
+    const missing = Math.max(0, o.dueNowCents - o.amountPaidCents);
+    return missing > 0
+      ? `Pago aprobado, pero no cubre el primer pago: faltan ${usdText(missing)}. El pedido sigue pendiente de pago y sin matrícula.`
+      : "Pago aprobado. El pedido sigue pendiente: hay otro pago por verificar.";
+  }
+  const firstPayment = before != null && ["PENDING_PAYMENT", "AWAITING_VERIFICATION", "REJECTED", "EXPIRED"].includes(before);
+  const balance = o.balanceCents > 0 ? ` Saldo pendiente: ${usdText(o.balanceCents)}.` : "";
+  if (firstPayment) {
+    const seatLost = await services().deps.db.orderEvent.count({ where: { orderId, type: "SEAT_UNAVAILABLE" } });
+    if (seatLost > seatLostBefore) return `Pago aprobado, pero la cohorte se llenó: el pedido quedó pagado SIN matrícula. Reasigna la cohorte o reembolsa.${balance}`;
+    return `Pago aprobado. El pedido quedó pagado y se inició la matrícula.${balance}`;
+  }
+  return `Pago aprobado.${balance || " El pedido quedó al día."}`;
+}
+
 export async function verifyPayment(orderId: string, paymentId: string, decision: "approve" | "reject", note: string, amountUsd?: string): Promise<ActionResult> {
   const user = await requireAdminAction();
   try {
@@ -43,8 +68,11 @@ export async function verifyPayment(orderId: string, paymentId: string, decision
     // La pertenencia se comprueba ANTES de verificar: un paymentId de otro pedido no debe aprobarse ni rechazarse.
     const pay = await services().deps.db.payment.findUnique({ where: { id: paymentId }, select: { orderId: true } });
     if (!pay || pay.orderId !== orderId) return { ok: false, error: "El pago no pertenece a este pedido." };
+    const before = await services().deps.db.order.findUnique({ where: { id: orderId }, select: { status: true } });
+    const seatLostBefore = await services().deps.db.orderEvent.count({ where: { orderId, type: "SEAT_UNAVAILABLE" } });
     await services().payments.adminVerifyPayment(user, { paymentId, decision, note: note.trim() || null, amountUsdCents });
-    return done(orderId, decision === "approve" ? "Pago aprobado. El pedido quedó pagado y se inició la matrícula." : "Pago rechazado. Se avisó al cliente por correo.");
+    if (decision === "reject") return done(orderId, "Pago rechazado. Se avisó al cliente por correo.");
+    return done(orderId, await approvalMessage(orderId, before?.status ?? null, seatLostBefore));
   } catch (e) {
     return fail(e, "No pudimos registrar la verificación. Intenta de nuevo.");
   }

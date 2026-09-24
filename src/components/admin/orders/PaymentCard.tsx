@@ -41,12 +41,14 @@ function VerifyPanel({ o, p }: { o: O; p: P }) {
   const proofUrl = `/admin/orders/${o.id}/comprobante/${p.id}`;
   const expected = expectedCents(o, p);
   const diff = expected != null ? p.amountUsdCents - expected : 0;
+  // Solo se tolera pagar de más (redondeos de la tasa): el servidor exige el monto completo para dar el pedido por
+  // pagado, así que cualquier faltante se muestra como faltante.
   const tol = Math.max(100, Math.round((expected ?? 0) * 0.01));
   const hold = o.items.map((i) => i.reservation).find((r) => r?.status === "HELD");
   const hoursLeft = hold ? Math.round((new Date(hold.expiresAt).getTime() - new Date(o.now).getTime()) / 3_600_000) : null;
   const checks: { tone: "ok" | "warn" | "bad"; text: React.ReactNode }[] = [];
   if (expected != null) {
-    if (Math.abs(diff) <= tol) checks.push({ tone: "ok", text: <>El monto cubre lo que se espera de este pago ({usd(expected)}).</> });
+    if (diff >= 0 && diff <= tol) checks.push({ tone: "ok", text: <>El monto cubre lo que se espera de este pago ({usd(expected)}).</> });
     else if (diff < 0) checks.push({ tone: "bad", text: <>Faltan <b>{usd(-diff)}</b>: se esperaba {usd(expected)}.</> });
     else checks.push({ tone: "warn", text: <>Pagó <b>{usd(diff)}</b> de más (se esperaba {usd(expected)}).</> });
   }
