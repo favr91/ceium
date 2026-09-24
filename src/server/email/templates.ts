@@ -446,13 +446,20 @@ export function paymentApproved(v: OrderView, pay: PaymentView): RenderedEmail {
   const rows: [string, string][] = [["Método", pay.methodLabel], ["Monto", pay.amountLabel]];
   if (pay.reference) rows.push(["Referencia", pay.reference]);
   const fully = v.balanceCents <= 0;
+  // Pago aprobado que NO completa el primer pago (p. ej. un pago móvil corto): no hay acceso todavía. Decirle
+  // «en unos minutos recibirás tu acceso» era falso; se le dice cuánto falta y dónde pagarlo.
+  const missing = v.dueNowCents - v.amountPaidCents;
+  const next =
+    missing > 0
+      ? notice(`Aún faltan ${strong(formatUSD(missing))} para completar el primer pago de tu pedido. Tu cupo sigue reservado; paga la diferencia desde la página de tu pedido y te enviaremos el acceso al aula virtual en cuanto se confirme.`, "warn")
+      : p(`Si es tu primer pago de este pedido, en unos minutos recibirás tu acceso al aula virtual.${fully ? "" : ` Saldo pendiente: ${strong(formatUSD(v.balanceCents))}.`}`);
   const body =
     p(intro) +
-    p(`Si es tu primer pago de este pedido, en unos minutos recibirás tu acceso al aula virtual.${fully ? "" : ` Saldo pendiente: ${strong(formatUSD(v.balanceCents))}.`}`) +
+    next +
     progress([
       { label: "Pedido recibido", state: "done" },
-      { label: "Pago aprobado", state: "done" },
-      { label: "Acceso al aula virtual", state: "active" },
+      { label: "Pago aprobado", state: missing > 0 ? "active" : "done" },
+      { label: "Acceso al aula virtual", state: missing > 0 ? "todo" : "active" },
       { label: "Certificado", state: "todo" },
     ]) +
     `<div style="height:16px;"></div>` +
@@ -462,7 +469,7 @@ export function paymentApproved(v: OrderView, pay: PaymentView): RenderedEmail {
     installmentsBlock(v) +
     customerBlock(v, pay.methodLabel);
   const html = layout({ title: "Tu pago fue aprobado", preheader: "Tu pago fue aprobado", tag: orderTag(v.number), body });
-  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${itemsText(v)}\n\nPedido: ${v.statusUrl}`;
+  const text = `${stripTags(intro)}${missing > 0 ? `\n\nAún faltan ${formatUSD(missing)} para completar el primer pago de tu pedido. Tu cupo sigue reservado; paga la diferencia desde la página de tu pedido.` : ""}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${itemsText(v)}\n\nPedido: ${v.statusUrl}`;
   return { subject, html, text };
 }
 

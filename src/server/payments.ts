@@ -330,6 +330,8 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
     amountUsdCents = Math.round(input.amountCents / rate);
     if (amountUsdCents <= 0) throw new DomainError("VALIDATION", "El monto es demasiado bajo.", { field: "amountCents" });
   }
+  const configuredRate = rate;
+  let quotedRate: QuotedRate | null = null;
 
   const now = d.now();
   const holdTtl = await reservationTtlMs(d, input.method);
@@ -342,6 +344,12 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
     const acceptsFirst = PREPAID_STATES.includes(order.status);
     const acceptsInstallment = PAID_STATES.includes(order.status) && order.balanceCents > 0;
     if (!acceptsFirst && !acceptsInstallment) throw new DomainError("INVALID_STATE", "Este pedido no admite nuevos pagos.");
+    if (isCustomer && input.currency === "VES" && configuredRate) {
+      // La tasa pudo cambiar entre el monto que se le indicó al médico y el registro del comprobante.
+      quotedRate = await quotedRateForPayment(tx, order, input.amountCents, configuredRate, input.paidAt ?? now, now, holdTtl);
+      rate = quotedRate?.rate ?? configuredRate;
+      amountUsdCents = Math.round(input.amountCents / rate);
+    }
     if (isCustomer) {
       const owed = Math.max(order.totalCents - order.amountPaidCents, order.dueNowCents - order.amountPaidCents, 0);
       if (amountUsdCents > Math.max(owed, 100) * MAX_OVERPAY_FACTOR) {
@@ -403,8 +411,19 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
       currency: input.currency,
       amountUsdCents,
       ...(rate != null ? { exchangeRate: rate } : {}),
+      ...(quotedRate ? { configuredExchangeRate: configuredRate, quotedRateSince: quotedRate.since.toISOString() } : {}),
       ...(declaredRate != null ? { declaredExchangeRate: declaredRate } : {}),
     });
+    if (quotedRate) {
+      await addOrderEvent(
+        tx,
+        order.id,
+        "NOTE",
+        SYSTEM,
+        `Pago convertido con la tasa Bs. ${quotedRate.rate} por USD, vigente desde el ${quotedRate.since.toISOString().slice(0, 16).replace("T", " ")} UTC (el día declarado del pago), en vez de la actual (Bs. ${configuredRate}): el monto coincide con lo que se le indicó al médico con esa tasa.`,
+        { paymentId: p.id, exchangeRate: quotedRate.rate, configuredExchangeRate: configuredRate },
+      );
+    }
     if (acceptsFirst && order.status !== "AWAITING_VERIFICATION") {
       await transitionOrder(tx, order.id, "AWAITING_VERIFICATION", { actor, note: "Comprobante recibido; pendiente de verificación", patch: { paymentMethod: input.method } });
     }
@@ -420,6 +439,85 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
     await sendEmail(d, { template: "payment_under_verification", to: email, rendered: T.paymentUnderVerification(view, await buildPaymentView(d, paymentId)), dedupeKey: `payment_submitted:${paymentId}`, orderId: input.orderId, customerId });
   });
   return d.db.payment.findUniqueOrThrow({ where: { id: paymentId } });
+}
+
+interface QuotedRate {
+  rate: number;
+  since: Date;
+}
+
+/**
+ * La tasa BCV se actualiza a diario y el médico paga los bolívares que le indicó el correo del pedido (o la página
+ * del pedido, o el recordatorio de cuota) con la tasa de ESE momento. Si el staff la actualiza antes de que el médico
+ * registre el comprobante, convertir con la tasa nueva dejaba su pago «insuficiente»: el admin lo aprobaba y el pedido
+ * quedaba pendiente, sin matrícula y con un correo «pago aprobado».
+ *
+ * Solo cuando el monto NO cubre lo adeudado con la tasa actual: se buscan las tasas configuradas (historial auditado
+ * de la configuración) vigentes el día declarado del pago, nunca antes del pedido ni antes del plazo de verificación
+ * manual (72 h). Si con alguna de ellas el monto cubre exactamente lo adeudado (con un margen pequeño hacia arriba:
+ * el médico pagó lo que esa tasa le indicó), se usa la mayor de esas tasas. La tasa sigue saliendo de la
+ * configuración, nunca del cliente; una tasa mal cargada un momento (p. ej. 18,7 por 187) no infla el pago porque el
+ * resultado debe caer en ese margen.
+ */
+async function quotedRateForPayment(
+  tx: Tx,
+  order: { id: string; status: string; placedAt: Date; dueNowCents: number; amountPaidCents: number; balanceCents: number },
+  amountCents: number,
+  configured: number,
+  paidAt: Date,
+  now: Date,
+  holdTtl: number,
+): Promise<QuotedRate | null> {
+  const targets: number[] = [];
+  if (PREPAID_STATES.includes(order.status as never)) targets.push(order.dueNowCents - order.amountPaidCents);
+  else {
+    const next = await tx.installment.findFirst({ where: { orderId: order.id, status: { notIn: ["PAID", "WAIVED"] } }, orderBy: { sequence: "asc" }, select: { amountCents: true, paidCents: true } });
+    if (next) targets.push(next.amountCents - next.paidCents);
+    targets.push(order.balanceCents);
+  }
+  const owed = targets.filter((t) => t > 0);
+  const atCurrent = Math.round(amountCents / configured);
+  if (!owed.length || owed.every((t) => atCurrent >= t)) return null;
+
+  const day = caracasDay(paidAt);
+  const to = Math.min(Date.parse(`${day}T23:59:59.999-04:00`), now.getTime());
+  const from = Math.max(Date.parse(`${day}T00:00:00-04:00`), order.placedAt.getTime(), now.getTime() - holdTtl);
+  // Día declarado anterior al pedido o fuera del plazo de verificación: se convierte con la tasa actual.
+  if (from > to) return null;
+
+  // Historial: (desde cuándo rige, tasa). `updatedAt` del valor lo fija updateSetting con el reloj de la app.
+  const rateOf = (v: unknown) => {
+    const n = Number((v as { vesPerUsd?: unknown } | null)?.vesPerUsd);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const sinceOf = (v: unknown, fallback: number) => {
+    const t = Date.parse(String((v as { updatedAt?: unknown } | null)?.updatedAt ?? ""));
+    return Number.isFinite(t) ? t : fallback;
+  };
+  const logs = await tx.auditLog.findMany({ where: { entityType: "Setting", entityId: SETTING_KEYS.exchangeRate }, orderBy: { createdAt: "desc" }, take: 50, select: { createdAt: true, before: true, after: true } });
+  const points = new Map<number, number>();
+  for (const l of logs) {
+    const a = rateOf(l.after);
+    if (a) points.set(sinceOf(l.after, l.createdAt.getTime()), a);
+    const b = rateOf(l.before);
+    if (b) {
+      const t = sinceOf(l.before, Number.NEGATIVE_INFINITY);
+      if (!points.has(t)) points.set(t, b);
+    }
+  }
+  const timeline = [...points.entries()].sort((x, y) => x[0] - y[0]);
+  const candidates: QuotedRate[] = [];
+  for (let i = 0; i < timeline.length; i++) {
+    const [since, r] = timeline[i];
+    const until = i + 1 < timeline.length ? timeline[i + 1][0] : Number.POSITIVE_INFINITY;
+    if (since <= to && until > from && r !== configured) candidates.push({ rate: r, since: new Date(Number.isFinite(since) ? since : from) });
+  }
+  candidates.sort((x, y) => y.rate - x.rate);
+  for (const c of candidates) {
+    const usd = Math.round(amountCents / c.rate);
+    if (owed.some((t) => atCurrent < t && usd >= t && usd <= t + Math.max(100, Math.round(t * 0.02)))) return c;
+  }
+  return null;
 }
 
 /** Contenedor ISO-BMFF de la familia HEIF (caja `ftyp` con marca heic/heix/heif/mif1/msf1/hevc…). */
