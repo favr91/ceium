@@ -399,8 +399,8 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
     const acceptsFirst = PREPAID_STATES.includes(order.status);
     const acceptsInstallment = PAID_STATES.includes(order.status) && order.balanceCents > 0;
     if (!acceptsFirst && !acceptsInstallment) throw new DomainError("INVALID_STATE", "Este pedido no admite nuevos pagos.");
-    if (isCustomer && acceptsFirst) {
-      // PayPal ya retiene el dinero del primer pago (CAPTURE_PENDING): igual que startPaypalPayment, no se acepta
+    if (isCustomer) {
+      // PayPal ya retiene el dinero del primer pago o de la cuota (CAPTURE_PENDING): igual que startPaypalPayment, no se acepta
       // otro pago (p.ej. desde una pestaña del pedido abierta antes). Pagaría dos veces y, si el staff rechazaba ese
       // comprobante, el pedido se cerraba y liberaba el cupo con el dinero de PayPal aún retenido.
       const held = await tx.payment.findFirst({ where: { orderId: order.id, method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" }, select: { id: true } });
@@ -775,6 +775,10 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
     } else if (PAID_STATES.includes(order.status) && order.balanceCents <= 0) {
       throw new DomainError("INVALID_STATE", "Este pedido ya está pagado por completo.");
     } else if (PAID_STATES.includes(order.status) && order.balanceCents > 0) {
+      // El médico ya registró un pago (Pago Móvil, transferencia…) que el staff está verificando: pagar con PayPal ahora
+      // cobraría dos veces lo mismo (p. ej. la cuota del recordatorio). Igual que el primer pago del pedido.
+      const awaiting = await tx.payment.findFirst({ where: { orderId, status: "AWAITING_VERIFICATION" }, select: { id: true } });
+      if (awaiting) throw new DomainError("INVALID_STATE", "Ya registraste un pago de este pedido y lo estamos verificando. Te avisaremos por correo al aprobarlo; no hace falta pagar de nuevo.", { paymentId: awaiting.id });
       const next = await tx.installment.findFirst({ where: { orderId, status: { in: ["PENDING", "OVERDUE"] } }, orderBy: { sequence: "asc" } });
       if (urls?.installmentId) {
         const target = await tx.installment.findFirst({ where: { id: urls.installmentId, orderId } });
@@ -790,6 +794,15 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
       throw new DomainError("INVALID_STATE", "Este pedido no admite pagos en este momento.");
     }
     if (amount <= 0) throw new DomainError("INVALID_STATE", "No hay monto pendiente por pagar.");
+    // Se está capturando ahora mismo un pago PayPal de este pedido (el médico aprobó y volvió a pulsar «Pagar»): abrir
+    // otro cobraría dos veces. Pasado el plazo de la captura (sin respuesta de PayPal), ese intento queda como
+    // resultado desconocido (si PayPal sí lo cobró, el webhook o la conciliación lo imputan) y se puede volver a pagar.
+    const capturingNow = await tx.payment.findFirst({
+      where: { orderId, method: "PAYPAL", providerStatus: CAPTURING, status: { in: ["PENDING", "CANCELLED"] }, updatedAt: { gte: new Date(now.getTime() - CAPTURING_LEASE_MS) } },
+      select: { id: true },
+    });
+    if (capturingNow) throw new DomainError("INVALID_STATE", "Estamos confirmando con PayPal tu pago anterior de este pedido. Espera unos minutos y revisa tu correo antes de pagar de nuevo.", { paymentId: capturingNow.id });
+    await tx.payment.updateMany({ where: { orderId, method: "PAYPAL", status: "PENDING", providerStatus: CAPTURING }, data: { status: "CANCELLED", providerStatus: "CAPTURE_UNKNOWN" } });
     await tx.payment.updateMany({ where: { orderId, method: "PAYPAL", status: "PENDING" }, data: { status: "CANCELLED" } });
     const p = await tx.payment.create({ data: { orderId, installmentId, method: "PAYPAL", status: "PENDING", amountCents: amount, currency: "USD", amountUsdCents: amount, createdAt: now } });
     return { paymentId: p.id, amountCents: amount, order };
@@ -1032,6 +1045,13 @@ export async function capturePaypalReturn(
 }
 
 const NOT_CAPTURED = "NOT_CAPTURED";
+/**
+ * Orden PayPal aprobada cuya captura está en curso (secureSeatBeforeCapture → captureOrder). Cuenta como «en curso»
+ * durante CAPTURING_LEASE_MS (la llamada a PayPal agota su timeout mucho antes): si la captura falló sin respuesta, el
+ * médico puede volver a pagar pasado ese plazo (si PayPal sí la cobró, el webhook o la conciliación la imputan).
+ */
+const CAPTURING = "CAPTURING";
+const CAPTURING_LEASE_MS = 2 * 60_000;
 /** Tiempo que se aparta la reserva (y el pedido) mientras se captura una orden PayPal aprobada. */
 const CAPTURE_WINDOW_MS = 10 * 60_000;
 class SeatGone extends Error {}
@@ -1054,13 +1074,26 @@ async function secureSeatBeforeCapture(d: Deps, paymentId: string): Promise<{ re
   let duplicate: { id: string; number: number } | null = null;
   try {
     await withTx(d, async (tx) => {
-      const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { orderId: true, amountUsdCents: true } });
+      const { orderId } = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { orderId: true } });
+      // Serializa las capturas del mismo pedido (dos pestañas aprobadas a la vez): la otra espera a que esta decida
+      // y marque su captura en curso, y entonces la ve.
+      await lockOrder(tx, orderId, now);
+      const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { orderId: true, amountUsdCents: true, installmentId: true } });
       const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { items: { include: { reservation: true } } } });
       // Mismo criterio que applyConfirmedPayment (closedOrder): un pedido REJECTED sí admite un pago nuevo.
       if (order.status === "CANCELLED" || order.status === "REFUNDED") {
         reason = `el pedido está ${order.status === "CANCELLED" ? "cancelado" : "reembolsado"}`;
         throw new SeatGone();
       }
+      // Otra orden PayPal del mismo pedido se está capturando ahora mismo (el médico aprobó dos pestañas a la vez):
+      // lo que ella cobra aún no está imputado, así que los controles de saldo de abajo la ignorarían y se cobraría
+      // dos veces (y luego se reembolsaría el excedente, perdiendo la comisión de PayPal).
+      const capturing = await tx.payment.findMany({
+        where: { orderId: p.orderId, id: { not: paymentId }, method: "PAYPAL", providerStatus: CAPTURING, status: { in: ["PENDING", "CANCELLED"] }, updatedAt: { gte: new Date(now.getTime() - CAPTURING_LEASE_MS) } },
+        select: { amountUsdCents: true, installmentId: true },
+      });
+      const capturingCents = capturing.reduce((a, c) => a + c.amountUsdCents, 0);
+      const markCapturing = () => tx.payment.update({ where: { id: paymentId }, data: { providerStatus: CAPTURING, updatedAt: now } });
       // Pedido ya pagado (p.ej. con pago móvil aprobado mientras una orden PayPal vieja seguía abierta en otra
       // pestaña): capturar y luego reembolsar el excedente le cobra dos veces al médico y la comisión de PayPal
       // no se recupera. No se captura si no se debe nada o si el pago supera lo que se debe.
@@ -1073,8 +1106,33 @@ async function secureSeatBeforeCapture(d: Deps, paymentId: string): Promise<{ re
           reason = `el pago (USD ${(p.amountUsdCents / 100).toFixed(2)}) supera el saldo pendiente (USD ${(order.balanceCents / 100).toFixed(2)})`;
           throw new SeatGone();
         }
+        // Cuota: el médico ya la pagó por otra vía (su Pago Móvil está en verificación, o otra pestaña de PayPal la
+        // cobró o la está cobrando). Capturar le cobraría dos veces la misma cuota (y la imputaría a la siguiente sin
+        // que lo pidiera). Igual que en el primer pago (skipCaptureWhileManualAwaiting).
+        const awaiting = await tx.payment.findMany({ where: { orderId: p.orderId, status: "AWAITING_VERIFICATION" }, select: { method: true, reference: true } });
+        if (awaiting.length > 0) {
+          reason = `el pedido ya tiene un pago en verificación (${awaiting.map((a) => `${T.METHOD_LABELS[a.method] ?? a.method} ref. ${a.reference ?? "—"}`).join(", ")})`;
+          throw new SeatGone();
+        }
+        if (p.installmentId) {
+          const ins = await tx.installment.findUnique({ where: { id: p.installmentId }, select: { sequence: true, status: true } });
+          if (ins && (ins.status === "PAID" || ins.status === "WAIVED" || capturing.some((c) => c.installmentId === p.installmentId))) {
+            reason = `la cuota ${ins.sequence} ya está pagada${ins.status === "PAID" || ins.status === "WAIVED" ? "" : " (otra orden de PayPal la está cobrando)"}`;
+            throw new SeatGone();
+          }
+        }
+        if (capturingCents > 0 && p.amountUsdCents > order.balanceCents - capturingCents) {
+          reason = "otra orden de PayPal de este pedido se está cobrando y cubre el saldo pendiente";
+          throw new SeatGone();
+        }
+        await markCapturing();
         return;
       }
+      if (capturingCents > 0) {
+        reason = "otra orden de PayPal de este pedido se está cobrando en este momento";
+        throw new SeatGone();
+      }
+      await markCapturing();
       if (order.amountPaidCents > 0 || !PREPAID_STATES.includes(order.status)) return;
       // Compra duplicada: el mismo cliente ya pagó (o tiene un pago en verificación / retenido por PayPal) el mismo
       // programa en OTRO pedido. Capturar le cobraría dos veces y tomaría otro cupo de la cohorte: no se captura.

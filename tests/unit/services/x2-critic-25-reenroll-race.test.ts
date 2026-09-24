@@ -78,7 +78,40 @@ describe("«Rematricular» mientras la matrícula de la aprobación espera a Moo
 
     const mails = await accessMails(a.order.id);
     // «Rematricular» encontró la cuenta (sin contraseña que dar); la aprobación la creó y es la única que la conoce.
-    expect(mails.filter((m) => m.secretRef != null)).toHaveLength(1);
-    expect(mails.length).toBeLessThanOrEqual(2);
+    // Un solo correo de acceso (x4 final): «Rematricular» no envía un «Ya estás inscrito» sin contraseña mientras
+    // otra llamada está creando la cuenta; lo envía quien la creó, con la contraseña temporal.
+    expect(mails).toHaveLength(1);
+    expect(mails[0].secretRef).not.toBeNull();
+    expect((await ctx.db.order.findUniqueOrThrow({ where: { id: a.order.id } })).status).toBe("ENROLLED");
+    expect((await ctx.db.emailOutbox.findMany({ where: { orderId: a.order.id, template: "cohort_details" } })).length).toBeLessThanOrEqual(1);
+  });
+
+  it("la aprobación creó la cuenta pero Moodle no le confirmó el alta: el acceso llega igual, una vez y con contraseña", async () => {
+    const a = await awaitingOrder("medico.rematricula3@example.com", "01343333");
+    const real = ctx.moodle.findOrCreateUser.bind(ctx.moodle);
+    let release!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const inFlight = new Promise<void>((r) => (started = r));
+    let armed = true;
+    ctx.moodle.findOrCreateUser = async (email, names, hooks) => {
+      if (!armed) return real(email, names, hooks);
+      armed = false;
+      await real(email, names, hooks); // Moodle SÍ crea la cuenta…
+      started();
+      await gate;
+      throw Object.assign(new Error("timeout"), { kind: "timeout", retryable: true }); // …pero la respuesta se pierde
+    };
+    const approve = adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: a.paymentId, decision: "approve" });
+    await inFlight;
+    expect((await reenrollOrder(ctx.d, ctx.fx.admin, a.order.id)).status).toBe("ENROLLED");
+    expect(await accessMails(a.order.id), "«Rematricular» espera la contraseña de la aprobación").toHaveLength(0);
+    release();
+    await approve;
+
+    const mails = await accessMails(a.order.id);
+    expect(mails).toHaveLength(1);
+    expect(mails[0].secretRef, "contraseña temporal nueva: la del alta se perdió").not.toBeNull();
+    expect((await ctx.db.order.findUniqueOrThrow({ where: { id: a.order.id } })).status).toBe("ENROLLED");
   });
 });

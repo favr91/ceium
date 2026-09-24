@@ -356,6 +356,7 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
     }
     // Si la cuenta se creó (o su contraseña se fijó) ahora, la contraseña temporal no se guarda: enviarla ya.
     if (tempPassword && userId != null) await sendAccessEmail(d, orderId, userId, tempPassword, true, `platform_credentials:${order.customerId}`, desired.map((c) => c.label));
+    else if (createRequested && userId == null) await deliverMissedAccess(d, orderId, order.customerId, desired, now);
     return { status: worst === "FAILED" ? "FAILED" : "RETRY_SCHEDULED", reason: msg, enrolledCourseIds: [], pendingCourseIds: courseIds, createdMoodleUser: created };
   }
 
@@ -418,14 +419,62 @@ async function finalize(
   });
   const customer = await d.db.customer.findUniqueOrThrow({ where: { id: customerId } });
   if (transitioned) {
-    await sendAccessEmail(d, orderId, fresh?.userId ?? customer.moodleUserId!, fresh?.tempPassword, false, `platform_access:${orderId}`, desired.map((c) => c.label));
+    // Otra llamada (p. ej. la aprobación del pago, con Moodle lento) está creando AHORA la cuenta de este cliente y
+    // esta la encontró ya creada («Rematricular» en paralelo): esa otra llamada recibirá la contraseña temporal y
+    // enviará el correo de acceso con ella. Enviar aquí un «Ya estás inscrito» sin contraseña duplicaba el correo.
+    if (fresh?.tempPassword || !(await createInFlightElsewhere(d, customerId, now))) {
+      await sendAccessEmail(d, orderId, fresh?.userId ?? customer.moodleUserId!, fresh?.tempPassword, false, `platform_access:${orderId}`, desired.map((c) => c.label));
+    }
     await sendCohortEmails(d, orderId);
   } else if (fresh?.newlyEnrolled?.length) {
     const ids = [...fresh.newlyEnrolled].sort((a, b) => a - b);
     const labels = desired.filter((c) => ids.includes(c.moodleCourseId)).map((c) => c.label);
-    await sendAccessEmail(d, orderId, fresh.userId, fresh.tempPassword, false, `course_access:${orderId}:${ids.join(",")}`, labels);
+    // Quien creó la cuenta llega después de que otra llamada dejara el pedido inscrito sin enviar el acceso (ver
+    // arriba): este es EL correo de acceso del pedido, con la contraseña temporal.
+    const first = fresh.tempPassword && !(await d.db.emailOutbox.findFirst({ where: { dedupeKey: `platform_access:${orderId}` }, select: { id: true } }));
+    await sendAccessEmail(d, orderId, fresh.userId, fresh.tempPassword, false, first ? `platform_access:${orderId}` : `course_access:${orderId}:${ids.join(",")}`, first ? desired.map((c) => c.label) : labels);
   }
   return { status: "ENROLLED", enrolledCourseIds: enrolled, pendingCourseIds: [] };
+}
+
+/**
+ * ¿Otra llamada está creando AHORA la cuenta de Moodle de este cliente (core_user_create_users pedido dentro del lease,
+ * sin resultado desconocido registrado) y todavía no se le entregó al médico una contraseña? Esa llamada recibirá la
+ * contraseña temporal y enviará el correo de acceso con ella.
+ */
+async function createInFlightElsewhere(d: Deps, customerId: string, now: Date): Promise<boolean> {
+  if (d.moodle.sendsOwnCredentials) return false;
+  const req = await d.db.orderEvent.findFirst({
+    where: { order: { customerId }, type: MOODLE_CREATE_REQUESTED, createdAt: { gt: new Date(now.getTime() - LEASE_MS) } },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  if (!req) return false;
+  const unconfirmed = await d.db.orderEvent.findFirst({ where: { order: { customerId }, type: MOODLE_CREATE_UNCONFIRMED, createdAt: { gte: req.createdAt } }, select: { id: true } });
+  if (unconfirmed) return false;
+  const delivered = await d.db.emailOutbox.findFirst({ where: { customerId, template: "platform_access", secretRef: { not: Prisma.DbNull } }, select: { id: true } });
+  return !delivered;
+}
+
+/**
+ * El alta en Moodle de esta llamada quedó sin confirmar, pero otra llamada ya vinculó la cuenta e inscribió el pedido
+ * sin enviar el acceso (esperaba la contraseña de esta, ver createInFlightElsewhere): se envía ahora, con una
+ * contraseña temporal nueva si la cuenta la creamos nosotros y el médico nunca recibió la suya.
+ */
+async function deliverMissedAccess(d: Deps, orderId: string, customerId: string, desired: DesiredCourse[], now: Date) {
+  const o = await d.db.order.findUniqueOrThrow({ where: { id: orderId }, select: { status: true, customer: { select: { moodleUserId: true } } } });
+  const uid = o.customer.moodleUserId;
+  if (o.status !== "ENROLLED" || uid == null) return;
+  if (await d.db.emailOutbox.findFirst({ where: { dedupeKey: `platform_access:${orderId}` }, select: { id: true } })) return;
+  let tempPassword: string | undefined;
+  if (await ownCreationWithoutCredentials(d, customerId, now)) {
+    try {
+      tempPassword = await d.moodle.resetTempPassword(uid);
+    } catch (e) {
+      d.log.error(`[enrollment] no se pudo fijar la contraseña temporal del pedido ${orderId}`, e);
+    }
+  }
+  await sendAccessEmail(d, orderId, uid, tempPassword, false, `platform_access:${orderId}`, desired.map((c) => c.label));
 }
 
 /** Intento de alta en Moodle (antes de core_user_create_users) y alta sin confirmar (respuesta perdida). */
