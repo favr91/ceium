@@ -14,6 +14,11 @@
 .store-root:has(.coll-pf),
 .store-root:has(.coll-pf) * { letter-spacing: 0 !important; }
 
+/* La página de diplomados de ceium.net solo carga Inter 400 y 700: el navegador pinta el 500 de la etiqueta como
+   400 y el 600 de la nota y del botón como 700. Se fija el peso que realmente se ve. */
+.coll-pf--diplomas .coll-diploma__badge { font-weight: 400 !important; }
+.coll-pf--diplomas :is(.coll-diploma__note, .coll-btn--lg) { font-weight: 700 !important; }
+
 /* Dawn (talleres): el tema reparte 0.6 px de interletra a todo, 1 px al anuncio y 0.7 px al copyright. */
 .store-root:has(.coll-dawn) { letter-spacing: 0.6px; }
 .store-root:has(.coll-dawn) :is(h1, h2, h3, h4, h5) { letter-spacing: 0.6px; }
@@ -109,8 +114,8 @@
 @media (max-width: 767.4999px) {
   .coll-pf--diplomas { padding: 48px 0 49px; }
   .coll-diplomas__head { display: block; }
-  .store-root .coll-diplomas__title { font-size: 33px; line-height: 38px; margin-bottom: 13px; }
-  .coll-diplomas__list { gap: 16px; margin-top: 31px; }
+  .store-root .coll-diplomas__title { font-size: 33px; line-height: 38px; margin-bottom: 12px; }
+  .coll-diplomas__list { gap: 16px; margin-top: 32px; }
   .coll-diploma { display: block; padding: 16px; border-radius: 20px; }
   .coll-diploma__media { margin: 0 0 16px; }
   .coll-diploma__body { margin-left: 0; }

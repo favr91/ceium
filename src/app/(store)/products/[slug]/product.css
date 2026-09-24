@@ -73,7 +73,7 @@
 .pp-opt { min-width: 0; margin: 16px 0 0; padding: 0; border: 0; }
 .pp-form__title + .pp-opt { margin-top: 16px; }
 .pp-opt__label { float: left; width: 100%; padding: 0; font-size: 15px; line-height: 17px; font-weight: 600; color: var(--ink); }
-.pp-opt__values { clear: both; display: flex; flex-wrap: wrap; gap: 12px 10px; padding-top: 8px; }
+.pp-opt__values { clear: both; display: flex; flex-wrap: wrap; gap: 12px; padding-top: 8px; }
 .pp-opt__values--stack { flex-direction: column; align-items: flex-start; }
 .pp-radio { display: inline-flex; align-items: flex-start; font-size: 15px; line-height: 17px; color: var(--ink); cursor: pointer; }
 .pp-radio input { flex: none; width: 13px; height: 13px; margin: 2px 8px 0 0; cursor: pointer; }
@@ -163,7 +163,7 @@
 /* ───── franja de datos ───── */
 .pp-info { padding-bottom: 32px; }
 .pp-info__list { display: grid; grid-template-columns: minmax(0, 1fr); }
-.pp-info__item { display: flex; align-items: flex-start; gap: 21px; padding: 17px 12px 17px 21px; border: 1px solid var(--pp-line); background: #fff; }
+.pp-info__item { display: flex; align-items: flex-start; gap: 21px; padding: 16px 12px 16px 21px; border: 1px solid var(--pp-line); background: #fff; }
 .pp-info__item + .pp-info__item { margin-top: -1px; }
 .pp-info__item:first-child { border-radius: 20px 20px 0 0; }
 .pp-info__item:last-child { border-radius: 0 0 20px 20px; }
@@ -186,7 +186,7 @@
 /* ───── beneficios / temario + equipo docente ───── */
 .pp-details__grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
 .pp-card { padding: 16px; border: 1px solid var(--pp-line); border-radius: 20px; background: #fff; }
-.pp-card--diploma { padding: 0 16px 16px; }
+.pp-card--diploma { padding: 16px; }
 .pp-card__head { display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
 .store-root .pp-card__title { font-size: 23px; line-height: 26px; font-weight: 700; color: var(--ink); }
 .store-root .pp-download { display: inline-flex; align-items: center; gap: 8px; color: var(--teal); font-size: 14px; line-height: 16px; text-decoration: none; }
@@ -247,13 +247,27 @@
   .pp-faculty li + li { margin-top: 15px; }
 }
 
+/* Móvil (390 px, medido en vivo): la lista de beneficios de PageFly deja 24 px a la derecha y el temario del
+   diplomado va metido 5 px por lado. */
+@media screen and (max-width: 749px) {
+  .pp-benefits li { padding-right: 24px; }
+  .pp-dcourses { padding-right: 5px !important; }
+}
+
 /* ───── programas relacionados (carrusel PageFly) ───── */
-.pp-related { padding: 40px 0; }
+.pp-related { padding: 46px 0 40px; }
 .pp-related__head { display: flex; flex-direction: column; align-items: flex-start; gap: 22px; }
 .store-root .pp-h2 { font-size: 23px; line-height: 26px; font-weight: 700; color: var(--ink); }
 .store-root .pp-related__link { display: inline-flex; align-items: center; gap: 12px; color: var(--teal); font-size: 14px; line-height: 16px; font-weight: 600; text-decoration: none; }
 .store-root .pp-related__link:hover { text-decoration: underline; text-underline-offset: 3px; }
-.pp-related__carousel { margin-top: 33px; }
+.pp-related__carousel { margin-top: 34px; }
+/* Móvil: la ProductBox de PageFly tiene 10 px de relleno por lado y todas miden lo que la más alta (el botón sigue
+   al título, no se alinea abajo); la foto llena su caja 16:9 sin encogerse. */
+@media screen and (max-width: 749px) {
+  .pp-rcard.home-card { padding: 10px; }
+  .pp-rcard .home-card__media { flex-shrink: 0; }
+  .pp-rcard .home-card__media img { object-fit: cover; object-position: 50% 50%; }
+}
 @media screen and (min-width: 750px) {
   .pp-related { padding: 80px 0 88px; }
   .pp-related__head { flex-direction: row; align-items: center; justify-content: space-between; gap: 32px; }
@@ -266,7 +280,7 @@
 
 /* ───── Obtén tu Certificado… ───── */
 .pp-cert { padding-bottom: 40px; }
-.pp-cert__box { display: flex; flex-direction: column; gap: 34px; padding: 24px 20px 20px; border-radius: 24px; background: #001e2b; color: #fff; }
+.pp-cert__box { display: flex; flex-direction: column; gap: 32px; padding: 24px 20px 20px; border-radius: 24px; background: #001e2b; color: #fff; }
 .store-root .pp-cert__title { font-size: 29px; line-height: 33px; font-weight: 700; color: #fff; }
 .pp-cert__lead { margin-top: 17px !important; font-size: 14px; line-height: 20px; color: rgba(255, 255, 255, 0.9); }
 .pp-cert__items { margin-top: 20px !important; }
@@ -275,6 +289,14 @@
 .pp-cert__items img { width: 32px; height: 32px; }
 .store-root .pp-cert__items h3 { font-size: 16px; line-height: 19px; font-weight: 700; color: #fff; }
 .pp-cert__items p { margin-top: 5px !important; font-size: 14px; line-height: 20px; color: rgba(255, 255, 255, 0.9); }
+@media screen and (max-width: 749px) {
+  /* Móvil (medido en vivo a 390 px): 16 px bajo el título, 24 px antes del primer ítem, 4 px título→texto y
+     16 px entre ítems. */
+  .pp-cert__lead { margin-top: 16px !important; }
+  .pp-cert__items { margin-top: 24px !important; }
+  .pp-cert__items li + li { margin-top: 16px; }
+  .pp-cert__items p { margin-top: 4px !important; }
+}
 .pp-cert__img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 12px; }
 @media screen and (min-width: 750px) {
   .pp-cert { padding-bottom: 96px; }
