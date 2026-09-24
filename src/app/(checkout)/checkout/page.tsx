@@ -50,7 +50,7 @@ export default async function CheckoutPage({ searchParams }: PageProps<"/checkou
       <div className="co-main" id="co-main">
         <div className="co-main-inner">
           {view.pending ? (
-            <PendingPayment pending={view.pending} methods={view.methods} holds={holds} serverNow={new Date().toISOString()} justCreated={one("pedido") === "creado"} payWithPaypal={payPendingWithPaypal} />
+            <PendingPayment pending={view.pending} methods={view.methods} holds={holds} serverNow={new Date().toISOString()} justCreated={one("pedido") === "creado"} paypalCancelled={one("paypal") === "cancelado"} paypalHoldMinutes={view.ttl.paypalMinutes} payWithPaypal={payPendingWithPaypal} />
           ) : (
             <CheckoutForm action={placeOrder} methods={view.methods} initialMethod={metodo === "PAYPAL" ? "PAYPAL" : null} ttl={view.ttl} holds={holds} dueNowCents={view.dueNowCents} count={view.count} blocked={view.blocked} />
           )}

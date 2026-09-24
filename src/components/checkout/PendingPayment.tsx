@@ -4,12 +4,12 @@
 // de CEIUM para pagar (con botón copiar) y enlace para registrar el pago con su comprobante.
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { useFormStatus } from "react-dom";
 import type { MethodView, PendingOrderView } from "@/app/(checkout)/checkout/data";
 import type { PlaceOrderState } from "@/app/(checkout)/checkout/actions";
 import { COUNTRIES } from "./checkout-fields";
 import { HoldCountdown } from "./HoldCountdown";
 import { CheckIcon, ClockIcon, CopyIcon, FieldErrorIcon, LockIcon, PayPalWordmark } from "./icons";
+import { PaypalButton, PaypalRedirectNotice } from "./paypal";
 import { usd } from "./OrderSummary";
 import type { HoldCohort } from "./CheckoutForm";
 
@@ -19,6 +19,10 @@ export interface PendingPaymentProps {
   holds: HoldCohort[];
   serverNow: string;
   justCreated: boolean;
+  /** Volvió de PayPal sin pagar (cancel_url del checkout). */
+  paypalCancelled?: boolean;
+  /** Minutos de reserva que da cada intento de PayPal (para la pantalla de salida a PayPal). */
+  paypalHoldMinutes?: number | null;
   payWithPaypal: (prev: PlaceOrderState, fd: FormData) => Promise<PlaceOrderState>;
 }
 
@@ -53,21 +57,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
   );
 }
 
-function PaypalSubmit() {
-  const { pending } = useFormStatus();
-  return (
-    <button type="submit" className="co-pay co-pay-paypal" disabled={pending} aria-label="Pagar con PayPal" data-pending={pending || undefined}>
-      {pending ? <span className="co-spinner" aria-hidden="true" /> : (
-        <>
-          <span className="co-pay-with">Pagar con</span>
-          <PayPalWordmark />
-        </>
-      )}
-    </button>
-  );
-}
-
-export function PendingPayment({ pending, methods, holds, serverNow, justCreated, payWithPaypal }: PendingPaymentProps) {
+export function PendingPayment({ pending, methods, holds, serverNow, justCreated, paypalCancelled, paypalHoldMinutes, payWithPaypal }: PendingPaymentProps) {
   const keys = methods.map((m) => m.method as string);
   const [method, setMethod] = useState<string>(pending.method && keys.includes(pending.method) ? pending.method : keys[0] ?? "");
   const [state, action] = useActionState(payWithPaypal, null);
@@ -103,6 +93,14 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
           <CheckIcon />
           <p>
             Creamos tu pedido <strong>#{pending.number}</strong>. También te enviamos por correo los datos para pagar.
+          </p>
+        </div>
+      ) : null}
+      {paypalCancelled && !state?.formError ? (
+        <div className="co-banner co-banner-info" role="status" data-testid="paypal-cancelled">
+          <ClockIcon />
+          <p>
+            No se completó el pago en PayPal y no se te cobró nada. {pending.holdExpiresAt ? "Tu cupo sigue reservado: puedes" : "Puedes"} intentarlo de nuevo o elegir otro método.
           </p>
         </div>
       ) : null}
@@ -165,7 +163,7 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
                 {on ? (
                   <div className="co-method-body" data-testid="method-body">
                     {m.method === "PAYPAL" ? (
-                      <p>Se te redirigirá a PayPal para que completes la compra. Puedes pagar con tu cuenta PayPal o con tarjeta de débito o crédito.</p>
+                      <PaypalRedirectNotice />
                     ) : (
                       <>
                         <dl className="co-amount">
@@ -208,7 +206,7 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
 
       {selected?.method === "PAYPAL" ? (
         <form action={action}>
-          <PaypalSubmit />
+          <PaypalButton handoff={{ amountLabel: `${usd(pending.dueNowCents)} USD`, holdMinutes: pending.holdExpiresAt ? paypalHoldMinutes : null }} />
         </form>
       ) : selected ? (
         <Link href={payHref} className="co-pay" data-testid="report-payment">
@@ -217,7 +215,7 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
       ) : null}
       <p className="co-secure">
         <LockIcon />
-        {selected?.method === "PAYPAL" ? "Pagarás en el sitio seguro de PayPal. Volverás aquí al terminar." : "Registra la referencia y el comprobante; te avisamos por correo al verificarlo."}
+        {selected?.method === "PAYPAL" ? `Pagarás ${usd(pending.dueNowCents)} USD en el sitio seguro de PayPal y volverás aquí para ver tu confirmación.` : "Registra la referencia y el comprobante; te avisamos por correo al verificarlo."}
       </p>
     </div>
   );

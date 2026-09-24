@@ -12,6 +12,7 @@ import type { PaymentMethod } from "@/generated/prisma/client";
 import { cartCheckoutItems, resolveCart } from "@/server/cart";
 import { prisma } from "@/server/db";
 import { isDomainError } from "@/server/errors";
+import { configFromEnv } from "@/server/deps";
 import { services } from "@/server/services";
 import { FIELD_ORDER, normalizeCedula, normalizePhone, specialtyOf, validateCheckout, type CheckoutField, type CheckoutValues } from "@/components/checkout/checkout-fields";
 import { CHECKOUT_COOKIE, CHECKOUT_COOKIE_OPTIONS, cartSignature, encodePendingCookie, findPendingOrder, paymentMethods, readCheckoutCookies } from "./data";
@@ -26,6 +27,11 @@ function values(fd: FormData): CheckoutValues {
   }
   if (!out.country) out.country = "VE";
   return out;
+}
+
+/** PayPal desde el checkout: «Cancelar y volver» regresa al checkout (pedido en curso, cupo reservado), no a /pedido. */
+function checkoutPaypalUrls() {
+  return { cancelUrl: `${configFromEnv().appUrl}/checkout?paypal=cancelado` };
 }
 
 const fail = (formError: string, fieldErrors?: Partial<Record<CheckoutField, string>>): PlaceOrderState => ({ formError, fieldErrors, at: Date.now() });
@@ -85,7 +91,7 @@ export async function placeOrder(_prev: PlaceOrderState, fd: FormData): Promise<
 
   let approveUrl: string;
   try {
-    approveUrl = (await s.payments.startPaypalPayment(order.id)).approveUrl;
+    approveUrl = (await s.payments.startPaypalPayment(order.id, checkoutPaypalUrls())).approveUrl;
   } catch (e) {
     if (!isDomainError(e)) console.error("[checkout/paypal]", e);
     refresh(); // el pedido ya existe: la página muestra la reserva y deja reintentar
@@ -104,7 +110,7 @@ export async function payPendingWithPaypal(): Promise<PlaceOrderState> {
   }
   let approveUrl: string;
   try {
-    approveUrl = (await services().payments.startPaypalPayment(order.id)).approveUrl;
+    approveUrl = (await services().payments.startPaypalPayment(order.id, checkoutPaypalUrls())).approveUrl;
   } catch (e) {
     if (!isDomainError(e)) console.error("[checkout/paypal]", e);
     return fail(isDomainError(e) ? e.message : "No pudimos conectar con PayPal. Tu cupo sigue reservado: intenta de nuevo.");

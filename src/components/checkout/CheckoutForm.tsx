@@ -9,6 +9,7 @@ import type { MethodView } from "@/app/(checkout)/checkout/data";
 import type { PlaceOrderState } from "@/app/(checkout)/checkout/actions";
 import { COUNTRIES, FIELD_ORDER, OTHER_SPECIALTY, SPECIALTIES, validateCheckout, type CheckoutField, type CheckoutValues } from "./checkout-fields";
 import { ChevronDownIcon, ClockIcon, FieldErrorIcon, HelpIcon, LockIcon, PayPalWordmark } from "./icons";
+import { PaypalButton, PaypalRedirectNotice, type PaypalHandoff } from "./paypal";
 import { usd } from "./OrderSummary";
 
 export interface HoldCohort {
@@ -123,20 +124,9 @@ function SelectField({ name, label, value, error, onChange, children, className 
   );
 }
 
-function SubmitButton({ method, label, disabled }: { method: string; label: string; disabled: boolean }) {
+function SubmitButton({ method, label, disabled, handoff }: { method: string; label: string; disabled: boolean; handoff: PaypalHandoff }) {
   const { pending } = useFormStatus();
-  if (method === "PAYPAL") {
-    return (
-      <button type="submit" className="co-pay co-pay-paypal" disabled={disabled || pending} aria-label="Pagar con PayPal" data-pending={pending || undefined}>
-        {pending ? <span className="co-spinner" aria-hidden="true" /> : (
-          <>
-            <span className="co-pay-with">Pagar con</span>
-            <PayPalWordmark />
-          </>
-        )}
-      </button>
-    );
-  }
+  if (method === "PAYPAL") return <PaypalButton disabled={disabled} handoff={handoff} />;
   return (
     <button type="submit" className="co-pay" disabled={disabled || pending} data-pending={pending || undefined}>
       {pending ? <span className="co-spinner" aria-hidden="true" /> : label}
@@ -320,11 +310,11 @@ export function CheckoutForm({ action, methods, initialMethod, ttl, holds, dueNo
         </span>
       </div>
 
-      <SubmitButton method={v.method} label={manualLabel} disabled={blocked || methods.length === 0} />
+      <SubmitButton method={v.method} label={manualLabel} disabled={blocked || methods.length === 0} handoff={{ amountLabel: `${usd(dueNowCents)} USD`, holdMinutes: semi ? ttl.paypalMinutes : null }} />
       {blocked ? <p className="co-error co-error-block">Hay programas en tu carrito que no se pueden comprar tal como están. Vuelve al carrito para corregirlos.</p> : null}
       <p className="co-secure">
         <LockIcon />
-        {selected?.method === "PAYPAL" ? "Pagarás en el sitio seguro de PayPal. Volverás aquí al terminar." : "Te mostraremos los datos para pagar y podrás enviar tu comprobante."}
+        {selected?.method === "PAYPAL" ? `Pagarás ${usd(dueNowCents)} USD en el sitio seguro de PayPal y volverás aquí para ver tu confirmación.` : "Te mostraremos los datos para pagar y podrás enviar tu comprobante."}
       </p>
     </form>
   );
@@ -332,7 +322,7 @@ export function CheckoutForm({ action, methods, initialMethod, ttl, holds, dueNo
 
 function MethodBody({ m, dueNowCents, semi, holdLong }: { m: MethodView; dueNowCents: number; semi: boolean; holdLong: string }) {
   if (m.method === "PAYPAL") {
-    return <p>Se te redirigirá a PayPal para que completes la compra. Puedes pagar con tu cuenta PayPal o con tarjeta de débito o crédito.</p>;
+    return <PaypalRedirectNotice />;
   }
   const amount = m.currency === "VES" && m.vesPerUsd ? ves(Math.round(dueNowCents * m.vesPerUsd)) : usd(dueNowCents);
   const reserve = semi ? `reservamos tu cupo por ${holdLong} y ` : "";

@@ -22,7 +22,7 @@ const hookResponses: number[] = [];
 
 type Services = Awaited<typeof import("@/server/services")>["services"] extends () => infer S ? S : never;
 let s: Services;
-let returnRoute: typeof import("@/app/(store)/pedido/[token]/paypal/retorno/route");
+let returnRoute: typeof import("@/app/(checkout)/pedido/[token]/paypal/retorno/route");
 
 const moodleCtl = (p: string, body?: unknown) =>
   fetch(`${moodleUrl}/__mock/${p}`, { method: body === undefined ? "GET" : "POST", body: body === undefined ? undefined : JSON.stringify(body) }).then((r) => r.json());
@@ -79,7 +79,7 @@ beforeAll(async () => {
   // las rutas usan services(): se instala la instancia con la BD de test antes de llamarlas
   s = app.createServices(app.createDefaultDeps({ db: ctx.db }));
   (globalThis as unknown as { __ceiumServices?: Services }).__ceiumServices = s;
-  returnRoute = await import("@/app/(store)/pedido/[token]/paypal/retorno/route");
+  returnRoute = await import("@/app/(checkout)/pedido/[token]/paypal/retorno/route");
 });
 
 afterAll(async () => {

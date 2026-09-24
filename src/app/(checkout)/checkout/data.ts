@@ -62,7 +62,7 @@ export interface MethodView {
   instructions?: string;
 }
 
-const DETAIL_LABELS: Record<string, string> = {
+export const DETAIL_LABELS: Record<string, string> = {
   banco: "Banco",
   telefono: "Teléfono",
   cedulaRif: "Cédula / RIF",
