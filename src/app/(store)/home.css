@@ -49,19 +49,23 @@
 /* ───── hero ───── */
 .home-hero { position: relative; background: var(--home-grey); }
 .home-hero__slides { position: relative; height: 240px; overflow: hidden; background: #d9dfe2; }
-.home-hero__slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1s ease; }
+.home-hero__slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1s ease-in-out; }
 .home-hero__slide.is-active { opacity: 1; }
-.home-hero__slide img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.home-hero__slide img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
 .home-hero__content { position: relative; padding-top: 40px; padding-bottom: 48px; text-align: center; }
 .store-root .home-hero__title { font-size: 29px; line-height: 33px; font-weight: 700; color: var(--ink); }
-.home-hero__subtitle { margin-top: 15px !important; font-size: 15px; line-height: 17px; }
-.home-hero__buttons { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 23px; }
+.home-hero__subtitle { margin-top: 16px !important; font-size: 15px; line-height: 17px; }
+.home-hero__buttons { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .store-root .home-hero__buttons .home-btn { min-width: 128px; border: 1px solid var(--teal); }
 .store-root .home-hero__buttons .home-btn--alt { background: var(--home-grey); }
+/* hover de PageFly: solo oscurece el fondo (sin sombra) */
+.store-root .home-hero__buttons .home-btn:hover { background: #089a9a; box-shadow: none; }
+.store-root .home-hero__buttons .home-btn--alt:hover { background: #e6f7f7; color: var(--teal); }
 .home-hero__label--desktop { display: none; }
 @media screen and (min-width: 750px) {
   .home-hero { background: #1d2a30; }
   .home-hero__slides { position: absolute; inset: 0; height: auto; }
+  .home-hero__slide img { object-position: 50% 0; }
   .home-hero__content { padding-top: 104px; padding-bottom: 104px; text-align: left; }
   .home-hero__content > * { max-width: 585px; }
   .store-root .home-hero__title { font-size: 46px; line-height: 53px; color: #fff; }
@@ -74,10 +78,11 @@
 }
 
 /* ───── aliados ───── */
-.home-partners { padding: 48px 0 40px; background: #fff; }
+.home-partners { padding: 48px 0; background: #fff; }
 .store-root .home-partners__title { font-size: 15px; line-height: 17px; font-weight: 700; text-align: center; }
 .home-partners__list { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 32px !important; padding: 0 16px !important; }
-.home-partners__list li { flex: 0 0 calc(50% - 8px); height: 46px; }
+/* alto = ancho / 3,37 (proporción del logo UCLA en PageFly): 46,3 px a 390 px */
+.home-partners__list li { flex: 0 0 calc(50% - 8px); height: 46.3px; }
 .home-partners__list img { display: block; width: 100%; height: 100%; object-fit: contain; }
 @media screen and (min-width: 750px) {
   .home-partners { padding: 96px 0; }
