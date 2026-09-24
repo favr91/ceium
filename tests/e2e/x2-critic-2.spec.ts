@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { MOODLE, PAYPAL, cohort, customerOf, emails, fixture, one, order, paypalConfig, q, replayWebhook, reservationOf, uniqueEmail } from "./support/purchase";
+import { todayCaracas } from "./support/dates";
 
 test.beforeEach(({}, info) => {
   test.skip(info.project.name !== "desktop", "flujo de servidor: una vez basta (no depende del viewport)");
@@ -119,7 +120,7 @@ test("/pedido/<token> rechaza en el servidor fecha futura o ilegible, referencia
   fixture("setting", { key: "exchangeRate.vesPerUsd", value: { vesPerUsd: RATE, source: "BCV" } });
   try {
     const C = newCohort(10);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayCaracas();
     const r = () => `0134${Date.now().toString().slice(-8)}${Math.floor(Math.random() * 90 + 10)}`;
     const cases: { name: string; reference: string; amount?: string; paidAt: string }[] = [
       { name: "fecha futura", reference: r(), paidAt: "2099-12-31" },

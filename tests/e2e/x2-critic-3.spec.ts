@@ -9,6 +9,7 @@ import { parse as parseDotenv } from "dotenv";
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 import { PAYPAL, cohort, customerOf, emails, fixture, fixtureAsync, moodleState, one, order, q, reservationOf, paypalConfig, resendCaptureWebhook, runCron, uniqueEmail, waitForOrderStatus } from "./support/purchase";
 import { e2eEnv } from "../../playwright.config";
+import { todayCaracas } from "./support/dates";
 
 test.describe.configure({ mode: "serial" });
 test.beforeEach(({}, info) => {
@@ -74,7 +75,7 @@ async function fillManual(page: Page, token: string, opts: { reference: string; 
   await page.getByLabel("Número de referencia").fill(opts.reference);
   await page.getByLabel(/Monto pagado/).fill(ves(opts.amountBs));
   await page.getByLabel("Banco de origen").fill("Banesco (0134)");
-  await page.getByLabel("Fecha del pago").fill(new Date().toISOString().slice(0, 10));
+  await page.getByLabel("Fecha del pago").fill(todayCaracas());
   await page.getByLabel("Cédula del titular").fill("V-14567890");
   await page.getByLabel(/Comprobante/).setInputFiles({ name: "comprobante.png", mimeType: "image/png", buffer: proofPng() });
 }
@@ -88,7 +89,7 @@ async function reportManual(page: Page, token: string, opts: { reference: string
   await page.getByLabel("Número de referencia").fill(opts.reference);
   await page.getByLabel(/Monto pagado/).fill(ves(opts.amountBs));
   await page.getByLabel("Banco de origen").fill("Banesco (0134)");
-  await page.getByLabel("Fecha del pago").fill(new Date().toISOString().slice(0, 10));
+  await page.getByLabel("Fecha del pago").fill(todayCaracas());
   await page.getByLabel("Cédula del titular").fill("V-14567890");
   await page.getByLabel(/Comprobante/).setInputFiles({ name: "comprobante.png", mimeType: "image/png", buffer: proofPng() });
   await page.getByRole("button", { name: "Enviar datos del pago" }).click();

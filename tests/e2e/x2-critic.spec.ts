@@ -18,6 +18,7 @@ import zlib from "node:zlib";
 import { parse as parseDotenv } from "dotenv";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { MOODLE, PAYPAL, cohort, customerOf, emails, enrollments, events, fixture, moodleCalls, moodleState, one, order, q, reservationOf, runCron, uniqueEmail, waitForOrderStatus } from "./support/purchase";
+import { todayCaracas } from "./support/dates";
 
 // Casos independientes (cada uno crea su cohorte): sin modo serial, un fallo no oculta los siguientes.
 test.beforeEach(({}, info) => {
@@ -85,7 +86,7 @@ async function reportManual(page: Page, token: string, reference: string, amount
   await page.getByLabel("Número de referencia").fill(reference);
   await page.getByLabel(/Monto pagado/).fill(ves(amountBs));
   await page.getByLabel("Banco de origen").fill("Banesco (0134)");
-  await page.getByLabel("Fecha del pago").fill(new Date().toISOString().slice(0, 10));
+  await page.getByLabel("Fecha del pago").fill(todayCaracas());
   await page.getByLabel("Cédula del titular").fill("V-14567890");
   await page.getByLabel(/Comprobante/).setInputFiles({ name: "comprobante.png", mimeType: "image/png", buffer: proofPng() });
   await page.getByRole("button", { name: "Enviar datos del pago" }).click();
@@ -272,7 +273,7 @@ test("/pedido acepta un comprobante de 3 MB (foto de teléfono; el límite anunc
   await page.getByLabel("Número de referencia").fill(ref);
   await page.getByLabel(/Monto pagado/).fill(ves(bs(o.dueNowCents)));
   await page.getByLabel("Banco de origen").fill("Banesco (0134)");
-  await page.getByLabel("Fecha del pago").fill(new Date().toISOString().slice(0, 10));
+  await page.getByLabel("Fecha del pago").fill(todayCaracas());
   await page.getByLabel("Cédula del titular").fill("V-14567890");
   const big = Buffer.concat([proofPng(), Buffer.from(Array.from({ length: 3 * 1024 * 1024 }, (_, i) => (i * 2654435761) & 0xff))]);
   await page.getByLabel(/Comprobante/).setInputFiles({ name: "IMG_20260924_101500.png", mimeType: "image/png", buffer: big });
@@ -295,7 +296,7 @@ test("/pedido: monto escrito con punto de miles y sin decimales («65.537») se 
   await page.getByLabel("Número de referencia").fill(ref);
   await page.getByLabel(/Monto pagado/).fill(typed);
   await page.getByLabel("Banco de origen").fill("Banesco (0134)");
-  await page.getByLabel("Fecha del pago").fill(new Date().toISOString().slice(0, 10));
+  await page.getByLabel("Fecha del pago").fill(todayCaracas());
   await page.getByLabel("Cédula del titular").fill("V-14567890");
   await page.getByLabel(/Comprobante/).setInputFiles({ name: "comprobante.png", mimeType: "image/png", buffer: proofPng() });
   await page.getByRole("button", { name: "Enviar datos del pago" }).click();

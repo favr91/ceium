@@ -96,6 +96,31 @@ export function usernameFromEmail(email: string): string {
     .slice(0, 100);
 }
 
+/**
+ * Formas habituales de escribir un email con mayúsculas, para buscar la cuenta de Moodle. Moodle busca por email
+ * EXACTO (core_user_get_users_by_field → get_records_list: en Postgres distingue mayúsculas), pero se niega a crear
+ * otra cuenta con el mismo email sin distinguirlas («Email address already exists»). Las cuentas dadas de alta a
+ * mano en el flujo anterior (Google Form → staff) guardan el correo como lo escribió el médico en el teléfono
+ * («Dra.Lopez@Gmail.com») y la tienda lo guarda en minúsculas: sin esto, el médico que pagó quedaba sin matrícula
+ * (error permanente) aunque su cuenta existe. Local: tal cual, minúsculas, Inicial, Cada.Parte, MAYÚSCULAS;
+ * dominio: tal cual, minúsculas, Inicial, MAYÚSCULAS (≤ 20 valores, una sola llamada).
+ */
+export function emailCaseVariants(email: string): string[] {
+  const e = email.trim();
+  const at = e.lastIndexOf("@");
+  if (at < 1) return [e];
+  const local = e.slice(0, at);
+  const domain = e.slice(at + 1);
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const lo = local.toLowerCase();
+  const dlo = domain.toLowerCase();
+  const locals = [local, lo, cap(lo), lo.replace(/(^|[._-])(\p{Ll})/gu, (_m, sep: string, c: string) => sep + c.toUpperCase()), lo.toUpperCase()];
+  const domains = [domain, dlo, cap(dlo), dlo.toUpperCase()];
+  const out = new Set<string>();
+  for (const l of locals) for (const d of domains) out.add(`${l}@${d}`);
+  return [...out];
+}
+
 export class MoodleClient {
   readonly baseUrl: string;
   private readonly token: string;
@@ -242,9 +267,11 @@ export class MoodleClient {
   /** Cuenta existente del email, o el primer username derivado libre para crearla. */
   private async lookupUser(email: string): Promise<{ user: MoodleUser | null; freeUsername: string }> {
     const lower = email.toLowerCase();
-    const byEmail = await this.getUsersByField("email", [...new Set([email, lower])]);
+    // Moodle busca por email EXACTO: se prueban en una sola llamada las mayúsculas habituales (ver emailCaseVariants).
+    const byEmail = (await this.getUsersByField("email", emailCaseVariants(email))).filter((u) => u.email?.toLowerCase() === lower);
     const base = usernameFromEmail(email);
-    if (byEmail[0]) return { user: byEmail[0], freeUsername: base };
+    const match = byEmail.find((u) => u.email === email) ?? byEmail.find((u) => u.email === lower) ?? byEmail[0];
+    if (match) return { user: match, freeUsername: base };
     for (let i = 1; i <= 20; i++) {
       const candidate = i === 1 ? base : `${base.slice(0, 96)}-${i}`;
       const [u] = await this.getUsersByField("username", [candidate]);

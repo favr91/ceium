@@ -23,6 +23,7 @@ import zlib from "node:zlib";
 import { parse as parseDotenv } from "dotenv";
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 import { MOODLE, PAYPAL, cohort, customerOf, emails, enrolCallsFor, enrollments, fixture, moodleCalls, moodleState, one, order, payments, q, reservationOf, uniqueEmail, waitForOrderStatus } from "./support/purchase";
+import { todayCaracas } from "./support/dates";
 
 test.describe.configure({ mode: "serial" });
 test.beforeEach(({}, info) => {
@@ -149,7 +150,7 @@ async function buyWithPagoMovil(page: Page, email: string, name: [string, string
   await page.getByLabel("Número de referencia").fill(reference);
   await page.getByLabel(/Monto pagado/).fill(ves(amountBs));
   await page.getByLabel("Banco de origen").fill("Banesco (0134)");
-  await page.getByLabel("Fecha del pago").fill(new Date().toISOString().slice(0, 10));
+  await page.getByLabel("Fecha del pago").fill(todayCaracas());
   await page.getByLabel("Cédula del titular").fill("V-14567890");
   await page.getByLabel(/Comprobante/).setInputFiles({ name: "comprobante-pago-movil.png", mimeType: "image/png", buffer: proofPng() });
   await page.getByRole("button", { name: "Enviar datos del pago" }).click();
