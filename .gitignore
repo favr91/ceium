@@ -53,3 +53,4 @@ next-env.d.ts
 !/public/uploads/.gitkeep
 /test-results/
 /playwright-report/
+.next-*/
