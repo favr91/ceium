@@ -133,12 +133,38 @@ async function retryPolicy(d: Deps) {
   return readSetting(d.db, SETTING_KEYS.enrollmentRetry, { maxAttempts: 8, baseDelaySeconds: 60 });
 }
 
+/**
+ * Pedido cerrado (reembolsado o cancelado) con matrículas que nunca se completaron (PENDING: Moodle caído al
+ * aprobar y el reembolso llegó antes del reintento, p.ej. «conservar Moodle» sin nada que conservar). Ya no se
+ * matricularán: sin esto quedaban «pendientes» para siempre en el panel y el job las reclamaba en cada corrida.
+ * Pasan a UNENROLLED (sin acceso) con el motivo; si una matrícula estaba en curso en ese instante, enrollOrder ve la
+ * fila fuera de PENDING y deshace en Moodle lo que alcanzó a hacer.
+ */
+export async function closePendingEnrollments(d: Deps, orderId: string, actor: Actor = SYSTEM): Promise<number> {
+  const o = await d.db.order.findUnique({ where: { id: orderId }, select: { status: true } });
+  if (!o || (o.status !== "REFUNDED" && o.status !== "CANCELLED")) return 0;
+  const rows = await d.db.enrollment.findMany({ where: { orderId, status: "PENDING" }, select: { id: true, moodleCourseId: true } });
+  if (!rows.length) return 0;
+  const why = o.status === "REFUNDED" ? "reembolsado" : "cancelado";
+  const n = await d.db.enrollment.updateMany({
+    where: { id: { in: rows.map((r) => r.id) }, status: "PENDING" },
+    data: { status: "UNENROLLED", nextAttemptAt: null, lastError: `No se matriculó: el pedido quedó ${why} antes de completar la matrícula en Moodle.` },
+  });
+  if (n.count > 0) {
+    await d.db.$transaction((tx) =>
+      addOrderEvent(tx, orderId, "ENROLLMENT", actor, `Matrícula pendiente descartada en ${n.count} curso(s): el pedido quedó ${why} antes de completarla (no se reintenta).`, { moodleCourseIds: rows.map((r) => r.moodleCourseId), closed: o.status }),
+    );
+  }
+  return n.count;
+}
+
 export async function enrollOrder(d: Deps, orderId: string, opts: { force?: boolean; actor?: Actor } = {}): Promise<EnrollOrderResult> {
   const actor = opts.actor ?? SYSTEM;
   const now = d.now();
   const order = await loadOrderForEnrollment(d, orderId);
   if (!order) throw new DomainError("NOT_FOUND", "El pedido no existe.");
   const empty = { enrolledCourseIds: [], pendingCourseIds: [] };
+  if (order.status === "REFUNDED" || order.status === "CANCELLED") await closePendingEnrollments(d, orderId, actor);
   if (!PAID_STATES.includes(order.status)) return { status: "SKIPPED", reason: `Pedido en estado ${order.status}`, ...empty };
   for (const it of order.items) {
     if (it.modality === "SEMIPRESENCIAL" && it.reservation?.status !== "CONFIRMED") return { status: "SKIPPED", reason: "Cupo de cohorte sin confirmar", ...empty };

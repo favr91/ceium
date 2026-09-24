@@ -389,6 +389,9 @@ test("Moodle caído al aprobar; reembolso total con «Desmatricular» desmarcado
   expect(order(o.orderId).status).toBe("REFUNDED");
   expect(await moodleCoursesOf(request, o.orderId)).toEqual([]);
   expect(await enrolCallsSince(request, since, customerOf(o.orderId).moodleUserId)).toHaveLength(0);
+  // La matrícula que nunca se completó no queda «pendiente» para siempre (x2 critic 20): se cierra con el motivo.
+  expect(enrollments(o.orderId)).toEqual([{ moodleCourseId: C.moodleCourseId, status: "UNENROLLED" }]);
+  expect(one<{ lastError: string }>(`SELECT lastError FROM Enrollment WHERE orderId = ?`, o.orderId).lastError).toMatch(/reembolsado antes de completar/);
   // La cuenta de Moodle se creó antes del fallo de matrícula (y su contraseña temporal ya se envió, «tus cursos se
   // activarán en breve»); tras el reembolso solo sale el correo del reembolso: ningún acceso ni cohorte.
   const mails = templates(o.orderId);

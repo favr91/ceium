@@ -29,7 +29,7 @@ import {
 } from "@/server/orders";
 import { acquireSeat, confirmReservation, releaseExpiredForCohort, releaseOrderReservations } from "@/server/seats";
 import { manualMethodProblems, SETTING_KEYS } from "@/server/settings";
-import { enrollOrder, unenrollOrder, UNENROLLMENT_FAILED } from "@/server/enrollment";
+import { closePendingEnrollments, enrollOrder, unenrollOrder, UNENROLLMENT_FAILED } from "@/server/enrollment";
 import { reallocateInstallments } from "@/server/installments";
 import { buildOrderView, buildPaymentView, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
@@ -873,13 +873,42 @@ export async function onPaypalCaptureDenied(d: Deps, input: { captureId?: string
     (input.captureId ? await d.db.payment.findUnique({ where: { paypalCaptureId: input.captureId } }) : null) ??
     (input.paypalOrderId ? await d.db.payment.findUnique({ where: { paypalOrderId: input.paypalOrderId } }) : null);
   if (!p) throw new DomainError("NOT_FOUND", "No existe un pago para esa captura de PayPal.");
-  await withTx(d, async (tx) => {
+  const wasHeld = p.status === "PENDING" && p.providerStatus === "CAPTURE_PENDING";
+  const heldOutcome = await withTx(d, async (tx) => {
     const n = await tx.payment.updateMany({
       where: { id: p.id, status: { in: ["PENDING", "CANCELLED"] } },
       data: { status: "FAILED", providerStatus: "DENIED", paypalCaptureId: input.captureId ?? p.paypalCaptureId, providerPayload: (input.raw as object) ?? undefined },
     });
-    if (n.count === 1) await addOrderEvent(tx, p.orderId, "PAYMENT_FAILED", { type: input.source === "webhook" ? "WEBHOOK" : input.source === "reconcile" ? "SYSTEM" : "CUSTOMER" }, "PayPal rechazó el pago", { paymentId: p.id });
+    if (n.count !== 1) return null;
+    await addOrderEvent(tx, p.orderId, "PAYMENT_FAILED", { type: input.source === "webhook" ? "WEBHOOK" : input.source === "reconcile" ? "SYSTEM" : "CUSTOMER" }, "PayPal rechazó el pago", { paymentId: p.id });
+    if (!wasHeld) return null;
+    // PayPal retuvo la captura (revisión) y días después la rechaza. Al médico se le dijo «PayPal está revisando tu
+    // pago; te avisaremos por correo» y no se le dejó pagar de otra forma mientras tanto: hay que avisarle, y si el
+    // pedido sigue esperando su primer pago, darle de nuevo el plazo normal con SU cupo (el plazo original venció
+    // durante la revisión; sin esto el job lo vencía en la siguiente corrida, justo después del aviso).
+    const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { id: true, status: true, amountPaidCents: true, paymentMethod: true } });
+    const otherHeld = await tx.payment.count({ where: { orderId: order.id, id: { not: p.id }, OR: [{ status: { in: ["AWAITING_VERIFICATION", "COMPLETED"] } }, { method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" }] } });
+    if (order.status !== "PENDING_PAYMENT" || order.amountPaidCents > 0 || otherHeld > 0) return { next: "other_pending" as const, reopened: false };
+    const now = d.now();
+    const until = new Date(now.getTime() + (await reservationTtlMs(d, order.paymentMethod && order.paymentMethod !== "PAYPAL" ? order.paymentMethod : "PAGO_MOVIL")));
+    const held = await tx.seatReservation.updateMany({ where: { orderId: order.id, status: "HELD", expiresAt: { lt: until } }, data: { expiresAt: until } });
+    const o2 = await tx.order.updateMany({ where: { id: order.id, status: "PENDING_PAYMENT", OR: [{ expiresAt: null }, { expiresAt: { lt: until } }] }, data: { expiresAt: until } });
+    await addOrderEvent(tx, order.id, "ATTENTION", SYSTEM, `PayPal rechazó el pago que tenía retenido en revisión. Se avisó al médico y se le dio un nuevo plazo para pagar hasta ${until.toISOString()}${held.count ? " con su cupo reservado" : ""}.`, { paymentId: p.id, expiresAt: until.toISOString(), reservations: held.count, orderExtended: o2.count });
+    return { next: "retry" as const, reopened: true };
   });
+  if (heldOutcome && heldOutcome.next === "retry") {
+    await safeNotify(d, "payment_rejected", async () => {
+      const { view, email, customerId } = await buildOrderView(d, p.orderId);
+      await sendEmail(d, {
+        template: "payment_rejected",
+        to: email,
+        rendered: T.paymentRejected(view, await buildPaymentView(d, p.id), "PayPal no aprobó el pago que tenía en revisión; no se te cobró.", "retry"),
+        dedupeKey: `payment_rejected:${p.id}`,
+        orderId: p.orderId,
+        customerId,
+      });
+    });
+  }
   return { orderId: p.orderId, paymentId: p.id };
 }
 
@@ -1458,6 +1487,15 @@ async function afterRefund(d: Deps, r: RefundResult, method: PaymentMethod, unen
         await addOrderEvent(tx, r.orderId, UNENROLLMENT_FAILED, SYSTEM, `No se pudo desmatricular en Moodle: ${msg}`, { refundId: r.refund.id, error: msg });
         await addOrderEvent(tx, r.orderId, "ATTENTION", SYSTEM, `No se pudo desmatricular en Moodle (${msg}). Se reintentará automáticamente; el médico conserva el acceso hasta entonces.`, { refundId: r.refund.id });
       });
+    }
+  }
+  // Sin desmatricular («conservar Moodle») y con una matrícula que nunca se completó: el pedido cerrado ya no se
+  // matriculará; no se deja «pendiente» para siempre.
+  if (r.fullyRefunded) {
+    try {
+      await closePendingEnrollments(d, r.orderId, actor);
+    } catch (e) {
+      d.log.error(`[refund] no se pudieron cerrar las matrículas pendientes del pedido ${r.orderId}`, e);
     }
   }
   await safeNotify(d, "refund_issued", async () => {
