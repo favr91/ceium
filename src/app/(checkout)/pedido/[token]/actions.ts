@@ -4,7 +4,7 @@
 import { redirect } from "next/navigation";
 import { services } from "@/server/services";
 import { isDomainError } from "@/server/errors";
-import { proofError } from "@/components/checkout/manual-payment-fields";
+import { normalizeReference, parseAmountCents, proofError } from "@/components/checkout/manual-payment-fields";
 
 function back(token: string, params: Record<string, string>, hash = ""): string {
   return `/pedido/${encodeURIComponent(token)}?${new URLSearchParams(params)}${hash}`;
@@ -23,14 +23,6 @@ export async function payOrderWithPaypal(token: string, installmentId: string | 
     target = back(token, { pago: "error", motivo: isDomainError(e) ? e.message : "No pudimos iniciar el pago con PayPal. Intenta de nuevo." });
   }
   redirect(target);
-}
-
-/** Convierte "1.234,56" / "1234.56" / "1234" en céntimos. */
-function parseAmountCents(raw: FormDataEntryValue | null): number {
-  let s = String(raw ?? "").trim().replace(/\s/g, "");
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
-  const n = Number(s);
-  return Number.isFinite(n) ? Math.round(n * 100) : NaN;
 }
 
 /** POST del formulario de pago manual: guarda el comprobante y registra el pago (queda en verificación). */
@@ -59,9 +51,10 @@ export async function reportManualPayment(token: string, cuota: string | null, f
     await s.payments.recordManualPayment({
       orderId: order.id,
       method: opt.method as "PAGO_MOVIL" | "TRANSFERENCIA" | "ZELLE" | "EFECTIVO",
-      reference: String(formData.get("reference") ?? ""),
+      reference: normalizeReference(String(formData.get("reference") ?? "")),
       bank: String(formData.get("bank") ?? "") || null,
-      amountCents: parseAmountCents(formData.get("amount")),
+      // Mismo intérprete que el checkout: «33.705» es Bs. 33.705,00 (punto de miles), no Bs. 33,71.
+      amountCents: parseAmountCents(String(formData.get("amount") ?? "")),
       currency: opt.currency,
       paidAt: paidAtRaw ? new Date(`${paidAtRaw}T12:00:00`) : null,
       proofFile,
