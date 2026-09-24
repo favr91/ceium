@@ -2,7 +2,11 @@
 // diplomado (core_completion_get_course_completion_status) en matrículas VIGENTES (una finalización de una
 // matrícula dada de baja, p.ej. tras un reembolso, no cuenta) Y el pedido tiene saldo 0. El saldo 0 es
 // obligatorio (SPEC): no hay ajuste que lo desactive; para certificar a quien debe, el admin condona el saldo.
-// Nunca dos veces (única por cliente+diplomado). PDF con pdf-lib y código verificable público.
+// Nunca dos vigentes: a lo sumo un certificado ISSUED por cliente+diplomado. Uno REVOCADO se conserva (su código
+// sigue verificándose como revocado) y bloquea solo a SU compra: si el médico vuelve a comprar el diplomado, lo
+// paga completo y lo completa, esa compra nueva recibe un certificado nuevo con otro código. Una revocación del
+// panel (p. ej. por error) no se deshace sola: el admin la reemite con reissueCertificate.
+// PDF con pdf-lib y código verificable público.
 // La entrega (PDF + correo) es recuperable: si falla, el barrido la reintenta.
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
@@ -11,7 +15,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { Deps } from "@/server/deps";
 import { withTx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
-import { addOrderEvent, lockOrder, SYSTEM } from "@/server/orders";
+import { addOrderEvent, CLOSED_STATES, lockOrder, SYSTEM, type Actor } from "@/server/orders";
 import { formatUSD } from "@/server/pricing";
 import { deliverOutboxEmail, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
@@ -43,14 +47,41 @@ export function generateCertificateCode(): string {
   return `CEIUM-${chars.slice(0, 5)}-${chars.slice(5, 10)}`;
 }
 
-export async function checkDiplomaCompletion(d: Deps, customerId: string, diplomaId: string): Promise<CompletionCheck> {
+export interface CompletionOptions {
+  /** Reemisión desde el panel: ese certificado revocado deja de bloquear; el evento registra quién y por qué. */
+  reissueNote?: { actor: Actor; note: string; revokedCertificateId: string };
+}
+
+/**
+ * Revocaciones que bloquean una emisión nueva: las de un pedido que sigue vigente (revocación del panel). Las de un
+ * pedido cerrado por reembolso o cancelación no bloquean: esa compra ya no cuenta y una posterior puede certificarse.
+ * Una revocación sin compra asociada bloquea (conservador). `except`: el certificado que el panel está reemitiendo.
+ */
+function blockingRevocation(customerId: string, diplomaId: string, except?: string) {
+  return {
+    customerId,
+    diplomaId,
+    status: "REVOKED" as const,
+    ...(except ? { id: { not: except } } : {}),
+    OR: [{ orderItemId: null }, { orderItem: { order: { status: { notIn: [...CLOSED_STATES] } } } }],
+  };
+}
+
+export async function checkDiplomaCompletion(d: Deps, customerId: string, diplomaId: string, opts: CompletionOptions = {}): Promise<CompletionCheck> {
   const base = { customerId, diplomaId, total: 0, completed: 0, pendingCourseIds: [] as number[], issued: false, alreadyIssued: false };
-  const existing = await d.db.certificate.findUnique({ where: { customerId_diplomaId: { customerId, diplomaId } } });
+  const existing = await d.db.certificate.findFirst({ where: { customerId, diplomaId, status: "ISSUED" }, orderBy: { issuedAt: "asc" } });
   if (existing) {
     // Recuperable: si la emisión quedó a medias (sin PDF o sin correo), se completa ahora.
-    if (existing.status === "ISSUED" && (!existing.pdfPath || !existing.emailedAt)) await deliverCertificate(d, existing.id);
-    return { ...base, issued: existing.status === "ISSUED", alreadyIssued: true, certificateId: existing.id, code: existing.code, reason: existing.status === "REVOKED" ? "Certificado revocado" : undefined };
+    if (!existing.pdfPath || !existing.emailedAt) await deliverCertificate(d, existing.id);
+    return { ...base, issued: true, alreadyIssued: true, certificateId: existing.id, code: existing.code };
   }
+  // Un certificado revocado por reembolso total (su pedido quedó cerrado) no impide certificar una compra
+  // POSTERIOR pagada y completada. Uno revocado con su pedido aún vigente (revocación del panel: error, fraude)
+  // bloquea al médico en ese diplomado hasta que el panel lo reemita (reissueCertificate).
+  const revoked = await d.db.certificate.findMany({ where: { customerId, diplomaId, status: "REVOKED" }, orderBy: { revokedAt: "asc" }, select: { id: true, code: true } });
+  const lastRevoked = revoked[revoked.length - 1];
+  const revokedAsBlocked = { ...base, alreadyIssued: true, certificateId: lastRevoked?.id, code: lastRevoked?.code, reason: "Certificado revocado desde el panel (puede reemitirse)" };
+  if (await d.db.certificate.count({ where: blockingRevocation(customerId, diplomaId, opts.reissueNote?.revokedCertificateId) })) return revokedAsBlocked;
 
   const diploma = await d.db.product.findUnique({ where: { id: diplomaId }, include: { diplomaCourses: { orderBy: { position: "asc" }, include: { course: true } } } });
   if (!diploma || diploma.type !== "DIPLOMA") throw new DomainError("NOT_FOUND", "El diplomado no existe.");
@@ -130,29 +161,42 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
   // PayPal o el panel), un ajuste de saldo o una baja. Con el pedido bloqueado (serializa con applyRefund, que
   // también lo bloquea y revoca los certificados que YA existen) se vuelve a exigir: pedido ENROLLED, saldo 0 y
   // todas las matrículas vigentes. Si no, no se emite (nunca un certificado de un diplomado reembolsado).
+  // «Nunca dos vigentes» (ya no hay índice único por cliente+diplomado, ver schema): primero se bloquea la fila del
+  // cliente (Postgres: UPDATE ⇒ candado de fila hasta el commit; SQLite: la transacción ya es exclusiva), así dos
+  // emisiones simultáneas del mismo médico (barrido + «Revisar todos», o dos compras vigentes) se serializan y la
+  // segunda ve el ISSUED de la primera.
   const courseIds = courses.map((c) => c.moodleCourseId!);
-  let cert;
+  let outcome: { cert: { id: string; code: string } } | { dup: { id: string; code: string } } | null = null;
   for (let i = 0; ; i++) {
     try {
-      cert = await withTx(d, async (tx) => {
+      outcome = await withTx(d, async (tx) => {
+        await tx.customer.updateMany({ where: { id: customerId }, data: { updatedAt: now } });
         await lockOrder(tx, purchase.orderId, now);
+        const dup = await tx.certificate.findFirst({ where: { customerId, diplomaId, status: "ISSUED" }, select: { id: true, code: true } });
+        if (dup) return { dup };
+        // Una revocación del panel pudo llegar mientras se consultaba Moodle.
+        if (await tx.certificate.count({ where: blockingRevocation(customerId, diplomaId, opts.reissueNote?.revokedCertificateId) })) return null;
         const o = await tx.order.findUniqueOrThrow({ where: { id: purchase.orderId }, select: { status: true, balanceCents: true } });
         if (o.status !== "ENROLLED" || o.balanceCents > 0) return null;
         const live = await tx.enrollment.count({ where: { customerId, moodleCourseId: { in: courseIds }, status: "ENROLLED" } });
         if (live !== new Set(courseIds).size) return null;
         const c = await tx.certificate.create({ data: { customerId, diplomaId, orderItemId: purchase.id, code: generateCertificateCode(), status: "ISSUED", issuedAt: now } });
-        await addOrderEvent(tx, purchase.orderId, "CERTIFICATE_ISSUED", SYSTEM, `Certificado ${c.code}`, { certificateId: c.id });
-        return c;
+        const prev = revoked.length ? ` (reemplaza al revocado ${revoked.map((r) => r.code).join(", ")})` : "";
+        if (opts.reissueNote) {
+          await addOrderEvent(tx, purchase.orderId, "CERTIFICATE_ISSUED", opts.reissueNote.actor, `Certificado ${c.code} reemitido${prev}: ${opts.reissueNote.note}`, { certificateId: c.id, reissueOf: opts.reissueNote.revokedCertificateId });
+        } else {
+          await addOrderEvent(tx, purchase.orderId, "CERTIFICATE_ISSUED", SYSTEM, `Certificado ${c.code}${prev}`, { certificateId: c.id });
+        }
+        return { cert: c };
       });
       break;
     } catch (e) {
-      if (!isUniqueViolation(e)) throw e;
-      const dup = await d.db.certificate.findUnique({ where: { customerId_diplomaId: { customerId, diplomaId } } });
-      if (dup) return { ...result, issued: dup.status === "ISSUED", alreadyIssued: true, certificateId: dup.id, code: dup.code };
-      if (i >= 3) throw e; // colisión de código improbable: reintentar con otro
+      if (!isUniqueViolation(e) || i >= 3) throw e; // colisión de código improbable: reintentar con otro
     }
   }
 
+  if (outcome && "dup" in outcome) return { ...result, issued: true, alreadyIssued: true, certificateId: outcome.dup.id, code: outcome.dup.code };
+  const cert = outcome?.cert;
   if (!cert) {
     return { ...result, reason: "El pedido cambió durante la verificación (reembolso, saldo pendiente o baja): no se emite el certificado." };
   }
@@ -273,6 +317,25 @@ export async function revokeCertificate(d: Deps, actor: SessionUser, certificate
 }
 
 /**
+ * Reemisión desde el panel de un certificado revocado (p. ej. revocado por error): emite uno NUEVO (otro código)
+ * para la misma compra si sigue cumpliendo todo (pedido inscrito, saldo 0, todos los cursos completados en Moodle y
+ * ningún otro vigente). El revocado conserva su código y sigue verificándose como revocado.
+ */
+export async function reissueCertificate(d: Deps, actor: SessionUser, certificateId: string, reason: string): Promise<CompletionCheck> {
+  const { id: adminId } = await requireAdmin(d.db, actor, "certificates.revoke");
+  if (!reason?.trim()) throw new DomainError("VALIDATION", "Indica el motivo de la reemisión.");
+  const cert = await d.db.certificate.findUnique({ where: { id: certificateId } });
+  if (!cert) throw new DomainError("NOT_FOUND", "El certificado no existe.");
+  if (cert.status !== "REVOKED") throw new DomainError("INVALID_STATE", "El certificado está vigente: no hay nada que reemitir.");
+  const r = await checkDiplomaCompletion(d, cert.customerId, cert.diplomaId, {
+    reissueNote: { actor: { type: "ADMIN", id: adminId }, note: reason.trim(), revokedCertificateId: cert.id },
+  });
+  if (r.alreadyIssued && r.issued) throw new DomainError("INVALID_STATE", `El médico ya tiene un certificado vigente (${r.code}).`);
+  if (!r.issued) throw new DomainError("INVALID_STATE", r.reason ?? `Aún no cumple los requisitos (${r.completed}/${r.total} cursos completados).`);
+  return r;
+}
+
+/**
  * Job: (1) completa entregas a medias (PDF o correo pendientes) y (2) revisa a todos los inscritos en
  * diplomados sin certificado y emite los que correspondan.
  */
@@ -294,7 +357,9 @@ export async function runCertificateSweep(d: Deps): Promise<{ checked: number; i
   });
   const pairs = new Map<string, { customerId: string; diplomaId: string }>();
   for (const it of items) pairs.set(`${it.order.customerId}:${it.productId}`, { customerId: it.order.customerId, diplomaId: it.productId });
-  const existing = await d.db.certificate.findMany({ select: { customerId: true, diplomaId: true } });
+  // Solo se descarta a quien ya tiene uno VIGENTE: con uno revocado puede haber una compra posterior que certificar
+  // (checkDiplomaCompletion decide qué compras siguen bloqueadas por su revocación).
+  const existing = await d.db.certificate.findMany({ where: { status: "ISSUED" }, select: { customerId: true, diplomaId: true } });
   for (const c of existing) pairs.delete(`${c.customerId}:${c.diplomaId}`);
 
   let issued = 0;

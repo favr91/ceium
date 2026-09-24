@@ -660,7 +660,11 @@ model Certificate {
   revokedAt    DateTime?
   revokeReason String?
 
-  @@unique([customerId, diplomaId])
+  // Varias filas por cliente+diplomado: un certificado REVOCADO (reembolso total, revocación del panel) se
+  // conserva para que su código siga verificándose como revocado, y una compra posterior pagada y completada
+  // recibe uno NUEVO (código nuevo). Invariante en código (certificates.ts, con la fila del cliente bloqueada):
+  // a lo sumo un ISSUED por cliente+diplomado, y nunca uno nuevo para la misma compra (orderItem) ya revocada.
+  @@index([customerId, diplomaId])
 }
 
 // ───────────────────────────── Correos y auditoría ─────────────────────────────
