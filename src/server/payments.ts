@@ -26,9 +26,9 @@ import {
   transitionOrder,
   type Actor,
 } from "@/server/orders";
-import { acquireSeat, confirmReservation, releaseOrderReservations } from "@/server/seats";
+import { acquireSeat, confirmReservation, releaseExpiredForCohort, releaseOrderReservations } from "@/server/seats";
 import { manualMethodProblems, SETTING_KEYS } from "@/server/settings";
-import { enrollOrder, unenrollOrder } from "@/server/enrollment";
+import { enrollOrder, unenrollOrder, UNENROLLMENT_FAILED } from "@/server/enrollment";
 import { reallocateInstallments } from "@/server/installments";
 import { buildOrderView, buildPaymentView, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
@@ -264,17 +264,46 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
   }
 
   const now = d.now();
+  const holdTtl = await reservationTtlMs(d, input.method);
   const duplicateRef = () => new DomainError("VALIDATION", "Esa referencia de pago ya fue registrada.", { field: "reference" });
   let paymentId: string;
   try {
     paymentId = await withTx(d, async (tx) => {
-    const order = await tx.order.findUnique({ where: { id: input.orderId } });
+    const order = await tx.order.findUnique({ where: { id: input.orderId }, include: { items: { include: { reservation: true } } } });
     if (!order) throw new DomainError("NOT_FOUND", "El pedido no existe.");
     const acceptsFirst = PREPAID_STATES.includes(order.status);
     const acceptsInstallment = PAID_STATES.includes(order.status) && order.balanceCents > 0;
     if (!acceptsFirst && !acceptsInstallment) throw new DomainError("INVALID_STATE", "Este pedido no admite nuevos pagos.");
     // Lectura para un error amable; la garantía real es el índice único de referenceKey (ver catch).
     if (referenceKey && (await tx.payment.findUnique({ where: { referenceKey }, select: { id: true } }))) throw duplicateRef();
+    // Primer pago de un pedido cuyo cupo ya se liberó (venció o se rechazó el pago anterior; p.ej. la pestaña
+    // del pedido quedó abierta y el médico envía el comprobante después del plazo): se vuelve a tomar el cupo
+    // AHORA, en la misma transacción. Si no, el pedido quedaría «en verificación» sin cupo, otro comprador
+    // podría ocuparlo y el admin aprobaría un pago sin plaza (correo «pago aprobado» y sin matrícula).
+    if (acceptsFirst) {
+      for (const it of order.items) {
+        const r = it.reservation;
+        if (it.modality !== "SEMIPRESENCIAL" || !r || r.status !== "RELEASED") continue;
+        const open = isCustomer; // el panel puede registrar el pago aunque la cohorte ya no admita ventas
+        let ok = await acquireSeat(tx, r.cohortId, "HELD", { requireOpen: open });
+        if (!ok && (await releaseExpiredForCohort(tx, r.cohortId, now)) > 0) ok = await acquireSeat(tx, r.cohortId, "HELD", { requireOpen: open });
+        if (!ok) {
+          throw new DomainError(
+            "SOLD_OUT",
+            isCustomer
+              ? "Tu reserva venció y esta cohorte ya no tiene cupos, así que no registramos el pago. Si ya lo hiciste, contáctanos y te ayudamos con otra cohorte o el reembolso."
+              : `La reserva de «${it.productTitle}» se liberó y la cohorte ya no tiene cupo: reasigna la cohorte antes de registrar el pago.`,
+            { cohortId: r.cohortId, orderItemId: it.id },
+          );
+        }
+        await tx.seatReservation.update({ where: { id: r.id }, data: { status: "HELD", expiresAt: new Date(now.getTime() + holdTtl), releasedAt: null, releasedReason: null } });
+        await addOrderEvent(tx, order.id, "SEAT_REACQUIRED", actor, `Cupo vuelto a tomar para «${it.productTitle}» al registrar el pago (la reserva se había liberado: ${r.releasedReason ?? "—"}).`, {
+          orderItemId: it.id,
+          cohortId: r.cohortId,
+          previousReason: r.releasedReason,
+        });
+      }
+    }
     const p = await tx.payment.create({
       data: {
         orderId: order.id,
@@ -368,7 +397,14 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
         amountUsdCentsAfter: input.amountUsdCents ?? p.amountUsdCents,
         corrected,
       });
-      return { approved: true as const, apply: await applyConfirmedPayment(tx, p.id, actor, now), orderClosed: false };
+      const apply = await applyConfirmedPayment(tx, p.id, actor, now);
+      // Pagado de más: PayPal reembolsa el excedente solo; en un pago manual el dinero ya está en el banco, así
+      // que el saldo a favor queda a la vista del staff para devolverlo (reembolso manual) o aplicarlo.
+      const { balanceCents } = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { balanceCents: true } });
+      if (!apply.closedOrder && balanceCents < 0) {
+        await addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `El cliente pagó ${(-balanceCents / 100).toFixed(2)} USD de más: devuelve el excedente con un reembolso manual o aplícalo.`, { paymentId: p.id, creditCents: -balanceCents });
+      }
+      return { approved: true as const, apply, orderClosed: false };
     }
     await addOrderEvent(tx, p.orderId, "PAYMENT_REJECTED", actor, input.note!.trim(), { paymentId: p.id });
     const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId } });
@@ -978,7 +1014,12 @@ async function afterRefund(d: Deps, r: RefundResult, method: PaymentMethod, unen
       await unenrollOrder(d, r.orderId, actor);
     } catch (e) {
       d.log.error(`[refund] no se pudo desmatricular el pedido ${r.orderId}`, e);
-      await d.db.$transaction((tx) => addOrderEvent(tx, r.orderId, "ATTENTION", SYSTEM, `No se pudo desmatricular en Moodle: ${String((e as Error)?.message ?? e)}`));
+      // El job de matrículas la reintenta (retryFailedUnenrollments) hasta que Moodle responda.
+      const msg = String((e as Error)?.message ?? e).slice(0, 300);
+      await d.db.$transaction(async (tx) => {
+        await addOrderEvent(tx, r.orderId, UNENROLLMENT_FAILED, SYSTEM, `No se pudo desmatricular en Moodle: ${msg}`, { refundId: r.refund.id, error: msg });
+        await addOrderEvent(tx, r.orderId, "ATTENTION", SYSTEM, `No se pudo desmatricular en Moodle (${msg}). Se reintentará automáticamente; el médico conserva el acceso hasta entonces.`, { refundId: r.refund.id });
+      });
     }
   }
   await safeNotify(d, "refund_issued", async () => {

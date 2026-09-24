@@ -89,7 +89,7 @@ const commands: Record<string, (input: Input) => Promise<unknown>> = {
         city: "Barquisimeto",
       },
       items: [{ productId: String(input.productId), modality: "SEMIPRESENCIAL", cohortId: String(input.cohortId), planKind: input.planKind as "FULL" | "HALF" | "MONTHLY" }],
-      paymentMethod: "PAYPAL",
+      paymentMethod: (input.paymentMethod as "PAYPAL" | "PAGO_MOVIL" | "TRANSFERENCIA" | "ZELLE" | "EFECTIVO" | undefined) ?? "PAYPAL",
     });
     return {
       orderId: o.id,

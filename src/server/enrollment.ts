@@ -495,3 +495,32 @@ export async function unenrollOrder(d: Deps, orderId: string, actor: Actor = SYS
   await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "UNENROLLMENT", actor, `Desmatriculado de ${toRemove.length} curso(s)`, { courseIds: toRemove.map((r) => r.moodleCourseId), kept }));
   return { unenrolledCourseIds: toRemove.map((r) => r.moodleCourseId), keptCourseIds: kept };
 }
+
+/** Evento del pedido: la desmatrícula pedida (reembolso) falló en Moodle; el job la reintenta. */
+export const UNENROLLMENT_FAILED = "UNENROLLMENT_FAILED";
+
+/**
+ * Job: reintenta las desmatrículas que fallaron (Moodle caído o lento al reembolsar). Sin esto el médico
+ * reembolsado conservaría el acceso al aula para siempre. Un pedido se reintenta mientras no haya, después de
+ * su último fallo, una desmatrícula (hecha) ni una matrícula (el panel lo volvió a matricular a propósito).
+ */
+export async function retryFailedUnenrollments(d: Deps): Promise<{ orders: number; unenrolled: number }> {
+  const since = new Date(d.now().getTime() - 30 * 24 * 60 * MINUTE);
+  const fails = await d.db.orderEvent.findMany({ where: { type: UNENROLLMENT_FAILED, createdAt: { gte: since } }, select: { orderId: true, createdAt: true }, orderBy: { createdAt: "desc" } });
+  const latest = new Map<string, Date>();
+  for (const f of fails) if (!latest.has(f.orderId)) latest.set(f.orderId, f.createdAt);
+  let orders = 0;
+  let unenrolled = 0;
+  for (const [orderId, at] of latest) {
+    const settled = await d.db.orderEvent.count({ where: { orderId, type: { in: ["UNENROLLMENT", "ENROLLMENT"] }, createdAt: { gt: at } } });
+    if (settled > 0) continue;
+    orders++;
+    try {
+      await unenrollOrder(d, orderId, SYSTEM);
+      unenrolled++;
+    } catch (e) {
+      d.log.warn(`[enrollment] reintento de desmatrícula del pedido ${orderId} falló; se volverá a intentar`, e);
+    }
+  }
+  return { orders, unenrolled };
+}

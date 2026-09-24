@@ -172,6 +172,7 @@ const EVENT_TITLE: Record<string, string> = {
   ENROLLMENT: "Matrícula",
   ENROLLMENT_FAILED: "Matrícula fallida",
   UNENROLLMENT: "Desmatrícula en Moodle",
+  UNENROLLMENT_FAILED: "Desmatrícula fallida (se reintenta)",
   NOTE: "Comentario",
   EMAIL_SENT: "Correo enviado",
   EMAIL_FAILED: "Correo fallido",
@@ -203,7 +204,7 @@ export type EventKind = "comment" | "money" | "refund" | "alert" | "mail" | "moo
 export function eventKind(type: string): EventKind {
   if (type === "NOTE") return "comment";
   if (["REFUND", "REFUND_REQUESTED"].includes(type)) return "refund";
-  if (["ATTENTION", "PAYMENT_REJECTED", "PAYMENT_FAILED", "ENROLLMENT_FAILED", "EMAIL_FAILED", "SEAT_UNAVAILABLE", "PAYMENT_NOT_CAPTURED", "CERTIFICATE_REVOKED"].includes(type)) return "alert";
+  if (["ATTENTION", "PAYMENT_REJECTED", "PAYMENT_FAILED", "ENROLLMENT_FAILED", "UNENROLLMENT_FAILED", "EMAIL_FAILED", "SEAT_UNAVAILABLE", "PAYMENT_NOT_CAPTURED", "CERTIFICATE_REVOKED"].includes(type)) return "alert";
   if (["PAYMENT_VERIFIED", "PAYMENT_RECEIVED", "PAYMENT_CAPTURED", "INSTALLMENT_PAID", "PAYMENT_SUBMITTED", "BALANCE_ADJUSTED", "INSTALLMENT_WAIVED"].includes(type)) return "money";
   if (type.startsWith("EMAIL")) return "mail";
   if (type.startsWith("MOODLE") || type.startsWith("ENROLL") || type === "UNENROLLMENT" || type.startsWith("CERTIFICATE")) return "moodle";

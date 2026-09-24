@@ -2,7 +2,7 @@
 import type { Deps } from "@/server/deps";
 import { expireStaleReservations } from "@/server/seats";
 import { expireStaleOrders } from "@/server/orders";
-import { retryDueEnrollments } from "@/server/enrollment";
+import { retryDueEnrollments, retryFailedUnenrollments } from "@/server/enrollment";
 import { runCertificateSweep } from "@/server/certificates";
 import { retryFailedEmails } from "@/server/email";
 import { reconcilePaypalPayments } from "@/server/payments";
@@ -28,7 +28,7 @@ export async function runJobs(d: Deps, which: JobName[] = ALL_JOBS) {
   };
   await run("paypal", () => reconcilePaypalPayments(d));
   await run("expire", async () => ({ orders: await expireStaleOrders(d), reservations: await expireStaleReservations(d) }));
-  await run("enrollments", () => retryDueEnrollments(d));
+  await run("enrollments", async () => ({ ...(await retryDueEnrollments(d)), unenrollments: await retryFailedUnenrollments(d) }));
   await run("installments", () => runInstallmentReminders(d));
   await run("certificates", () => runCertificateSweep(d));
   await run("emails", async () => ({ sent: await retryFailedEmails(d) }));
