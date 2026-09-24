@@ -733,6 +733,10 @@ details[open] > .header__menu-item .icon-caret { transform: rotate(180deg); }
   .footer-block__details-content { margin-bottom: 0; }
 }
 .footer-block--menu:last-child .footer-block__details-content { margin-bottom: 0; }
+@media screen and (min-width: 750px) {
+  /* Dawn: 15 px de aire a la derecha de cada ítem salvo el último (acorta las líneas de las sedes). */
+  .footer-block__details-content > li:not(:last-child) { margin-right: 15px; }
+}
 .store-root .footer-block__details-content .list-menu__item--link {
   display: inline-block;
   padding: 10px 0;

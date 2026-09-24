@@ -1,0 +1,176 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Páginas de colección: réplica de las plantillas PageFly (diplomados / cursos) y Dawn (talleres) de ceium.net.
+   Medidas tomadas de los estilos computados en vivo (1440 × 900 y 390 × 844). Cortes de PageFly:
+   móvil < 767.5 px · tableta 767.5–1024.5 px · escritorio ≥ 1024.5 px.
+   ───────────────────────────────────────────────────────────────────────────── */
+.coll {
+  --coll-ink: #001e2b;
+  --coll-teal: #09b0b0;
+  --coll-teal-hover: #089a9a;
+  --coll-muted: #667880;
+}
+
+/* PageFly pone `*{letter-spacing:0!important}` en sus páginas: también el cromo (anuncio, menú, pie). */
+.store-root:has(.coll-pf),
+.store-root:has(.coll-pf) * { letter-spacing: 0 !important; }
+
+/* Dawn (talleres): el tema reparte 0.6 px de interletra a todo, 1 px al anuncio y 0.7 px al copyright. */
+.store-root:has(.coll-dawn) { letter-spacing: 0.6px; }
+.store-root:has(.coll-dawn) :is(h1, h2, h3, h4, h5) { letter-spacing: 0.6px; }
+.store-root:has(.coll-dawn) .announcement-bar__message { letter-spacing: 1px; }
+.store-root:has(.coll-dawn) .copyright__content { letter-spacing: 0.7px; }
+
+.coll-container { max-width: 1200px; margin: 0 auto; padding: 0 15px; }
+.coll-pf { background: #f1f1f1; font-family: var(--font-inter), Inter, sans-serif; }
+.coll-pf p { margin: 0; }
+
+/* Tarjetas: sombra y elevación al pasar el mouse (regla `.product-card:hover` de la página PageFly). */
+.coll-hover { transition: box-shadow 0.3s, transform 0.3s; }
+.coll-hover:hover { box-shadow: rgba(33, 35, 38, 0.1) 0 10px 10px -10px; transform: translateY(-5px); }
+@media (prefers-reduced-motion: reduce) {
+  .coll-hover { transition: none; }
+}
+
+.coll-media { display: block; overflow: hidden; border: 1px solid #eee; border-radius: 8px; line-height: 0; background: #fff; }
+.coll-media img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
+
+.coll-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 100px;
+  background: var(--coll-teal);
+  color: #fff;
+  font-size: 14px;
+  line-height: 17px;
+  font-weight: 500;
+  padding: 12px 20px;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+.store-root .coll-btn,
+.store-root .coll-btn:visited { color: #fff; text-decoration: none; }
+.coll-btn:hover { background: var(--coll-teal-hover); }
+.coll-btn:focus-visible { outline: 2px solid var(--coll-ink); outline-offset: 2px; }
+.coll-btn--lg { padding: 15px 24px; line-height: 16px; font-weight: 600; }
+.coll-icon { width: 12px; height: 12px; flex: none; }
+
+.coll-empty { margin: 0; font-size: 16px; line-height: 1.6; color: var(--coll-ink); }
+
+/* ───────────── plantilla "diplomas" ───────────── */
+.coll-pf--diplomas { padding: 96px 0 100px; }
+.coll-diplomas__head { display: grid; grid-template-columns: 7fr 5fr; align-items: end; }
+.store-root .coll-diplomas__title { margin: 0; font-size: 46px; line-height: 53px; font-weight: 700; color: var(--coll-ink); }
+.coll-pf .coll-diplomas__text { font-size: 15px; line-height: 21px; color: rgba(0, 30, 43, 0.8); }
+.coll-diplomas__list { display: flex; flex-direction: column; gap: 32px; margin: 56px 0 0; padding: 0; }
+.coll-diploma {
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  align-items: start;
+  padding: 40px;
+  border: 1px solid #e3e3e3;
+  border-radius: 24px;
+  background: #fff;
+}
+.coll-diploma__media { margin-right: 20px; }
+.coll-diploma__body { margin-left: 20px; min-width: 0; }
+.coll-pf .coll-diploma__badge {
+  display: block;
+  width: fit-content;
+  margin: 0 0 16px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #ececf9;
+  color: #6363ce;
+  font-size: 10px;
+  line-height: 15px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px !important;
+}
+.store-root .coll-diploma__title { margin: 0 0 16px; font-size: 29px; line-height: 33px; font-weight: 700; color: var(--coll-ink); }
+.store-root .coll-diploma__title a { color: inherit; text-decoration: none; }
+.store-root .coll-diploma__title a:hover { text-decoration: underline; }
+.coll-pf .coll-diploma__note { margin: 0 0 16px; font-size: 15px; line-height: 17px; font-weight: 600; color: var(--coll-ink); }
+.coll-pf .coll-diploma__note--closed { color: #b42318; }
+.coll-pf .coll-diploma__excerpt { margin: 0 0 24px; font-size: 15px; line-height: 21px; color: var(--coll-ink); }
+
+@media (min-width: 767.5px) and (max-width: 1024.4999px) {
+  .coll-pf--diplomas { padding: 64px 0 72px; }
+  .store-root .coll-diplomas__title { font-size: 33px; line-height: 38px; }
+  .coll-diplomas__list { gap: 16px; margin-top: 40px; }
+  .coll-diploma { padding: 24px; }
+  .coll-diploma__media { margin-right: 12px; }
+  .coll-diploma__body { margin-left: 12px; }
+  .coll-pf .coll-diploma__badge { margin-bottom: 12px; }
+  .store-root .coll-diploma__title { font-size: 23px; line-height: 26px; }
+}
+@media (max-width: 767.4999px) {
+  .coll-pf--diplomas { padding: 48px 0 49px; }
+  .coll-diplomas__head { display: block; }
+  .store-root .coll-diplomas__title { font-size: 33px; line-height: 38px; margin-bottom: 13px; }
+  .coll-diplomas__list { gap: 16px; margin-top: 31px; }
+  .coll-diploma { display: block; padding: 16px; border-radius: 20px; }
+  .coll-diploma__media { margin: 0 0 16px; }
+  .coll-diploma__body { margin-left: 0; }
+  .coll-pf .coll-diploma__badge { margin-bottom: 12px; }
+  .store-root .coll-diploma__title { font-size: 23px; line-height: 26px; }
+  .coll-diploma .coll-btn { display: flex; width: 100%; }
+}
+
+/* ───────────── plantilla "cards" ───────────── */
+.coll-pf--cards { padding: 80px 0 104px; }
+.coll-pf .coll-eyebrow { margin: 0 0 24px; font-size: 13px; line-height: 15px; font-weight: 400; text-transform: uppercase; color: var(--coll-teal); letter-spacing: 1px !important; }
+.store-root .coll-title { margin: 0 0 56px; font-size: 46px; line-height: 53px; font-weight: 700; color: var(--coll-ink); }
+.coll-pf .coll-text { margin: -32px 0 56px; max-width: 760px; font-size: 15px; line-height: 21px; color: rgba(0, 30, 43, 0.8); }
+.coll-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+  margin: 0;
+  padding: 0;
+}
+.coll-card { padding: 16px; border: 1px solid #eee; border-radius: 20px; background: #fff; }
+.coll-card__media { margin-bottom: 15px; }
+.store-root .coll-card__title { margin: 0; font-size: 16px; line-height: 18px; font-weight: 700; color: var(--coll-ink); overflow-wrap: break-word; }
+.store-root .coll-card__title a { color: inherit; text-decoration: none; }
+.store-root .coll-card__title a:hover { text-decoration: underline; }
+/* Bloque de la nota: 15 px arriba y 39 px hasta el botón (la fecha límite baja 15 px más, el botón no se mueve). */
+.coll-card__meta { padding-top: 15px; }
+.coll-card__meta--deadline { padding-top: 30px; margin-bottom: -15px; }
+.coll-pf .coll-card__note { font-size: 12px; line-height: 14px; color: var(--coll-muted); }
+.coll-card__note time { margin-left: 0; }
+.coll-pf .coll-card__note--closed { color: #b42318; }
+.coll-card__btn { margin-top: 39px; }
+
+@media (min-width: 767.5px) and (max-width: 1024.4999px) {
+  .coll-pf--cards { padding: 64px 0 72px; }
+  .store-root .coll-title { font-size: 29px; line-height: 33px; margin-bottom: 40px; }
+  .coll-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 767.4999px) {
+  .coll-pf--cards { padding: 48px 0 48px; }
+  .coll-pf .coll-eyebrow { margin-bottom: 12px; }
+  .store-root .coll-title { font-size: 23px; line-height: 26px; margin-bottom: 27px; }
+  .coll-pf .coll-text { margin: -15px 0 27px; }
+  .coll-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .coll-card { padding: 10px; }
+  .store-root .coll-card__title { margin-top: -8px; }
+  .coll-card__btn { display: flex; width: 100%; margin-top: 31px; }
+}
+
+/* ───────────── plantilla "grid" (colección de Dawn) ───────────── */
+.collection-hero { padding: 25px 0; }
+.store-root .collection-hero__title { margin: 0; font-size: 30px; line-height: 39px; font-weight: 700; color: var(--coll-ink); }
+.collection-hero__description { margin: 10px 0 0; max-width: 660px; font-size: 15px; line-height: 1.8; color: rgba(0, 30, 43, 0.75); }
+.coll-dawn__products { padding-top: 24px; padding-bottom: 27px; }
+@media screen and (min-width: 750px) {
+  .store-root .collection-hero__title { font-size: 40px; line-height: 52px; }
+  .coll-dawn__products { padding-top: 28px; padding-bottom: 36px; }
+}
+@media screen and (max-width: 749px) {
+  .coll-dawn .card__content { padding-top: 13px; padding-bottom: 13px; }
+  .store-root .coll-dawn .card__heading { font-size: 12px; }
+}

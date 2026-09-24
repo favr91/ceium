@@ -2,6 +2,7 @@
 // El catálogo es pequeño (decenas de productos): se filtra en memoria con normalización de acentos y
 // mayúsculas, que SQLite (LIKE) no hace para caracteres no ASCII.
 import { prisma } from "@/server/db";
+import { fromPriceCents } from "./collection/collection-data";
 
 export function normalizeSearch(s: string): string {
   return s
@@ -43,7 +44,9 @@ export async function searchCatalog(query: string, opts: { productLimit?: number
         excerpt: true,
         descriptionHtml: true,
         images: { orderBy: { position: "asc" }, take: 1, select: { url: true, alt: true, width: true, height: true } },
-        prices: { where: { active: true }, orderBy: { priceCents: "asc" }, take: 1, select: { priceCents: true } },
+        prices: { where: { active: true }, select: { priceCents: true, installmentCents: true } },
+        plans: { where: { active: true }, select: { kind: true, discountPct: true, installments: true } },
+        _count: { select: { diplomaCourses: true } },
       },
     }),
     prisma.collection.findMany({ where: { published: true }, orderBy: { position: "asc" }, select: { slug: true, title: true } }),
@@ -54,7 +57,7 @@ export async function searchCatalog(query: string, opts: { productLimit?: number
     (p) => !byTitle.includes(p) && matchesSearch(`${p.excerpt ?? ""} ${p.descriptionHtml.replace(/<[^>]*>/g, " ")}`, q),
   );
   const found = [...byTitle, ...byText].map(
-    (p): SearchProduct => ({ slug: p.slug, title: p.title, image: p.images[0] ?? null, minPriceCents: p.prices[0]?.priceCents ?? null }),
+    (p): SearchProduct => ({ slug: p.slug, title: p.title, image: p.images[0] ?? null, minPriceCents: fromPriceCents(p.prices, p.plans, p._count.diplomaCourses) }),
   );
   const colls = collections.filter((c) => matchesSearch(c.title, q));
   return {
