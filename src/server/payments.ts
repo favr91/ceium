@@ -422,10 +422,25 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
   return d.db.payment.findUniqueOrThrow({ where: { id: paymentId } });
 }
 
+/** Contenedor ISO-BMFF de la familia HEIF (caja `ftyp` con marca heic/heix/heif/mif1/msf1/hevc…). */
+function isHeif(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 12) return false;
+  const ascii = (a: number, b: number) => String.fromCharCode(...bytes.subarray(a, b));
+  if (ascii(4, 8) !== "ftyp") return false;
+  const size = Math.min(bytes.byteLength, Math.max(16, (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]), 64);
+  const brands = [ascii(8, 12)];
+  for (let i = 16; i + 4 <= size; i += 4) brands.push(ascii(i, i + 4));
+  if (brands.some((b) => b === "avif" || b === "avis")) return false; // AVIF también declara mif1 y los navegadores sí lo muestran
+  return brands.some((b) => /^(hei[cfmsx]|hev[cmsx]|mif1|msf1)$/.test(b));
+}
+
 /** Guarda un comprobante en PRIVATE_FILES_DIR/proofs/<orderId>/… y devuelve la ruta para `proofFile`. */
 export async function storeProofFile(d: Deps, orderId: string, filename: string, bytes: Uint8Array): Promise<string> {
-  const ext = (path.extname(filename).toLowerCase().match(/^\.(jpg|jpeg|png|webp|pdf|heic)$/)?.[0]) ?? "";
-  if (!ext) throw new DomainError("VALIDATION", "El comprobante debe ser una imagen (JPG, PNG, WEBP, HEIC) o un PDF.");
+  // Sin HEIC/HEIF: Chrome y Firefox no lo muestran en el panel y sharp no trae el códec HEVC para convertirlo. Se
+  // mira también el contenido: una foto HEIC renombrada a .jpg tampoco se podría ver.
+  if (/\.hei[cf]$/i.test(filename) || isHeif(bytes)) throw new DomainError("VALIDATION", "Las fotos HEIC del iPhone no se pueden revisar: envía una captura de pantalla (JPG o PNG) o un PDF.");
+  const ext = (path.extname(filename).toLowerCase().match(/^\.(jpg|jpeg|png|webp|pdf)$/)?.[0]) ?? "";
+  if (!ext) throw new DomainError("VALIDATION", "El comprobante debe ser una imagen (JPG, PNG o WEBP) o un PDF.");
   if (bytes.byteLength > 10 * 1024 * 1024) throw new DomainError("VALIDATION", "El comprobante no puede superar 10 MB.");
   const rel = path.join(d.config.privateFilesDir, "proofs", orderId.replace(/[^a-z0-9]/gi, ""), `${crypto.randomBytes(8).toString("hex")}${ext}`);
   await fs.mkdir(path.dirname(path.resolve(rel)), { recursive: true });

@@ -154,7 +154,7 @@ function ErrorText({ id, children }: { id: string; children?: string }) {
   );
 }
 
-/** Miniatura local del comprobante (imagen) o ícono de documento (PDF, HEIC). */
+/** Miniatura local del comprobante (imagen) o ícono de documento (PDF). */
 function ProofThumb({ url }: { url: string | null }) {
   const [failed, setFailed] = useState(false);
   return (

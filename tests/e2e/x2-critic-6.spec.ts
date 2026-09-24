@@ -8,7 +8,7 @@
 //      coherente: sin cupo y sin Moodle, el pedido no sigue «Inscrito» ni el job le cobra el saldo.
 //   3. Misma referencia bancaria con ceros a la izquierda en otro pedido → el panel no puede decir «La
 //      referencia no se ha usado en otro pedido».
-//   4. Comprobante HEIC (iPhone) → el admin no puede verlo en Chrome (defecto conocido, test.fail).
+//   4. Comprobante HEIC (iPhone) → no se acepta (ni renombrado a .jpg); lo que se acepta el admin lo ve.
 // Carril: E2E_LANE=e2e E2E_PORT=3104 npx playwright test tests/e2e/x2-critic-6.spec.ts --project=desktop
 import fs from "node:fs";
 import path from "node:path";
@@ -224,34 +224,49 @@ test("la misma referencia con ceros a la izquierda en otro pedido → el panel l
 
 // ───────────── 4. comprobante HEIC (foto de iPhone) ─────────────
 
-// DEFECTO CONOCIDO (sin corregir): la tienda acepta HEIC (el checkout lo lista en `accept`, así que Safari de iOS
-// lo envía sin convertir), pero Chrome/Firefox no decodifican HEIC y el sharp del proyecto no trae el códec HEVC:
-// el admin ve una imagen rota. `test.fail` corre la prueba y avisa en cuanto deje de fallar (convertir a JPEG al
-// guardar, o dejar de aceptar HEIC para que iOS lo convierta).
-test("comprobante HEIC (foto de iPhone): el admin debe poder VERLO en el panel", async ({ browser, page }) => {
-  test.fail(true, "HEIC aceptado pero no visible en Chrome: ver comentario");
-  const heic = path.join(__dirname, "fixtures", "x2", "comprobante.heic");
-  test.skip(!fs.existsSync(heic), "sin muestra HEIC");
+// Chrome/Firefox no decodifican HEIC y el sharp del proyecto no trae HEVC: un comprobante HEIC sería una imagen
+// rota en el panel. Corrección: el formulario ya no ofrece HEIC en `accept` (Safari de iOS convierte la foto a
+// JPEG al enviarla) y el servidor rechaza HEIC por extensión Y por contenido (una HEIC renombrada a .jpg).
+// Lo que sí se guarda tiene que verse en el panel del admin.
+test("comprobante HEIC (foto de iPhone): no se guarda nada que el admin no pueda ver", async ({ browser, page }) => {
+  const heic = fs.readFileSync(path.join(__dirname, "fixtures", "x2", "comprobante.heic"));
   const C = newCohort(3);
   const o = checkout(C, uniqueEmail("x2c6heic"));
-  await page.goto(`/pedido/${o.token}`);
-  await page.getByLabel("Número de referencia").fill(`0134${Date.now().toString().slice(-8)}`);
-  await page.getByLabel(/Monto pagado/).fill(ves(bs(o.dueNowCents)));
-  await page.getByLabel("Banco de origen").fill("Banesco (0134)");
-  await page.getByLabel("Fecha del pago").fill(new Date().toISOString().slice(0, 10));
-  await page.getByLabel("Cédula del titular").fill("V-14567890");
-  await page.getByLabel(/Comprobante/).setInputFiles({ name: "IMG_0421.HEIC", mimeType: "image/heic", buffer: fs.readFileSync(heic) });
-  await page.getByRole("button", { name: "Enviar datos del pago" }).click();
-  await page.waitForURL(/[?&]pago=(registrado|error)/);
-  if (new URL(page.url()).searchParams.get("pago") !== "registrado") return; // no se acepta HEIC: nada que ver
+  const fill = async () => {
+    await page.goto(`/pedido/${o.token}`);
+    await page.getByLabel("Número de referencia").fill(`0134${Date.now().toString().slice(-8)}`);
+    await page.getByLabel(/Monto pagado/).fill(ves(bs(o.dueNowCents)));
+    await page.getByLabel("Banco de origen").fill("Banesco (0134)");
+    await page.getByLabel("Fecha del pago").fill(new Date().toISOString().slice(0, 10));
+    await page.getByLabel("Cédula del titular").fill("V-14567890");
+  };
+  await fill();
+  // iOS solo convierte a JPEG si el formulario no pide HEIC: `accept` no puede listarlo (ni `image/*`).
+  const accept = (await page.getByLabel(/Comprobante/).getAttribute("accept")) ?? "";
+  expect(accept).not.toMatch(/hei[cf]|image\/\*/i);
+  expect(accept).toMatch(/image\/jpeg/);
+
+  // Foto HEIC original y una HEIC renombrada a .jpg: ninguna se registra, y el médico sabe qué enviar.
+  for (const name of ["IMG_0421.HEIC", "IMG_0421.jpg"]) {
+    if (name !== "IMG_0421.HEIC") await fill();
+    await page.getByLabel(/Comprobante/).setInputFiles({ name, mimeType: name.endsWith(".jpg") ? "image/jpeg" : "image/heic", buffer: heic });
+    await page.getByRole("button", { name: "Enviar datos del pago" }).click();
+    await page.waitForURL(/[?&]pago=(registrado|error)/);
+    expect(new URL(page.url()).searchParams.get("pago"), name).toBe("error");
+    await expect(page.getByText(/HEIC del iPhone no se pueden revisar/).first()).toBeVisible();
+    expect(q(`SELECT id FROM Payment WHERE orderId = ?`, o.orderId), name).toHaveLength(0);
+    expect(order(o.orderId).status).not.toBe("AWAITING_VERIFICATION");
+  }
+
+  // La captura en JPEG/PNG (lo que envía iOS al convertir) sí pasa, y el admin la VE.
+  const params = await reportManual(page, o.token, { reference: `0134${Date.now().toString().slice(-8)}`, amountBs: bs(o.dueNowCents) });
+  expect(params.get("pago")).toBe("registrado");
   const { ctx, page: admin } = await adminLogin(browser);
   try {
     await admin.goto(`/admin/orders/${o.orderId}`);
-    const proof = admin.getByTestId("payment").first().getByTestId("proof");
-    const img = proof.getByRole("img");
-    if (await img.count()) {
-      await expect.poll(() => img.evaluate((el: HTMLImageElement) => (el.complete ? el.naturalWidth : -1)), { message: "el comprobante HEIC no se puede mostrar en el navegador del admin" }).toBeGreaterThan(0);
-    }
+    const img = admin.getByTestId("payment").first().getByTestId("proof").getByRole("img");
+    await expect(img).toBeVisible();
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => (el.complete ? el.naturalWidth : -1))).toBeGreaterThan(0);
   } finally {
     await ctx.close();
   }

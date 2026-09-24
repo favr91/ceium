@@ -355,7 +355,7 @@ export type OrderDetail = Awaited<ReturnType<typeof getOrderDetail>>;
 function proofKind(file: string | null): "image" | "pdf" | null {
   if (!file) return null;
   const ext = file.toLowerCase().split(".").pop() ?? "";
-  return ext === "pdf" ? "pdf" : ["jpg", "jpeg", "png", "webp", "heic"].includes(ext) ? "image" : null;
+  return ext === "pdf" ? "pdf" : ["jpg", "jpeg", "png", "webp"].includes(ext) ? "image" : null;
 }
 
 /** HTML de un correo del pedido para la vista previa del panel (ya sin secretos: el outbox guarda la versión redactada). */

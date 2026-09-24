@@ -107,7 +107,8 @@ const TYPES: Record<string, string> = {
 function proofKind(file: string | null): "image" | "pdf" | null {
   if (!file) return null;
   const ext = path.extname(file).toLowerCase();
-  return ext === ".pdf" ? "pdf" : TYPES[ext] ? "image" : null;
+  // HEIC (comprobantes antiguos) no es "image": Chrome/Firefox no lo muestran; el panel ofrece el enlace de descarga.
+  return ext === ".pdf" ? "pdf" : TYPES[ext] && ext !== ".heic" ? "image" : null;
 }
 
 /**

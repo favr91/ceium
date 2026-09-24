@@ -21,6 +21,7 @@ import { usd } from "@/components/checkout/OrderSummary";
 import { PaypalButton } from "@/components/checkout/paypal";
 import { BankIcon, CalendarIcon, CheckIcon, ChevronDownIcon, ClockIcon, FieldErrorIcon, LockIcon, MailIcon, MapPinIcon, PayPalWordmark } from "@/components/checkout/icons";
 import { CopyButton } from "@/components/checkout/ManualPayment";
+import { PROOF_ACCEPT } from "@/components/checkout/manual-payment-fields";
 import { cohortSessions, directionsUrl, sessionDay } from "./cohort";
 import { DETAIL_LABELS } from "../../checkout/data";
 import { payOrderWithPaypal, reportManualPayment } from "./actions";
@@ -637,7 +638,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                         <label htmlFor="proof" className="co-file-label">
                           Comprobante (imagen o PDF, máx. 10 MB)
                         </label>
-                        <input id="proof" name="proof" type="file" accept="image/*,application/pdf" className="co-file" />
+                        <input id="proof" name="proof" type="file" accept={PROOF_ACCEPT} className="co-file" />
                       </div>
                     </div>
                     <button type="submit" className="co-pay">

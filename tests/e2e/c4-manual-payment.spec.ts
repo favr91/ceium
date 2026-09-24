@@ -221,7 +221,7 @@ test.describe("c4 pago móvil y transferencia con comprobante", () => {
     await form.getByLabel("Banco de origen").selectOption("Banco de Venezuela (0102)");
     await form.getByLabel("Comprobante de pago").setInputFiles({ name: "notas.txt", mimeType: "text/plain", buffer: Buffer.from("hola") });
     await page.getByRole("button", { name: "Enviar comprobante" }).click();
-    await expect(form.getByText("El comprobante debe ser una imagen (JPG, PNG, WEBP, HEIC) o un PDF.")).toBeVisible();
+    await expect(form.getByText("El comprobante debe ser una imagen (JPG, PNG o WEBP) o un PDF.")).toBeVisible();
     await form.getByRole("button", { name: "Quitar el comprobante" }).click();
     await expect(form.getByText("Sube el comprobante")).toBeVisible();
     expect(q(`SELECT id FROM Payment WHERE orderId = ?`, o.id)).toHaveLength(0);

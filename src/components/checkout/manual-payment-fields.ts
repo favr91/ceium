@@ -35,9 +35,13 @@ export const VE_BANKS: readonly string[] = [
   "Del Sur (0157)",
 ];
 
-export const PROOF_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.jpg,.jpeg,.png,.webp,.heic,.pdf";
+// Sin HEIC/HEIF a propósito: Chrome y Firefox no pueden mostrarlo en el panel y el servidor no puede convertirlo.
+// Al no listarlo, Safari de iOS convierte la foto a JPEG antes de enviarla.
+export const PROOF_ACCEPT = "image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf";
 export const PROOF_MAX_BYTES = 10 * 1024 * 1024;
-const PROOF_EXT = /\.(jpe?g|png|webp|heic|pdf)$/i;
+const PROOF_EXT = /\.(jpe?g|png|webp|pdf)$/i;
+export const PROOF_TYPE_ERROR = "El comprobante debe ser una imagen (JPG, PNG o WEBP) o un PDF.";
+export const PROOF_HEIC_ERROR = "Las fotos HEIC del iPhone no se pueden revisar: envía una captura de pantalla (JPG o PNG) o un PDF.";
 
 /** Fecha de hoy en Venezuela («2026-09-23»). */
 export function todayCaracas(now: Date = new Date()): string {
@@ -75,7 +79,8 @@ export interface ProofInfo {
 
 export function proofError(file: ProofInfo | null): string | undefined {
   if (!file || file.size === 0) return "Adjunta el comprobante del pago (captura o PDF).";
-  if (!PROOF_EXT.test(file.name)) return "El comprobante debe ser una imagen (JPG, PNG, WEBP, HEIC) o un PDF.";
+  if (/\.hei[cf]$/i.test(file.name)) return PROOF_HEIC_ERROR;
+  if (!PROOF_EXT.test(file.name)) return PROOF_TYPE_ERROR;
   if (file.size > PROOF_MAX_BYTES) return "El comprobante no puede superar 10 MB.";
   return undefined;
 }
