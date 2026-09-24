@@ -57,5 +57,12 @@ var/                 (no versionado) correos .eml, comprobantes, certificados, c
   `OrderEvent`. No escribir esas tablas con `prisma.*` desde rutas/acciones.
 - `Product.enrollmentDeadline` (último día de inscripción, inclusivo) se aplica en `quote()`/`createCheckout`;
   la tienda usa `isProductEnrollmentOpen()` para mostrar «Inscripciones cerradas».
+- **Antes de vender con pago manual**: en el panel, *Configuración* (`/admin/settings`) → activar Pago móvil / transferencia con
+  los datos bancarios reales y fijar la tasa BCV (el seed los deja deshabilitados y la tasa como de ejemplo). Ahí también: PayPal
+  on/off, minutos/horas de reserva de cupo y recordatorios de cuotas. Desde cada pedido, «Recordar» envía ya el correo con el
+  enlace de pago de la siguiente cuota (el job lo envía solo N días antes del vencimiento).
+- Recorrido completo (tienda → pago móvil → verificación → 9 cuotas → certificado; PayPal; reembolso; edición de precio y cupo):
+  `tests/e2e/x4-journey.spec.ts` (sobre un carril nuevo: `node scripts/lane.mjs final 3106 --reset` y
+  `E2E_LANE=final E2E_PORT=3106 npx playwright test tests/e2e/x4-journey.spec.ts`).
 - Cohortes sembradas = **datos de ejemplo** (`Cohort.isSample`, Setting `seed.sampleData`). Datos bancarios = `TODO` (Setting `payments.manualMethods`).
 - Todo texto de UI en español (Venezuela). Nada de catálogo hardcodeado: todo sale de la BD.

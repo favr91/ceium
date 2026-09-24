@@ -84,7 +84,7 @@ export function createServices(d: Deps) {
     ]),
     // unenrollOrder es interno (reembolsos); el panel usa adminUnenrollOrder, que verifica el rol.
     enrollment: bind(d, enrollment, ["enrollOrder", "reenrollOrder", "adminUnenrollOrder", "retryDueEnrollments", "resendCohortDetails", "linkMoodleAccount"]),
-    installments: bind(d, installments, ["runInstallmentReminders", "markOverdueInstallments", "sendInstallmentReminder"]),
+    installments: bind(d, installments, ["runInstallmentReminders", "markOverdueInstallments", "sendInstallmentReminder", "adminSendInstallmentReminder"]),
     certificates: bind(d, certificates, ["checkDiplomaCompletion", "deliverCertificate", "verifyCertificate", "revokeCertificate", "runCertificateSweep"]),
     email: bind(d, email, ["sendEmail", "retryFailedEmails", "resendEmail"]),
     jobs: bind(d, jobs, ["runJobs"]),

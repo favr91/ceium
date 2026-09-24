@@ -9,6 +9,7 @@
 // confirmado y saldo pendiente, la siguiente cuota impaga recibe un correo con enlace directo de pago
 // (PayPal o manual) — N días antes del vencimiento, al vencer y luego cada `overdueEveryDays` hasta
 // `maxOverdueReminders`. Las cuotas vencidas pasan a OVERDUE (con evento en el historial).
+import { randomUUID } from "node:crypto";
 import type { InstallmentStatus } from "@/generated/prisma/client";
 import type { Deps, Tx } from "@/server/deps";
 import { DAY, readSetting, withTx } from "@/server/deps";
@@ -17,6 +18,8 @@ import { DEFAULT_INSTALLMENT_REMINDERS, SETTING_KEYS, type InstallmentReminderPo
 import { safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
 import { formatUSD } from "@/server/pricing";
+import { requireAdmin, type SessionUser } from "@/server/auth";
+import { DomainError } from "@/server/errors";
 
 export interface InstallmentChange {
   id: string;
@@ -170,4 +173,26 @@ export async function sendInstallmentReminder(d: Deps, installmentId: string, st
     created = !r.duplicate;
   });
   return created;
+}
+
+/**
+ * Panel: envía ahora el recordatorio de la SIGUIENTE cuota por pagar (correo con el enlace directo de pago PayPal
+ * / manual de esa cuota), sin esperar a la fecha del job. Solo la siguiente: las cuotas se imputan en orden, y un
+ * enlace de una cuota posterior cobraría antes de tiempo. Queda en la cronología con quién lo envió.
+ */
+export async function adminSendInstallmentReminder(d: Deps, actor: SessionUser, installmentId: string): Promise<{ sequence: number; to: string }> {
+  const user = await requireAdmin(d.db, actor, "emails.resend");
+  const ins = await d.db.installment.findUnique({
+    where: { id: installmentId },
+    select: { id: true, orderId: true, sequence: true, status: true, order: { select: { status: true, balanceCents: true, customer: { select: { email: true } } } } },
+  });
+  if (!ins) throw new DomainError("NOT_FOUND", "La cuota no existe.");
+  if (!PAID_STATES.includes(ins.order.status) || ins.order.balanceCents <= 0) throw new DomainError("INVALID_STATE", "Este pedido no tiene cuotas por cobrar.");
+  const next = await nextUnpaidInstallment(d.db, ins.orderId);
+  if (!next) throw new DomainError("INVALID_STATE", "Este pedido no tiene cuotas por cobrar.");
+  if (next.id !== ins.id) throw new DomainError("VALIDATION", `Solo se envía el recordatorio de la siguiente cuota por pagar (la ${next.sequence}).`);
+  const sent = await sendInstallmentReminder(d, ins.id, { key: `panel-${d.now().getTime()}-${randomUUID().slice(0, 8)}`, overdue: ins.status === "OVERDUE" });
+  if (!sent) throw new DomainError("CONFLICT", "No se pudo enviar el recordatorio. Revisa «Correos al cliente» e inténtalo de nuevo.");
+  await withTx(d, (tx) => addOrderEvent(tx, ins.orderId, "INSTALLMENT_REMINDER", { type: "ADMIN", id: user.id }, `Recordatorio de la cuota ${ins.sequence} enviado a ${ins.order.customer.email}`, { installmentId: ins.id }));
+  return { sequence: ins.sequence, to: ins.order.customer.email };
 }

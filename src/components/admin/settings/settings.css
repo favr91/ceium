@@ -1,0 +1,31 @@
+/* Configuración: secciones anotadas de Shopify (título y descripción a la izquierda, tarjeta a la derecha). */
+.set-sec { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; padding: 16px 0; border-top: 1px solid #e3e3e3; }
+.set-sec:first-of-type { border-top: 0; padding-top: 0; }
+.set-ann h2 { font-size: 14px; line-height: 20px; font-weight: 650; margin: 0 0 4px; }
+.set-ann p { margin: 0; color: var(--p-text-2); font-size: 13px; line-height: 20px; }
+.set-card { display: flex; flex-direction: column; gap: 0; }
+.set-card > .banner { margin-bottom: 12px; }
+.set-method { border: 0; margin: 0; padding: 0 0 16px; min-width: 0; }
+.set-method + .set-method { border-top: 1px solid var(--p-border-2); padding-top: 16px; }
+.set-method-h { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.set-method-h .grow { flex: 1; min-width: 0; }
+.set-method-h .t { display: flex; align-items: center; gap: 6px; font-weight: 650; font-size: 13px; line-height: 20px; flex-wrap: wrap; }
+.set-method-h .toggle { margin-top: 2px; }
+.set-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.set-grid > .field { margin-bottom: 12px; }
+.set-method > .field { margin-bottom: 0; }
+.set-method > .field-err { margin: 8px 0 0; }
+.set-switch { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.set-switch .toggle { margin-top: 2px; }
+.set-switch .t { line-height: 20px; }
+.set-switch .d { display: block; color: var(--p-text-2); }
+.inp-affix .inp.set-bs { padding-left: 36px; }
+.set-actions { display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--p-border-2); }
+.set-warn { margin: 0; padding-left: 16px; }
+.set-warn li + li { margin-top: 2px; }
+
+@media (max-width: 768px) {
+  .set-sec { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .set-ann { padding: 0 16px; }
+  .set-grid { grid-template-columns: minmax(0, 1fr); }
+}

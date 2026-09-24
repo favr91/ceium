@@ -212,3 +212,15 @@ export async function resendEmailAction(orderId: string, emailId: string): Promi
     return fail(e, "No pudimos reenviar el correo.");
   }
 }
+
+export async function sendInstallmentReminderAction(orderId: string, installmentId: string): Promise<ActionResult> {
+  const user = await requireAdminAction();
+  try {
+    const ins = await services().deps.db.installment.findUnique({ where: { id: installmentId }, select: { orderId: true } });
+    if (!ins || ins.orderId !== orderId) return { ok: false, error: "La cuota no pertenece a este pedido." };
+    const r = await services().installments.adminSendInstallmentReminder(user, installmentId);
+    return done(orderId, `Recordatorio de la cuota ${r.sequence} enviado a ${r.to}.`);
+  } catch (e) {
+    return fail(e, "No pudimos enviar el recordatorio.");
+  }
+}

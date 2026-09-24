@@ -52,18 +52,9 @@ async function paypalToken(request: APIRequestContext) {
   return (await r.json()).access_token as string;
 }
 
-/** Vacía la cola de fallos inyectados del mock de Moodle (peticiones con token inválido consumen las entradas). */
-async function drainMoodleFailures(request: APIRequestContext, wsfunction: string, n = 40) {
-  const probe = () =>
-    request
-      .post(`${MOODLE}/webservice/rest/server.php`, { timeout: 30_000, form: { wstoken: "drain", wsfunction, moodlewsrestformat: "json", courseid: "1", userid: "1" } })
-      .then((r) => r.text(), () => "")
-      .then((t) => t.includes("invalidtoken"));
-  for (let round = 0; round < 20; round++) {
-    const res = await Promise.all(Array.from({ length: n }, probe));
-    if (res.every(Boolean)) return;
-  }
-  throw new Error("no se pudo vaciar la cola de fallos del mock de Moodle");
+/** Vacía la cola de fallos inyectados del mock de Moodle (los tests son en serie: se descartan todos). */
+async function drainMoodleFailures(request: APIRequestContext) {
+  expect((await request.post(`${MOODLE}/__mock/fail-clear`)).ok()).toBe(true);
 }
 
 const certsOf = (customerId: string) =>
@@ -84,7 +75,7 @@ test("A. reembolso total por PayPal MIENTRAS el job verifica Moodle: no queda un
   await completeAll(request, b.moodleUserId, b.courses);
 
   // Moodle lento en la verificación de finalización (1,2 s por curso) y en la baja (la baja tarda en llegar).
-  await request.post(`${MOODLE}/__mock/fail-next`, { data: { wsfunction: "core_completion_get_course_completion_status", type: "ok", delayMs: 1200, count: 60 } });
+  await request.post(`${MOODLE}/__mock/fail-next`, { data: { wsfunction: "core_completion_get_course_completion_status", userid: b.moodleUserId, type: "ok", delayMs: 1200, count: 60 } });
   await request.post(`${MOODLE}/__mock/fail-next`, { data: { wsfunction: "enrol_manual_unenrol_users", type: "ok", delayMs: 15_000, count: 3 } });
 
   const sweep = runCron(request, "certificates");
@@ -116,8 +107,7 @@ test("A. reembolso total por PayPal MIENTRAS el job verifica Moodle: no queda un
 });
 
 test("B. Moodle falla (excepción / HTML basura / 503) en la verificación: nunca emite con un curso sin confirmar; luego emite uno", async ({ request, playwright }) => {
-  await drainMoodleFailures(request, "core_completion_get_course_completion_status");
-  await drainMoodleFailures(request, "enrol_manual_unenrol_users", 5);
+  await drainMoodleFailures(request);
   await runCron(request, "certificates");
   const ctx = await playwright.request.newContext({ baseURL: e2eEnv.APP_URL });
   const b = await buyOnlineFull(request, ctx, "x3mfail");
@@ -130,10 +120,10 @@ test("B. Moodle falla (excepción / HTML basura / 503) en la verificación: nunc
   // Se completa el 9.º, pero Moodle falla en TODAS las consultas de finalización de esa corrida.
   await completeAll(request, b.moodleUserId, [b.courses[8]]);
   for (const type of ["exception", "garbage", "http"]) {
-    await request.post(`${MOODLE}/__mock/fail-next`, { data: { wsfunction: "core_completion_get_course_completion_status", type, count: 60 } });
+    await request.post(`${MOODLE}/__mock/fail-next`, { data: { wsfunction: "core_completion_get_course_completion_status", userid: b.moodleUserId, type, count: 60 } });
     await runCron(request, "certificates");
     expect(certsOf(b.customerId), `Moodle ${type}`).toHaveLength(0);
-    await drainMoodleFailures(request, "core_completion_get_course_completion_status");
+    await drainMoodleFailures(request);
   }
   // Recién se recupera: pero además, una de las finalizaciones cacheadas deja de estar (curso reiniciado) → no emite.
   await request.post(`${MOODLE}/__mock/complete`, { data: { userid: b.moodleUserId, courseid: b.courses[3], completed: false } });

@@ -132,9 +132,19 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
     setLastQ(state.q);
     setQ(state.q);
   }
+  // La espera navega con el estado de la URL VIGENTE al vencer (no el de cuando se tecleó): si entretanto se
+  // pulsó «Cancelar», una pestaña o un filtro, una navegación rezagada no debe deshacerlos.
+  const latest = useRef({ state, path });
   useEffect(() => {
-    if (q === state.q) return;
-    const t = setTimeout(() => go({ q: q.trim() }), 350);
+    latest.current = { state, path };
+  });
+  useEffect(() => {
+    if (q.trim() === state.q) return;
+    const t = setTimeout(() => {
+      const cur = latest.current;
+      if (q.trim() === cur.state.q) return;
+      start(() => router.replace(`${cur.path}${toQuery(cur.state, { page: 1, q: q.trim() })}`, { scroll: false }));
+    }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);

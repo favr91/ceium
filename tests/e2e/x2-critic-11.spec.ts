@@ -259,7 +259,7 @@ test("sin core_user_get_users y correo con mayúsculas raras: ATTENTION con el a
     await form.getByLabel(/Ya tiene cuenta en Moodle/).fill(`#${existing.id}`);
     await form.getByRole("button", { name: "Vincular cuenta de Moodle" }).click();
     await expect(admin.getByRole("status").or(admin.getByRole("alert")).filter({ hasText: /vinculada/ }).last()).toContainText(`Cuenta de Moodle #${existing.id} (${cedulaUser}) vinculada. Matrícula completada.`);
-    await expect(admin.getByText(`Moodle #${existing.id}`)).toBeVisible();
+    await expect(admin.getByText(`Moodle #${existing.id}`, { exact: true })).toBeVisible();
   } finally {
     await ctx.close();
   }

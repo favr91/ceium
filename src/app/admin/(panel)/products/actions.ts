@@ -114,7 +114,11 @@ export async function saveProduct(form: ProductForm): Promise<SaveResult> {
     // 4) Planes de pago
     section = "plans";
     const plans = await prisma.paymentPlan.findMany({ where: { productId: id } });
-    for (const [i, p] of form.plans.entries()) {
+    // El editor lista los planes en un orden fijo (todo, mitad, mes a mes); el orden de la tienda (position: la
+    // primera forma de pago es la preseleccionada en la ficha, p. ej. «Paga mes a mes» en los diplomados como en
+    // ceium.net) no se toca al guardar. Un plan nuevo va al final.
+    let nextPosition = plans.reduce((m, x) => Math.max(m, x.position + 1), 0);
+    for (const p of form.plans) {
       const prev = plans.find((x) => x.kind === p.kind);
       const pct = p.kind === "MONTHLY" ? 0 : Number(p.discountPct || 0);
       if (!Number.isInteger(pct)) throw new DomainError("VALIDATION", "El descuento debe ser un porcentaje entero.");
@@ -130,8 +134,9 @@ export async function saveProduct(form: ProductForm): Promise<SaveResult> {
         }
         continue;
       }
-      if (prev && prev.label === p.label.trim() && prev.discountPct === pct && prev.active === p.active && prev.position === i) continue;
-      await cat.upsertPlan(user, { productId: id, kind: p.kind, label: p.label, ...(p.kind === "MONTHLY" ? {} : { discountPct: pct }), position: i, active: p.active });
+      if (prev && prev.label === p.label.trim() && prev.discountPct === pct && prev.active === p.active) continue;
+      const position = prev ? prev.position : nextPosition++;
+      await cat.upsertPlan(user, { productId: id, kind: p.kind, label: p.label, ...(p.kind === "MONTHLY" ? {} : { discountPct: pct }), position, active: p.active });
     }
 
     // 5) Colecciones

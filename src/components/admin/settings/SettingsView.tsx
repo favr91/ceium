@@ -1,0 +1,364 @@
+"use client";
+// Configuración del panel (réplica de Configuración › Pagos de Shopify, en secciones anotadas): métodos de pago
+// manuales (datos que el médico recibe para pagar), PayPal, tasa Bs/USD, reservas de cupo y recordatorios de cuotas.
+// Cada sección se guarda por separado con saveSettingsAction (valida y audita en el servidor).
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { saveSettingsAction } from "@/app/admin/(panel)/settings/actions";
+import { Icon } from "../Icon";
+import { useToast } from "../ui";
+import "./settings.css";
+
+export interface ManualMethod {
+  method: "PAGO_MOVIL" | "TRANSFERENCIA" | "ZELLE" | "EFECTIVO";
+  enabled: boolean;
+  label: string;
+  currency: "USD" | "VES";
+  details: Record<string, string>;
+  instructions: string;
+}
+
+export interface SettingsData {
+  methods: ManualMethod[];
+  paypalEnabled: boolean;
+  rate: { vesPerUsd: number | null; source: string; updatedAt: string | null; placeholder: boolean; stale: boolean };
+  ttlPaypalMinutes: number;
+  ttlManualHours: number;
+  reminders: { daysBefore: number; overdueGraceDays: number; overdueEveryDays: number; maxOverdueReminders: number };
+  warnings: { severity: "error" | "warning"; message: string }[];
+}
+
+const DETAIL_LABELS: Record<string, string> = {
+  banco: "Banco",
+  telefono: "Teléfono",
+  cedulaRif: "Cédula / RIF",
+  titular: "Titular",
+  cuenta: "Número de cuenta",
+  tipo: "Tipo de cuenta",
+  correo: "Correo Zelle",
+  lugar: "Dónde pagar",
+};
+const METHOD_HELP: Record<ManualMethod["method"], string> = {
+  PAGO_MOVIL: "El médico paga en bolívares a la tasa del día y sube el comprobante.",
+  TRANSFERENCIA: "Transferencia bancaria en bolívares con comprobante.",
+  ZELLE: "Pago en dólares por Zelle con la confirmación.",
+  EFECTIVO: "Pago en la sede; el personal lo registra desde el pedido.",
+};
+
+/** Dato de ejemplo del seed («TODO: banco», «04xx-xxxxxxx»): se muestra como pista, no como valor. */
+const isPlaceholder = (v: string) => !v.trim() || /\bTODO\b|x{3,}|^[-/.\s]+$/i.test(v.trim());
+
+/** «187,25», «187.25» o «1.234,5» → número; otra cosa → NaN. */
+function parseRate(raw: string): number {
+  const s = raw.trim().replace(/\s/g, "");
+  if (!s) return NaN;
+  const norm = s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s;
+  return /^\d+(\.\d+)?$/.test(norm) ? Number(norm) : NaN;
+}
+const int = (raw: string) => (/^\d+$/.test(raw.trim()) ? Number(raw.trim()) : NaN);
+const fmtRate = (n: number | null) => (n == null ? "" : n.toLocaleString("es-VE", { maximumFractionDigits: 4 }));
+const fmtWhen = (iso: string | null) =>
+  iso ? new Intl.DateTimeFormat("es-VE", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Caracas" }).format(new Date(iso)) : null;
+
+type MethodForm = ManualMethod & { hints: Record<string, string> };
+
+export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: boolean }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, start] = useTransition();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
+
+  const initialMethods = (): MethodForm[] =>
+    data.methods.map((m) => {
+      const hints: Record<string, string> = {};
+      const details: Record<string, string> = {};
+      for (const [k, v] of Object.entries(m.details ?? {})) {
+        if (isPlaceholder(String(v ?? ""))) {
+          hints[k] = String(v ?? "").replace(/^TODO:\s*/i, "");
+          details[k] = "";
+        } else details[k] = String(v);
+      }
+      return { ...m, details, hints, instructions: isPlaceholder(m.instructions ?? "") ? "" : m.instructions };
+    });
+  const [methods, setMethods] = useState<MethodForm[]>(initialMethods);
+  const [paypal, setPaypal] = useState(data.paypalEnabled);
+  const [rate, setRate] = useState({ vesPerUsd: fmtRate(data.rate.vesPerUsd), source: data.rate.source || "BCV" });
+  const [ttl, setTtl] = useState({ paypal: String(data.ttlPaypalMinutes), manual: String(data.ttlManualHours) });
+  const [rem, setRem] = useState({
+    daysBefore: String(data.reminders.daysBefore),
+    overdueGraceDays: String(data.reminders.overdueGraceDays),
+    overdueEveryDays: String(data.reminders.overdueEveryDays),
+    maxOverdueReminders: String(data.reminders.maxOverdueReminders),
+  });
+
+  const save = (section: string, entries: { key: string; value: unknown }[]) => {
+    setBusy(section);
+    setErrors((e) => ({ ...e, [section]: null }));
+    start(async () => {
+      try {
+        const r = await saveSettingsAction(entries);
+        if (r.ok) {
+          toast.show(r.message);
+          router.refresh();
+        } else {
+          setErrors((e) => ({ ...e, [section]: r.error }));
+          toast.show("No se guardó: revisa el aviso de la sección.", true);
+        }
+      } catch {
+        setErrors((e) => ({ ...e, [section]: "No pudimos guardar. Revisa tu conexión e intenta de nuevo." }));
+      } finally {
+        setBusy(null);
+      }
+    });
+  };
+
+  const setMethod = (i: number, patch: Partial<MethodForm>) => setMethods((all) => all.map((m, j) => (j === i ? { ...m, ...patch } : m)));
+  const methodProblems = (m: MethodForm) => {
+    if (!m.enabled) return [];
+    const out: string[] = [];
+    for (const [k, v] of Object.entries(m.details)) if (!v.trim()) out.push(`Falta «${DETAIL_LABELS[k] ?? k}».`);
+    if (!m.instructions.trim()) out.push("Faltan las instrucciones para el médico.");
+    return out;
+  };
+  const saveMethods = () => {
+    if (methods.some((m) => methodProblems(m).length)) {
+      setErrors((e) => ({ ...e, methods: "Completa los datos marcados de los métodos activos, o desactívalos." }));
+      return;
+    }
+    save("methods", [{ key: "payments.manualMethods", value: methods.map(({ hints: _h, ...m }) => (void _h, { ...m, label: m.label.trim(), instructions: m.instructions.trim(), details: Object.fromEntries(Object.entries(m.details).map(([k, v]) => [k, v.trim()])) })) }]);
+  };
+  const saveRate = () => {
+    const n = parseRate(rate.vesPerUsd);
+    if (!(n > 0)) return setErrors((e) => ({ ...e, rate: "Escribe la tasa en bolívares por dólar, p. ej. 187,25." }));
+    if (!rate.source.trim()) return setErrors((e) => ({ ...e, rate: "Indica la fuente de la tasa (p. ej. BCV)." }));
+    save("rate", [{ key: "exchangeRate.vesPerUsd", value: { vesPerUsd: n, source: rate.source.trim() } }]);
+  };
+  const saveTtl = () => {
+    const p = int(ttl.paypal);
+    const m = int(ttl.manual);
+    if (!(p >= 5 && p <= 1440)) return setErrors((e) => ({ ...e, ttl: "La reserva con PayPal va de 5 a 1440 minutos." }));
+    if (!(m >= 1 && m <= 336)) return setErrors((e) => ({ ...e, ttl: "La reserva con pago manual va de 1 a 336 horas (14 días)." }));
+    save("ttl", [
+      { key: "reservation.ttl.paypal", value: { minutes: p } },
+      { key: "reservation.ttl.manual", value: { hours: m } },
+    ]);
+  };
+  const saveReminders = () => {
+    const v = { daysBefore: int(rem.daysBefore), overdueGraceDays: int(rem.overdueGraceDays), overdueEveryDays: int(rem.overdueEveryDays), maxOverdueReminders: int(rem.maxOverdueReminders) };
+    if (Object.values(v).some((x) => !Number.isFinite(x))) return setErrors((e) => ({ ...e, reminders: "Usa números enteros (0 o más)." }));
+    save("reminders", [{ key: "installments.reminders", value: v }]);
+  };
+
+  const ro = !canEdit;
+  const sectionError = (k: string) =>
+    errors[k] ? (
+      <div className="banner critical" role="alert">
+        <Icon name="alert" />
+        <span>{errors[k]}</span>
+      </div>
+    ) : null;
+  const saveButton = (k: string, label: string, onClick: () => void) =>
+    canEdit ? (
+      <div className="set-actions">
+        <button type="button" className="btn btn-primary" disabled={pending && busy === k} onClick={onClick}>
+          {pending && busy === k ? "Guardando…" : label}
+        </button>
+      </div>
+    ) : null;
+  const updated = fmtWhen(data.rate.updatedAt);
+
+  return (
+    <>
+      <div className="adm-ph">
+        <div className="grow">
+          <h1>Configuración</h1>
+          <div className="meta">Cobros, tasa de cambio, reservas de cupo y recordatorios</div>
+        </div>
+      </div>
+      {ro ? (
+        <div className="banner info" role="status">
+          <Icon name="info" />
+          <span>Tu rol (personal) puede ver la configuración; solo un administrador puede cambiarla.</span>
+        </div>
+      ) : null}
+      {data.warnings.length ? (
+        <div className="banner attention" role="note" data-testid="settings-warnings">
+          <Icon name="alert" />
+          <ul className="set-warn">
+            {data.warnings.map((w, i) => (
+              <li key={i}>{w.message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <section className="set-sec" aria-labelledby="h-manual">
+        <div className="set-ann">
+          <h2 id="h-manual">Pagos manuales</h2>
+          <p>Datos que el médico ve en el checkout y recibe por correo para pagar. Cada pago manual queda en verificación hasta que el equipo lo apruebe.</p>
+        </div>
+        <div className="card set-card">
+          {sectionError("methods")}
+          {methods.map((m, i) => {
+            const problems = methodProblems(m);
+            return (
+              <fieldset key={m.method} className="set-method" data-method={m.method} aria-label={m.label || m.method}>
+                <div className="set-method-h">
+                  <div className="grow">
+                    <div className="t">
+                      {m.label || m.method}
+                      <span className={`badge sm ${m.enabled ? "success" : ""}`}>{m.enabled ? "Activo" : "Inactivo"}</span>
+                      <span className="badge sm">{m.currency === "VES" ? "Bs." : "USD"}</span>
+                    </div>
+                    <div className="small muted">{METHOD_HELP[m.method]}</div>
+                  </div>
+                  <input type="checkbox" className="toggle" role="switch" aria-label={`Activar ${m.label || m.method}`} checked={m.enabled} disabled={ro} onChange={(e) => setMethod(i, { enabled: e.target.checked })} />
+                </div>
+                <div className="set-grid">
+                  <label className="field">
+                    <span>Nombre visible</span>
+                    <input className="inp" aria-label={`Nombre visible de ${m.method}`} value={m.label} disabled={ro} onChange={(e) => setMethod(i, { label: e.target.value })} />
+                  </label>
+                  {Object.keys(m.details).map((k) => {
+                    const missing = m.enabled && !m.details[k].trim();
+                    const label = DETAIL_LABELS[k] ?? k;
+                    return (
+                      <label className="field" key={k}>
+                        <span>{label}</span>
+                        <input
+                          className="inp"
+                          aria-label={`${label} (${m.label || m.method})`}
+                          value={m.details[k]}
+                          placeholder={m.hints[k] || undefined}
+                          aria-invalid={missing}
+                          disabled={ro}
+                          onChange={(e) => setMethod(i, { details: { ...m.details, [k]: e.target.value } })}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+                <label className="field">
+                  <span>Instrucciones para el médico</span>
+                  <textarea className="inp" rows={2} aria-label={`Instrucciones (${m.label || m.method})`} value={m.instructions} aria-invalid={m.enabled && !m.instructions.trim()} disabled={ro} onChange={(e) => setMethod(i, { instructions: e.target.value })} />
+                </label>
+                {problems.length ? <p className="field-err">{problems.join(" ")}</p> : null}
+              </fieldset>
+            );
+          })}
+          {!methods.length ? <p className="muted">No hay métodos manuales configurados.</p> : null}
+          {saveButton("methods", "Guardar pagos manuales", saveMethods)}
+        </div>
+      </section>
+
+      <section className="set-sec" aria-labelledby="h-paypal">
+        <div className="set-ann">
+          <h2 id="h-paypal">PayPal</h2>
+          <p>Cobro automático con tarjeta o cuenta PayPal. El pedido se confirma y matricula en Moodle sin intervención del equipo.</p>
+        </div>
+        <div className="card set-card">
+          {sectionError("paypal")}
+          <label className="set-switch">
+            <input type="checkbox" className="toggle" role="switch" aria-label="Ofrecer PayPal en la tienda" checked={paypal} disabled={ro} onChange={(e) => setPaypal(e.target.checked)} />
+            <span className="t">
+              Ofrecer PayPal en la tienda
+              <span className="d">Si lo desactivas, el checkout y los recordatorios solo ofrecen los pagos manuales activos.</span>
+            </span>
+          </label>
+          {saveButton("paypal", "Guardar PayPal", () => save("paypal", [{ key: "payments.paypal", value: { enabled: paypal } }]))}
+        </div>
+      </section>
+
+      <section className="set-sec" aria-labelledby="h-rate">
+        <div className="set-ann">
+          <h2 id="h-rate">Tasa de cambio</h2>
+          <p>Bolívares por dólar para cobrar en Bs. los pagos manuales. Actualízala a diario con la tasa oficial.</p>
+        </div>
+        <div className="card set-card">
+          {sectionError("rate")}
+          {data.rate.placeholder ? (
+            <div className="banner attention" role="note">
+              <Icon name="alert" />
+              <span>La tasa actual es de ejemplo: los métodos en bolívares no se ofrecen hasta que la actualices.</span>
+            </div>
+          ) : null}
+          <div className="grid2">
+            <label className="field">
+              <span>Bs. por USD</span>
+              <span className="inp-affix">
+                <span className="pre">Bs.</span>
+                <input className="inp num has-pre set-bs" inputMode="decimal" aria-label="Bolívares por dólar" value={rate.vesPerUsd} disabled={ro} onChange={(e) => setRate((r) => ({ ...r, vesPerUsd: e.target.value }))} />
+              </span>
+            </label>
+            <label className="field">
+              <span>Fuente</span>
+              <input className="inp" aria-label="Fuente de la tasa" value={rate.source} placeholder="BCV" disabled={ro} onChange={(e) => setRate((r) => ({ ...r, source: e.target.value }))} />
+            </label>
+          </div>
+          <p className="small muted" data-testid="rate-updated">
+            {updated ? `Última actualización: ${updated}${data.rate.stale ? " · desactualizada" : ""}` : "Sin fecha de actualización."}
+          </p>
+          {saveButton("rate", "Actualizar tasa", saveRate)}
+        </div>
+      </section>
+
+      <section className="set-sec" aria-labelledby="h-ttl">
+        <div className="set-ann">
+          <h2 id="h-ttl">Reserva de cupo</h2>
+          <p>Cuánto tiempo se aparta el cupo de una cohorte mientras el médico paga. Si no se confirma a tiempo, se libera.</p>
+        </div>
+        <div className="card set-card">
+          {sectionError("ttl")}
+          <div className="grid2">
+            <label className="field">
+              <span>Con PayPal</span>
+              <span className="inp-affix">
+                <input className="inp num has-suf" inputMode="numeric" aria-label="Minutos de reserva con PayPal" value={ttl.paypal} disabled={ro} onChange={(e) => setTtl((t) => ({ ...t, paypal: e.target.value }))} />
+                <span className="suf">min</span>
+              </span>
+            </label>
+            <label className="field">
+              <span>Con pago manual (hasta verificarlo)</span>
+              <span className="inp-affix">
+                <input className="inp num has-suf" inputMode="numeric" aria-label="Horas de reserva con pago manual" value={ttl.manual} disabled={ro} onChange={(e) => setTtl((t) => ({ ...t, manual: e.target.value }))} />
+                <span className="suf">h</span>
+              </span>
+            </label>
+          </div>
+          {saveButton("ttl", "Guardar reservas", saveTtl)}
+        </div>
+      </section>
+
+      <section className="set-sec" aria-labelledby="h-rem">
+        <div className="set-ann">
+          <h2 id="h-rem">Recordatorios de cuotas</h2>
+          <p>Correo con el enlace directo de pago de la siguiente cuota (planes mes a mes y mitad). También puedes enviarlo desde cada pedido.</p>
+        </div>
+        <div className="card set-card">
+          {sectionError("reminders")}
+          <div className="grid2">
+            <label className="field">
+              <span>Días antes del vencimiento</span>
+              <input className="inp num" inputMode="numeric" aria-label="Días antes del vencimiento" value={rem.daysBefore} disabled={ro} onChange={(e) => setRem((r) => ({ ...r, daysBefore: e.target.value }))} />
+            </label>
+            <label className="field">
+              <span>Días de gracia antes de marcarla vencida</span>
+              <input className="inp num" inputMode="numeric" aria-label="Días de gracia" value={rem.overdueGraceDays} disabled={ro} onChange={(e) => setRem((r) => ({ ...r, overdueGraceDays: e.target.value }))} />
+            </label>
+            <label className="field">
+              <span>Repetir cada (días) si está vencida</span>
+              <input className="inp num" inputMode="numeric" aria-label="Repetir cada (días)" value={rem.overdueEveryDays} disabled={ro} onChange={(e) => setRem((r) => ({ ...r, overdueEveryDays: e.target.value }))} />
+            </label>
+            <label className="field">
+              <span>Máximo de avisos de cuota vencida</span>
+              <input className="inp num" inputMode="numeric" aria-label="Máximo de avisos" value={rem.maxOverdueReminders} disabled={ro} onChange={(e) => setRem((r) => ({ ...r, maxOverdueReminders: e.target.value }))} />
+            </label>
+          </div>
+          {saveButton("reminders", "Guardar recordatorios", saveReminders)}
+        </div>
+      </section>
+      {toast.node}
+    </>
+  );
+}

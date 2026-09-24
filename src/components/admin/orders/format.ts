@@ -188,6 +188,7 @@ const EVENT_TITLE: Record<string, string> = {
   INSTALLMENT_PAID: "Cuota pagada",
   INSTALLMENT_OVERDUE: "Cuota vencida",
   INSTALLMENT_WAIVED: "Cuota condonada",
+  INSTALLMENT_REMINDER: "Recordatorio de cuota",
   BALANCE_ADJUSTED: "Saldo ajustado",
   PAYPAL_ORDER_CREATED: "Pago PayPal iniciado",
   PAYMENT_CAPTURED: "Pago PayPal capturado",
@@ -207,7 +208,7 @@ export function eventKind(type: string): EventKind {
   if (["REFUND", "REFUND_REQUESTED"].includes(type)) return "refund";
   if (["ATTENTION", "PAYMENT_REJECTED", "PAYMENT_FAILED", "ENROLLMENT_FAILED", "UNENROLLMENT_FAILED", "EMAIL_FAILED", "SEAT_UNAVAILABLE", "PAYMENT_NOT_CAPTURED", "CERTIFICATE_REVOKED"].includes(type)) return "alert";
   if (["PAYMENT_VERIFIED", "PAYMENT_RECEIVED", "PAYMENT_CAPTURED", "INSTALLMENT_PAID", "PAYMENT_SUBMITTED", "BALANCE_ADJUSTED", "INSTALLMENT_WAIVED"].includes(type)) return "money";
-  if (type.startsWith("EMAIL")) return "mail";
+  if (type.startsWith("EMAIL") || type === "INSTALLMENT_REMINDER") return "mail";
   if (type.startsWith("MOODLE") || type.startsWith("ENROLL") || type === "UNENROLLMENT" || type.startsWith("CERTIFICATE")) return "moodle";
   if (type === "STATUS_CHANGE" || type === "CREATED") return "status";
   if (type.startsWith("SEAT") || type === "COHORT_REASSIGNED") return "seat";

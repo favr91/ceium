@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Build dirs de los carriles (scripts/lane.mjs: NEXT_DIST_DIR=.next-<carril>) y artefactos locales.
+    ".next-*/**",
+    "var/**",
+    "test-results/**",
+    "playwright-report/**",
+    "src/generated/**",
   ]),
 ]);
 

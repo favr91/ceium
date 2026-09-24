@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { parse as parseDotenv } from "dotenv";
+import { e2eEnv } from "../../playwright.config";
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 import { MOODLE, PAYPAL, cohort, customerOf, emails, enrollments, events, fixture, moodleState, one, q, reservationOf, runCron, uniqueEmail, waitForOrderStatus } from "./support/purchase";
 import { todayCaracas } from "./support/dates";
@@ -221,7 +222,7 @@ test("pedido PayPal inscrito: PENDING/DENIED después de COMPLETED, reentrega ex
   const forged = await request.post(`/api/webhooks/paypal`, { headers: { ...sent[1].headers, "paypal-transmission-sig": "Zm9yZ2Vk" }, data: JSON.stringify({ ...sent[1].event, id: `WH-forged-${Date.now()}` }) });
   expect(forged.status()).toBe(400);
   // Cuatro corridas del job completo a la vez.
-  const runs = await Promise.all([0, 1, 2, 3].map(() => request.post(`/api/cron`, { headers: { authorization: `Bearer ${parseDotenv(fs.readFileSync(path.join(__dirname, "../../.env"))).CRON_SECRET}` } })));
+  const runs = await Promise.all([0, 1, 2, 3].map(() => request.post(`/api/cron`, { headers: { authorization: `Bearer ${e2eEnv.CRON_SECRET}` } })));
   for (const r of runs) expect(r.status()).toBe(200);
 
   expect(await snap()).toEqual(before);

@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- miniaturas del catálogo (CDN de ceium.net y /uploads): sin optimización de next/image */
 // Tarjetas del editor de programa: descripción enriquecida, multimedia, cursos del diplomado, opciones de compra.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -168,7 +169,6 @@ export function MediaCard({ productId, images, pending, onPending, onMessage }: 
           ))}
           {pending.map((f, i) => (
             <div key={`p${i}`} className="mi pending" title="Se subirá al guardar">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={URL.createObjectURL(f)} alt="" />
               <div className="mi-act" style={{ display: "flex" }}>
                 <button type="button" aria-label="Quitar" onClick={() => onPending(pending.filter((_, j) => j !== i))}><Icon name="x" size={14} /></button>

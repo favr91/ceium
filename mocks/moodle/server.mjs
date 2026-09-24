@@ -17,8 +17,10 @@
 //   POST /__mock/course       {id, fullname?, shortname?, enablecompletion?, criteria?, manualEnrol?}
 //   POST /__mock/fail-next    {wsfunction?, count?=1, type?: "exception"|"http"|"timeout"|"garbage"|"ok" (lenta: delayMs y responde bien),
 //                              exception?, errorcode?, message?, status?, delayMs?,
+//                              userid?: solo llamadas con ese params.userid,
 //                              after?: true → la función SE EJECUTA y luego se responde con el fallo
 //                              (respuesta perdida: p.ej. core_user_create_users creó la cuenta)}
+//   POST /__mock/fail-clear                    → descarta los fallos inyectados pendientes (sin tocar usuarios ni matrículas)
 //   GET  /__mock/calls                         → últimas llamadas recibidas (wsfunction + params)
 //
 // Env: MOCK_MOODLE_PORT (4010, igual que .env/playwright), MOCK_MOODLE_TOKEN o MOODLE_TOKEN
@@ -520,7 +522,9 @@ export function createMoodleMock(opts = {}) {
     };
 
     // Fallos inyectados (antes de validar token, como un problema de red/servidor).
-    const idx = failQueue.findIndex((f) => !f.wsfunction || f.wsfunction === wsfunction);
+    // `userid`: solo las llamadas sobre ese usuario (p. ej. la verificación de finalización de UN médico mientras el
+    // barrido revisa también a otros).
+    const idx = failQueue.findIndex((f) => (!f.wsfunction || f.wsfunction === wsfunction) && (f.userid == null || String(params.userid) === String(f.userid)));
     if (idx >= 0) {
       const f = failQueue[idx];
       f.count -= 1;
@@ -588,6 +592,11 @@ export function createMoodleMock(opts = {}) {
         state.courses = state.courses.filter((c) => c.id !== id).concat(course);
         save();
         return sendJson(res, 200, course);
+      }
+      case '/__mock/fail-clear': {
+        const dropped = failQueue.length;
+        failQueue = [];
+        return sendJson(res, 200, { ok: true, dropped });
       }
       case '/__mock/fail-next': {
         failQueue.push({ ...body, count: Number(body.count ?? 1) });

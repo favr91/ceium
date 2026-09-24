@@ -192,7 +192,7 @@ test.afterAll(() => {
 
 // ───────────── 1. dos comprobantes completos aprobados a la vez ─────────────
 
-test("dos comprobantes distintos por el total, aprobados a la vez desde dos pestañas → un cupo, una matrícula, un acceso; saldo a favor a la vista", async ({ browser, page, request }) => {
+test("dos comprobantes distintos por el total, aprobados a la vez desde dos pestañas → un cupo, una matrícula, un acceso; saldo a favor a la vista", async ({ browser, request }) => {
   const C = newCohort(3);
   const o = checkout(C, uniqueEmail("c16dbl"));
   const [r1, r2] = [newRef("0102"), newRef("0134")];
@@ -234,7 +234,7 @@ test("dos comprobantes distintos por el total, aprobados a la vez desde dos pest
 // ───────────── 2. reembolso con otro comprobante aún en verificación ─────────────
 
 for (const second of ["approve", "reject"] as const) {
-  test(`reembolso del pago aprobado con un 2.º comprobante en verificación; luego el admin ${second === "approve" ? "APRUEBA" : "RECHAZA"} el 2.º → el pedido no revive`, async ({ browser, page, request }) => {
+  test(`reembolso del pago aprobado con un 2.º comprobante en verificación; luego el admin ${second === "approve" ? "APRUEBA" : "RECHAZA"} el 2.º → el pedido no revive`, async ({ browser, request }) => {
     const C = newCohort(3);
     const email = uniqueEmail(`c16rf${second.slice(0, 2)}`);
     const o = checkout(C, email);

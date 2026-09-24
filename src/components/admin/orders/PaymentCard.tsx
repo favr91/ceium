@@ -5,7 +5,7 @@
 // su botón «Reembolsar» (diálogo).
 import { useState } from "react";
 import { Icon } from "../Icon";
-import { verifyPayment, waiveInstallmentAction } from "@/app/admin/(panel)/orders/actions";
+import { sendInstallmentReminderAction, verifyPayment, waiveInstallmentAction } from "@/app/admin/(panel)/orders/actions";
 import type { OrderDetail } from "@/server/admin-order-views";
 import { Badge, MethodIcon, Spinner } from "./bits";
 import { useOrder } from "./context";
@@ -285,6 +285,10 @@ export function PaymentCard({ o, onAdjust }: { o: O; onAdjust: () => void }) {
   const nItems = o.items.reduce((a, i) => a + i.quantity, 0);
   const canAdjust = perms.adjust && ["PENDING_PAYMENT", "AWAITING_VERIFICATION", "PAID", "PARTIALLY_PAID", "ENROLLED"].includes(o.status);
   const showInstallments = o.installments.length > 1;
+  // Recordatorio con enlace de pago: solo de la siguiente cuota por pagar y con el primer pago ya confirmado.
+  const nextOpen = o.installments.find((i) => i.status !== "PAID" && i.status !== "WAIVED");
+  const canRemind = perms.resend && ["PAID", "PARTIALLY_PAID", "ENROLLED"].includes(o.status) && o.balanceCents > 0 && !!nextOpen;
+  const actionsCol = canAdjust || canRemind;
 
   return (
     <section className="card" aria-labelledby="h-pay">
@@ -361,7 +365,7 @@ export function PaymentCard({ o, onAdjust }: { o: O; onAdjust: () => void }) {
                   <th>Vence</th>
                   <th>Estado</th>
                   <th className="num">Monto</th>
-                  {canAdjust ? <th /> : null}
+                  {actionsCol ? <th><span className="sr-only">Acciones</span></th> : null}
                 </tr>
               </thead>
               <tbody>
@@ -378,9 +382,21 @@ export function PaymentCard({ o, onAdjust }: { o: O; onAdjust: () => void }) {
                         {i.paidCents > 0 && i.paidCents < i.amountCents ? <span className="muted">{usd(i.paidCents)} de </span> : null}
                         {usd(i.amountCents)}
                       </td>
-                      {canAdjust ? (
-                        <td className="num">
-                          {open ? (
+                      {actionsCol ? (
+                        <td className="num acts">
+                          {canRemind && nextOpen?.id === i.id ? (
+                            <button
+                              type="button"
+                              className="btn btn-plain"
+                              aria-label={`Enviar recordatorio de la cuota ${i.sequence}`}
+                              title="Envía al médico el correo con el enlace de pago de esta cuota"
+                              disabled={busy === `remind:${i.id}`}
+                              onClick={() => run(`remind:${i.id}`, () => sendInstallmentReminderAction(o.id, i.id))}
+                            >
+                              {busy === `remind:${i.id}` ? <Spinner /> : "Recordar"}
+                            </button>
+                          ) : null}
+                          {canAdjust && open ? (
                             <button type="button" className="btn btn-plain" onClick={() => setWaive(i)}>
                               Condonar
                             </button>

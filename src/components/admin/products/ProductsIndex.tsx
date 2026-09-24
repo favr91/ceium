@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- miniaturas del catálogo (CDN de ceium.net y /uploads): sin optimización de next/image */
 // Índice de Programas (réplica del listado de Productos de Shopify): vistas por estado, búsqueda, filtro de
 // categoría, orden, selección con acciones masivas y filas clicables. En móvil pasa a lista de recursos.
 import Link from "next/link";
