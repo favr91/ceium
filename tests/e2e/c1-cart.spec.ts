@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 // Carrito (/cart): líneas cotizadas desde la BD (catálogo real sembrado), cantidad, eliminar, totales y CTAs.
 const DIPLOMA = "diplomado-universitario-avanzado-de-medicina-materno-fetal";
@@ -14,6 +14,11 @@ async function fillCart(page: Page) {
   await add(page, `product=${COURSE}&modality=ONLINE&plan=FULL`);
 }
 
+/** Valor de una opción de la línea (lista etiqueta → valor). */
+function option(line: Locator, name: string): Locator {
+  return line.locator(".ck-option").filter({ has: line.page().locator("dt", { hasText: new RegExp(`^${name}$`) }) }).locator("dd");
+}
+
 test.describe("c1 carrito", () => {
   test("muestra diplomado semipresencial Barquisimeto + curso online con precios y total de la BD", async ({ page }) => {
     await fillCart(page);
@@ -26,18 +31,26 @@ test.describe("c1 carrito", () => {
     const course = lines.nth(0);
     const diploma = lines.nth(1);
     await expect(course.getByRole("link", { name: "Curso Universitario: Ecografía Obstétrica" })).toBeVisible();
-    await expect(course).toContainText("Modalidad: Online");
-    await expect(course).toContainText("Forma de pago: Paga todo el curso");
+    await expect(option(course, "Modalidad")).toHaveText("Online");
+    await expect(option(course, "Sede")).toHaveCount(0); // «Sede: Online» sobra
+    await expect(option(course, "Forma de pago")).toHaveText("Paga todo el curso");
     await expect(course).toContainText("$150.00");
+    await expect(course.getByTestId("cart-line-discount")).toHaveCount(0);
 
     await expect(diploma.getByRole("link", { name: "Diplomado Universitario Avanzado de Medicina Materno Fetal" })).toHaveAttribute("href", `/products/${DIPLOMA}`);
-    await expect(diploma).toContainText("Modalidad: Semipresencial");
-    await expect(diploma).toContainText("Sede: Barquisimeto");
-    await expect(diploma).toContainText(/Cohorte: .*inicia el/);
-    await expect(diploma).toContainText("Forma de pago: Paga todo (10% de descuento)");
+    await expect(option(diploma, "Modalidad")).toHaveText("Semipresencial");
+    await expect(option(diploma, "Sede")).toHaveText("Barquisimeto");
+    await expect(option(diploma, "Cohorte")).toHaveText(/\S/);
+    await expect(option(diploma, "Inicio")).toHaveText(/\d{4}$/);
+    await expect(option(diploma, "Forma de pago")).toHaveText("Paga todo");
     await expect(diploma).toContainText("$1,278.00");
+    // El 10% del plan se muestra con su monto: precio de lista tachado + «Ahorras».
+    await expect(diploma.getByTestId("cart-unit-price").locator("s")).toHaveText("$1,420.00");
+    await expect(diploma.getByTestId("cart-line-discount")).toHaveText("Ahorras $142.00 (−10%)");
     await expect(diploma.locator("img")).toHaveAttribute("src", /cdn\.shopify\.com/);
 
+    await expect(page.getByTestId("cart-summary")).toContainText("Subtotal$1,570.00");
+    await expect(page.getByTestId("cart-discount")).toHaveText("−$142.00");
     await expect(page.getByTestId("cart-total")).toHaveText("$1,428.00 USD");
     await expect(page.getByRole("link", { name: "Pagar pedido" })).toHaveAttribute("href", "/checkout");
     await expect(page.getByRole("link", { name: "Pagar con PayPal" })).toHaveAttribute("href", "/checkout?metodo=paypal");
@@ -76,10 +89,30 @@ test.describe("c1 carrito", () => {
     const lines = page.getByTestId("cart-line");
     await expect(lines).toHaveCount(2);
     const diploma = lines.filter({ hasText: "Medicina Materno Fetal" });
-    await expect(diploma).toContainText("Forma de pago: Paga mes a mes");
+    await expect(option(diploma, "Forma de pago")).toHaveText("Paga mes a mes");
     await expect(diploma).toContainText(/cuotas mensuales de \$180\.00/);
     await expect(page.getByTestId("cart-total")).toHaveText("$330.00 USD");
     await expect(page.getByText(/Total de los programas:/)).toBeVisible();
+  });
+
+  test("móvil: el WhatsApp flotante nunca tapa los botones de pago", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await fillCart(page);
+    const wa = page.locator(".whatsapp-widget");
+    await expect(wa).toBeVisible();
+    for (const name of ["Pagar pedido", "Pagar con PayPal"]) {
+      const cta = page.getByRole("link", { name });
+      // Deja el botón justo al pie de la pantalla, donde vive el WhatsApp.
+      await cta.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().bottom - window.innerHeight + 20));
+      await expect(wa).toBeHidden();
+      // Clic real en el borde derecho del botón (donde estaría el WhatsApp): llega al botón.
+      const box = (await cta.boundingBox())!;
+      const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest("a")?.getAttribute("aria-label") ?? document.elementFromPoint(x, y)?.closest("a")?.textContent, [box.x + box.width - 20, box.y + box.height / 2]);
+      expect(hit).toContain(name === "Pagar pedido" ? "Pagar pedido" : "Pagar con PayPal");
+    }
+    // Lejos de los botones vuelve a aparecer.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(wa).toBeVisible();
   });
 
   test("un enlace inválido no agrega nada y explica por qué", async ({ page }) => {

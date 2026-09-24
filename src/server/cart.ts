@@ -181,6 +181,11 @@ export interface ResolvedCartLine {
   priceCents: number;
   /** Total del programa con el plan elegido. */
   programTotalCents: number;
+  /** Precio de lista del programa (sin descuento del plan). */
+  listCents: number;
+  /** Descuento del plan (p. ej. 10% por pago total); 0 si el plan no tiene. */
+  discountCents: number;
+  discountPct: number;
   /** Aclaración del plan (mitad / mes a mes): cuánto queda y cómo se paga. */
   planNote: string | null;
   /** Aviso de cupos (semipresencial, pocos cupos). */
@@ -197,6 +202,8 @@ export interface ResolvedCart {
   dueNowCents: number;
   /** Suma de los totales de los programas (≥ dueNowCents si hay planes fraccionados). */
   programTotalCents: number;
+  /** Suma de los descuentos de los planes elegidos. */
+  discountCents: number;
   hasSplitPlans: boolean;
   /** Hay líneas con error: el checkout queda bloqueado hasta corregirlas. */
   blocked: boolean;
@@ -215,7 +222,7 @@ function usd(cents: number): string {
 export async function resolveCart(d: { db: Db; now: () => Date }, lines: CartLine[]): Promise<ResolvedCart> {
   const { db } = d;
   const now = d.now();
-  if (lines.length === 0) return { lines: [], count: 0, dueNowCents: 0, programTotalCents: 0, hasSplitPlans: false, blocked: false };
+  if (lines.length === 0) return { lines: [], count: 0, dueNowCents: 0, programTotalCents: 0, discountCents: 0, hasSplitPlans: false, blocked: false };
   const products = await db.product.findMany({
     where: { id: { in: lines.map((l) => l.productId) } },
     include: { images: { orderBy: { position: "asc" }, take: 1 }, choices: true },
@@ -239,6 +246,9 @@ export async function resolveCart(d: { db: Db; now: () => Date }, lines: CartLin
     let planLabel = "";
     let priceCents = 0;
     let programTotalCents = 0;
+    let listCents = 0;
+    let discountCents = 0;
+    let discountPct = 0;
     let planNote: string | null = null;
 
     try {
@@ -246,6 +256,9 @@ export async function resolveCart(d: { db: Db; now: () => Date }, lines: CartLin
       planLabel = q.planLabel;
       priceCents = q.dueNowCents;
       programTotalCents = q.totalCents;
+      listCents = q.listCents;
+      discountCents = q.discountCents;
+      discountPct = q.discountPct;
       const rest = q.totalCents - q.dueNowCents;
       if (q.planKind === "HALF" && rest > 0) planNote = `Hoy pagas la mitad; el saldo de ${usd(rest)} se paga después.`;
       if (q.planKind === "MONTHLY" && q.installments.length > 1) {
@@ -289,6 +302,9 @@ export async function resolveCart(d: { db: Db; now: () => Date }, lines: CartLin
       planLabel,
       priceCents,
       programTotalCents,
+      listCents,
+      discountCents,
+      discountPct,
       planNote,
       seatNote,
       error,
@@ -301,6 +317,7 @@ export async function resolveCart(d: { db: Db; now: () => Date }, lines: CartLin
     count: out.length,
     dueNowCents: ok.reduce((a, l) => a + l.priceCents, 0),
     programTotalCents: ok.reduce((a, l) => a + l.programTotalCents, 0),
+    discountCents: ok.reduce((a, l) => a + l.discountCents, 0),
     hasSplitPlans: ok.some((l) => l.programTotalCents > l.priceCents),
     blocked: out.some((l) => !!l.error),
   };

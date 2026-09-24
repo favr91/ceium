@@ -2,6 +2,7 @@
 // solo la selección y aquí se vuelve a cotizar cada línea (precio, plan, cohorte y cupos al día).
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CartCtaGuard } from "@/components/checkout/CartCtaGuard";
 import { CartItems } from "@/components/checkout/CartItems";
 import { ErrorIcon, PayPalWordmark } from "@/components/checkout/icons";
 import "@/components/checkout/cart.css";
@@ -50,11 +51,31 @@ export default async function CartPage({ searchParams }: PageProps<"/cart">) {
 
       <div className="ck-footer" id="main-cart-footer">
         <div className="ck-blocks">
+          {cart.discountCents > 0 ? (
+            <dl className="ck-summary" data-testid="cart-summary">
+              <div>
+                <dt>Subtotal</dt>
+                <dd>{usd(cart.programTotalCents + cart.discountCents)}</dd>
+              </div>
+              <div className="ck-summary-save">
+                <dt>Descuento por forma de pago</dt>
+                <dd data-testid="cart-discount">−{usd(cart.discountCents)}</dd>
+              </div>
+              {cart.hasSplitPlans ? (
+                <div>
+                  <dt>Total de los programas</dt>
+                  <dd>{usd(cart.programTotalCents)}</dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : null}
           <div className="ck-totals">
             <h2 className="ck-totals-label">Total estimado</h2>
             <p className="ck-totals-value" data-testid="cart-total">{usd(cart.dueNowCents)} USD</p>
           </div>
-          <small className="ck-tax-note">Descuentos del plan incluidos. El método de pago se elige en la pantalla de pago.</small>
+          <small className="ck-tax-note">
+            {cart.discountCents > 0 ? "Descuentos incluidos. " : ""}Sin impuestos ni envío. El método de pago se elige en la pantalla de pago.
+          </small>
           {cart.hasSplitPlans ? (
             <small className="ck-split-note">
               Total de los programas: <strong>{usd(cart.programTotalCents)}</strong>. Hoy pagas el primer pago; el saldo queda en tu pedido.
@@ -62,19 +83,20 @@ export default async function CartPage({ searchParams }: PageProps<"/cart">) {
           ) : null}
           <div className="ck-ctas">
             {blocked ? (
-              <span className="ck-btn" role="link" aria-disabled="true" id="checkout">Pagar pedido</span>
+              <span className="ck-btn" role="link" aria-disabled="true" id="checkout" data-ck-cta>Pagar pedido</span>
             ) : (
-              <Link href="/checkout" className="ck-btn" id="checkout">Pagar pedido</Link>
+              <Link href="/checkout" className="ck-btn" id="checkout" data-ck-cta>Pagar pedido</Link>
             )}
           </div>
           {blocked ? <p className="ck-blocked-note">Corrige o elimina los programas marcados para continuar.</p> : null}
           <div className="ck-paypal-wrap">
-            <Link href="/checkout?metodo=paypal" className="ck-paypal" aria-label="Pagar con PayPal" aria-disabled={blocked ? "true" : undefined} tabIndex={blocked ? -1 : undefined}>
+            <Link href="/checkout?metodo=paypal" className="ck-paypal" data-ck-cta aria-label="Pagar con PayPal" aria-disabled={blocked ? "true" : undefined} tabIndex={blocked ? -1 : undefined}>
               <PayPalWordmark />
             </Link>
           </div>
         </div>
       </div>
+      <CartCtaGuard />
     </div>
   );
 }

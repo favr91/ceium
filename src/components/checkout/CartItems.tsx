@@ -21,6 +21,39 @@ function imageSrc(url: string): string {
   return url;
 }
 
+/**
+ * Opciones de la línea para mostrar: «Sede» sobra en Online, la cohorte se parte en nombre + inicio y la forma de
+ * pago no repite el «(10% de descuento)» porque el ahorro se muestra con su monto justo debajo.
+ */
+function displayOptions(line: ResolvedCartLine): { name: string; value: string }[] {
+  const online = line.options.some((o) => o.name === "Modalidad" && o.value === "Online");
+  const out: { name: string; value: string }[] = [];
+  for (const o of line.options) {
+    if (o.name === "Sede" && online) continue;
+    if (o.name === "Cohorte") {
+      const [name, start] = o.value.split(" · inicia el ");
+      out.push({ name: "Cohorte", value: name });
+      if (start) out.push({ name: "Inicio", value: start });
+      continue;
+    }
+    if (o.name === "Forma de pago" && line.discountCents > 0 && !line.error) {
+      out.push({ name: o.name, value: o.value.replace(/\s*\([^)]*descuento[^)]*\)\s*$/i, "") || o.value });
+      continue;
+    }
+    out.push(o);
+  }
+  return out;
+}
+
+function TagIcon() {
+  return (
+    <svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" fill="none" width="14" height="14">
+      <path d="M8.6 1.5H14.5V7.4L7.9 14 2 8.1 8.6 1.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <circle cx="11.4" cy="4.6" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function CartItems({ lines, updateQuantity }: { lines: ResolvedCartLine[]; updateQuantity: Mutate }) {
   const [status, setStatus] = useState("");
   return (
@@ -95,15 +128,35 @@ function CartRow({ line, index, updateQuantity, onStatus }: { line: ResolvedCart
         </div>
       </td>
       <td className="ck-details">
-        <a href={line.href} className="ck-name">{line.title}</a>
-        <div className="ck-option">{price}</div>
+        <div className="ck-name-row">
+          <a href={line.href} className="ck-name">{line.title}</a>
+          <span className="ck-price ck-price--inline" aria-hidden="true">{price}</span>
+        </div>
+        <div className="ck-unit" data-testid="cart-unit-price">
+          {line.discountCents > 0 && !line.error ? (
+            <>
+              <span className="ck-visually-hidden">Precio habitual</span>
+              <s className="ck-unit-list">{usd(line.listCents)}</s>
+              <span className="ck-visually-hidden">Precio con descuento</span>
+            </>
+          ) : null}
+          <span className="ck-unit-now">{line.error ? "—" : usd(line.programTotalCents)}</span>
+          {!line.error && line.programTotalCents > line.priceCents ? <span className="ck-unit-hint">total del programa</span> : null}
+        </div>
         <dl className="ck-options">
-          {line.options.map((o) => (
+          {displayOptions(line).map((o) => (
             <div className="ck-option" key={o.name}>
-              <dt>{o.name}:</dt> <dd>{o.value}</dd>
+              <dt>{o.name}</dt>
+              <dd>{o.value}</dd>
             </div>
           ))}
         </dl>
+        {line.discountCents > 0 && !line.error ? (
+          <p className="ck-save" data-testid="cart-line-discount">
+            <TagIcon />
+            <span>Ahorras <strong>{usd(line.discountCents)}</strong> (−{line.discountPct}%)</span>
+          </p>
+        ) : null}
         {line.planNote ? <p className="ck-plan-note">{line.planNote}</p> : null}
         {line.seatNote ? <p className="ck-seat-note">{line.seatNote}</p> : null}
       </td>

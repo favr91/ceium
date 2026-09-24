@@ -24,8 +24,9 @@
 /* Título */
 .ck-title-row {
   display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap;
-  margin: 0 0 30px;
+  margin: 0 0 30px; padding-top: 28px;
 }
+@media (min-width: 750px) { .ck-title-row { padding-top: 40px; margin-bottom: 36px; } }
 @media (min-width: 990px) { .ck-title-row { align-items: center; } }
 .ck-title {
   margin: 0; color: rgb(var(--ck-ink)); font-weight: 700; font-size: 30px; line-height: 39px; letter-spacing: 0.6px;
@@ -80,24 +81,45 @@
 .ck-cart .ck-img { display: block; height: auto; width: 100px; max-width: 100px; border-radius: 4px; }
 .ck-img--empty { aspect-ratio: 150 / 85; background: rgba(var(--ck-ink), 0.04); }
 
-.ck-details { grid-column: 2 / 4; font-size: 16px; line-height: 22.4px; }
-.ck-details > * { margin: 0; max-width: 300px; }
+.ck-details { grid-column: 2 / 5; font-size: 16px; line-height: 22.4px; min-width: 0; }
+.ck-details > * { margin: 0; }
 .ck-details > * + * { margin-top: 6px; }
+.ck-name-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .ck-name {
-  display: block; color: rgb(var(--ck-ink)); text-decoration: none;
+  display: block; color: rgb(var(--ck-ink)); text-decoration: none; min-width: 0;
   font-weight: 700; font-size: 15px; line-height: 19.5px; letter-spacing: 0.6px; word-break: break-word;
 }
 .ck-name:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 2px; }
-.ck-option { font-size: 14px; line-height: 21px; word-break: break-word; }
-.ck-details > .ck-options { margin-top: 6px; }
-.ck-options .ck-option + .ck-option { margin-top: 4px; }
-.ck-option dt, .ck-option dd { display: inline; margin: 0; }
+.ck-price--inline { flex-shrink: 0; line-height: 19.5px; }
+.ck-unit { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; font-size: 14px; line-height: 21px; letter-spacing: 1px; }
+.ck-unit-list { color: rgba(var(--ck-ink), 0.55); text-decoration-thickness: 1px; }
+.ck-unit-now { color: rgba(var(--ck-ink), 0.85); }
+.ck-unit-hint { font-size: 12px; letter-spacing: 0.4px; color: rgba(var(--ck-ink), 0.6); }
+
+/* Opciones: etiqueta tenue en una columna, valor en tinta en la otra (se lee de un vistazo, sin columna larga). */
+.ck-details > .ck-options {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 14px; row-gap: 3px;
+  margin-top: 10px; padding: 10px 0 0; border-top: 1px solid rgba(var(--ck-ink), 0.08); max-width: 380px;
+}
+.ck-option { display: contents; }
+.ck-option dt, .ck-option dd { margin: 0; word-break: break-word; }
+.ck-option dt { font-size: 12px; line-height: 21px; letter-spacing: 0.5px; color: rgba(var(--ck-ink), 0.6); }
+.ck-option dd { font-size: 14px; line-height: 21px; letter-spacing: 0.4px; color: rgb(var(--ck-ink)); }
+
+.ck-details > .ck-save {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 3px 10px 3px 8px;
+  border-radius: 40px; background: rgba(var(--ck-teal), 0.12); color: rgb(0, 102, 102);
+  font-size: 13px; line-height: 19.5px; letter-spacing: 0.3px;
+}
+.ck-save svg { flex-shrink: 0; }
+.ck-save strong { font-weight: 700; }
+.ck-plan-note, .ck-seat-note { max-width: 380px; }
 .ck-plan-note { font-size: 13px; line-height: 19.5px; letter-spacing: 0.4px; }
 .ck-seat-note { font-size: 13px; line-height: 19.5px; letter-spacing: 0.4px; color: rgb(var(--ck-ink)); font-weight: 600; }
 
 .ck-qty-cell { grid-column: 2 / 5; }
 .ck-total-cell { display: flex; align-items: flex-start; justify-content: flex-end; text-align: right; }
-.ck-total-cell--wide { display: none; }
+.ck-total-cell--wide, .ck-total-cell--narrow { display: none; }
 .ck-price { display: block; color: rgb(var(--ck-ink)); font-size: 16px; line-height: 28.8px; letter-spacing: 1px; }
 
 /* Cantidad */
@@ -160,6 +182,8 @@
   .ck-media { grid-row: auto; }
   .ck-cart .ck-img { width: 100%; max-width: 100%; }
   .ck-row > .ck-details { grid-column: auto; padding-left: 40px; }
+  .ck-price--inline { display: none; }
+  .ck-name-row { max-width: 320px; }
   .ck-row > .ck-qty-cell { grid-column: auto; padding-left: 50px; }
   .ck-qty-wrap { flex-wrap: nowrap; min-height: 56px; }
   .ck-remove { min-width: 35px; min-height: 35px; }
@@ -172,7 +196,14 @@
 /* Pie: totales y botones */
 .ck-footer { padding: 15px 0 50px; }
 .ck-blocks { width: 100%; }
+.ck-summary { margin: 0 0 18px; padding: 0 0 14px; border-bottom: 1px solid rgba(var(--ck-ink), 0.08); }
+.ck-summary > div { display: flex; justify-content: space-between; gap: 16px; font-size: 14px; line-height: 26px; letter-spacing: 0.4px; }
+.ck-summary dt, .ck-summary dd { margin: 0; }
+.ck-summary dd { color: rgb(var(--ck-ink)); font-variant-numeric: tabular-nums; }
+.ck-summary-save dt, .ck-summary-save dd { color: rgb(0, 102, 102); }
+.ck-summary-save dd { font-weight: 600; }
 .ck-totals { display: flex; justify-content: center; align-items: flex-end; }
+.ck-summary + .ck-totals { justify-content: space-between; }
 .ck-totals > * { margin: 0; line-height: 1; }
 .ck-totals-label { margin-top: 5px; color: rgb(var(--ck-ink)); font-size: 16px; font-weight: 700; letter-spacing: 0.6px; }
 .ck-totals-value { margin-left: 20px; font-size: 18px; letter-spacing: 0.6px; }
@@ -230,3 +261,7 @@
   .ck-empty { padding: 70px 0 46px; }
   .ck-empty-title { margin: 0 0 30px; }
 }
+
+/* El WhatsApp flotante se aparta mientras taparía un botón de pago (CartCtaGuard). */
+html:has(.ck-footer) .whatsapp-widget { transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s; }
+html[data-ck-wa-yield] .whatsapp-widget { opacity: 0; visibility: hidden; transform: translateY(16px); pointer-events: none; }
