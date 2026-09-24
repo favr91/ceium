@@ -1,6 +1,6 @@
 // Utilidades del e2e de compra: datos de prueba vía servicios de dominio (scripts/e2e-fixture.ts), lectura de
 // la BD de la app bajo prueba (solo lectura, para verificar), y control/inspección de los mocks de Moodle y PayPal.
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { expect, type APIRequestContext } from "@playwright/test";
@@ -13,10 +13,16 @@ const DB_FILE = e2eEnv.DATABASE_URL.replace(/^file:/, "");
 
 // ───────────── datos de prueba (mismos servicios que la tienda / el panel) ─────────────
 
+/** Entorno del proceso de datos de prueba: la BD, los mocks y el correo de la app bajo prueba (no los de .env). */
+function fixtureEnv(): NodeJS.ProcessEnv {
+  const keys = ["DATABASE_URL", "APP_URL", "MAIL_DIR", "PRIVATE_FILES_DIR", "CERTIFICATES_DIR", "MOODLE_URL", "MOODLE_TOKEN", "MOODLE_LOGIN_URL", "PAYPAL_BASE_URL", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID"] as const;
+  return { ...process.env, ...Object.fromEntries(keys.map((k) => [k, e2eEnv[k]])), NODE_ENV: "production" };
+}
+
 export function fixture<T = Record<string, unknown>>(cmd: string, input: Record<string, unknown>): T {
   const out = execFileSync("npx", ["tsx", "scripts/e2e-fixture.ts", cmd, JSON.stringify(input)], {
     cwd: APP_DIR,
-    env: { ...process.env, DATABASE_URL: e2eEnv.DATABASE_URL, APP_URL: e2eEnv.APP_URL, MAIL_DIR: e2eEnv.MAIL_DIR, NODE_ENV: "production" },
+    env: fixtureEnv(),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 60_000,
@@ -24,6 +30,22 @@ export function fixture<T = Record<string, unknown>>(cmd: string, input: Record<
   const line = out.split("\n").find((l) => l.startsWith("@@JSON "));
   if (!line) throw new Error(`e2e-fixture ${cmd} sin resultado:\n${out}`);
   return JSON.parse(line.slice(7)) as T;
+}
+
+/** Igual que `fixture`, pero asíncrono: varios procesos a la vez (compradores concurrentes). */
+export function fixtureAsync<T = Record<string, unknown>>(cmd: string, input: Record<string, unknown>): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    execFile(
+      "npx",
+      ["tsx", "scripts/e2e-fixture.ts", cmd, JSON.stringify(input)],
+      { cwd: APP_DIR, env: fixtureEnv(), encoding: "utf8", timeout: 90_000 },
+      (err, stdout, stderr) => {
+        const line = String(stdout).split("\n").find((l) => l.startsWith("@@JSON "));
+        if (!err && line) return resolve({ ok: true, value: JSON.parse(line.slice(7)) as T });
+        resolve({ ok: false, error: `${stderr}\n${stdout}` });
+      },
+    );
+  });
 }
 
 export interface DiplomaCohort {

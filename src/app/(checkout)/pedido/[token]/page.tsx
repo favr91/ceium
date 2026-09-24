@@ -2,7 +2,7 @@
 // ceium.net, con lo que CEIUM necesita: estado del pago, acceso al aula virtual (Moodle), cupo de la cohorte,
 // cuotas y cómo pagar lo que falta. Mismo layout que el checkout (formulario a la izquierda, resumen gris a la
 // derecha; en móvil, resumen desplegable arriba). Destino de:
-//   - return/cancel de PayPal: ?paypal=completado|pendiente|fallido|cancelado|error
+//   - return/cancel de PayPal: ?paypal=completado|pendiente|fallido|no-cobrado|no-cobrado-verificacion|cancelado|error
 //   - errores al iniciar un pago: ?pago=error&motivo=…   · pago manual registrado: ?pago=registrado
 //   - enlace «estado de tu pedido» de los correos
 //   - enlace de pago manual de una cuota: ?cuota=<installmentId>#pagar  · método preseleccionado: ?metodo=PAGO_MOVIL
@@ -52,6 +52,11 @@ const PAID_STATES = ["PAID", "PARTIALLY_PAID", "ENROLLED"];
 const PAYPAL_BANNER: Record<string, { tone: "ok" | "info" | "error"; text: string }> = {
   completado: { tone: "ok", text: "¡Pago recibido! Te enviamos la confirmación y el acceso a la plataforma por correo." },
   fallido: { tone: "error", text: "PayPal no aprobó el pago y no se te cobró nada. Puedes intentarlo de nuevo o elegir otro método." },
+  "no-cobrado-verificacion": {
+    tone: "info",
+    text: "Aprobaste el pago en PayPal, pero no lo cobramos: este pedido ya tiene un pago en verificación (tu comprobante). No se te cobró nada por PayPal. Te avisaremos por correo en cuanto lo verifiquemos.",
+  },
+  "no-cobrado": { tone: "info", text: "Aprobaste el pago en PayPal, pero no lo cobramos porque este pedido ya no puede recibir ese pago. No se te cobró nada por PayPal; si tienes dudas, escríbenos." },
   cancelado: { tone: "info", text: "No se completó el pago en PayPal y no se te cobró nada. Tu pedido sigue abierto: puedes pagarlo cuando quieras." },
   error: { tone: "error", text: "No pudimos confirmar el pago con PayPal. Si se te cobró, no pagues de nuevo: lo confirmaremos automáticamente o escríbenos y lo revisamos." },
 };

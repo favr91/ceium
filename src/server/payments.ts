@@ -713,15 +713,31 @@ export async function onPaypalCaptureDenied(d: Deps, input: { captureId?: string
 }
 
 export type ReturnCaptureStatus = "COMPLETED" | "PENDING" | "FAILED";
+/**
+ * Por qué un retorno FAILED no es un rechazo de PayPal: el comprador SÍ aprobó, pero la app decidió no capturar
+ * (no se le cobró). MANUAL_AWAITING = el pedido ya tiene un pago manual en verificación; NOT_CAPTURED = el pago
+ * ya había quedado sin capturar (pedido cerrado, cohorte llena, o un retorno/webhook repetido tras bloquearlo).
+ */
+export type NotCapturedReason = "MANUAL_AWAITING" | "NOT_CAPTURED";
 
 /** Return URL de PayPal (?token=<paypalOrderId>): captura la orden. Si el webhook llegó antes, no duplica nada. */
-export async function capturePaypalReturn(d: Deps, paypalOrderId: string, source: "return" | "reconcile" | "webhook" = "return"): Promise<{ status: ReturnCaptureStatus; orderId: string; orderToken: string }> {
+export async function capturePaypalReturn(
+  d: Deps,
+  paypalOrderId: string,
+  source: "return" | "reconcile" | "webhook" = "return",
+): Promise<{ status: ReturnCaptureStatus; orderId: string; orderToken: string; notCaptured?: NotCapturedReason }> {
   const p = await d.db.payment.findUnique({ where: { paypalOrderId }, include: { order: { select: { token: true } } } });
   if (!p) throw new DomainError("NOT_FOUND", "No encontramos ese pago de PayPal.");
-  const done = (status: ReturnCaptureStatus) => ({ status, orderId: p.orderId, orderToken: p.order.token });
+  const done = (status: ReturnCaptureStatus, notCaptured?: NotCapturedReason) => ({ status, orderId: p.orderId, orderToken: p.order.token, ...(notCaptured ? { notCaptured } : {}) });
   if (p.status === "COMPLETED" || p.status === "REFUNDED" || p.status === "PARTIALLY_REFUNDED") return done("COMPLETED");
+  // Ya se decidió NO capturar esta orden aprobada: es definitivo. Un retorno recargado o un webhook
+  // CHECKOUT.ORDER.APPROVED reintentado DESPUÉS de que el admin aprobara el pago móvil no debe cobrarla ahora.
+  if (p.providerStatus === "NOT_CAPTURED") {
+    const awaiting = await d.db.payment.count({ where: { orderId: p.orderId, status: "AWAITING_VERIFICATION" } });
+    return done("FAILED", awaiting > 0 ? "MANUAL_AWAITING" : "NOT_CAPTURED");
+  }
   if (p.status !== "PENDING" || p.providerStatus !== "CAPTURE_PENDING") {
-    if (await skipCaptureWhileManualAwaiting(d, p.id)) return done("FAILED");
+    if (await skipCaptureWhileManualAwaiting(d, p.id)) return done("FAILED", "MANUAL_AWAITING");
   }
 
   let res;

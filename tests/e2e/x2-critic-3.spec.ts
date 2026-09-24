@@ -153,6 +153,7 @@ test("PayPal aprobado en otra pestaña mientras el pago móvil del mismo pedido 
   // Pestaña 1: el médico abre PayPal (sin aprobar aún).
   const ctxPP = await browser.newContext({ locale: "es-VE" });
   let pp: string;
+  let returnUrl = "";
   const ref = newRef("0134");
   try {
     pp = await startPaypal(await ctxPP.newPage(), o.token);
@@ -160,8 +161,21 @@ test("PayPal aprobado en otra pestaña mientras el pago móvil del mismo pedido 
     const r = await reportManual(page, o.token, { reference: ref, amountBs: bs(o.dueNowCents) });
     expect(r.get("pago"), r.get("motivo") ?? "").toBe("registrado");
     expect(order(o.orderId).status).toBe("AWAITING_VERIFICATION");
-    // Vuelve a la pestaña 1 y aprueba PayPal: la app no captura.
-    expect(await approveAndReturn(request, pp)).toBe("fallido");
+    // Vuelve a la pestaña 1 y aprueba PayPal (navegación real: «Confirmando tu pago» → página del pedido): la app
+    // no captura, y el aviso dice por qué — NO «PayPal no aprobó el pago», porque el médico sí lo aprobó.
+    const tab1 = ctxPP.pages()[0];
+    const a = await (await request.post(`${PAYPAL}/__mock/approve/${pp}?json=1`)).json();
+    returnUrl = a.redirect;
+    await tab1.goto(a.redirect);
+    await tab1.waitForURL((u) => u.pathname === `/pedido/${o.token}` && u.searchParams.has("paypal"), { timeout: 60_000 });
+    expect(new URL(tab1.url()).searchParams.get("paypal")).toBe("no-cobrado-verificacion");
+    const banner = tab1.getByTestId("order-banner");
+    await expect(banner).toContainText("no lo cobramos");
+    await expect(banner).toContainText("pago en verificación");
+    await expect(banner).not.toContainText("no aprobó");
+    // Recargar el retorno tampoco cobra.
+    const again = await request.get(a.redirect, { maxRedirects: 0 });
+    expect(new URL(again.headers()["location"] ?? "/", e2eEnv.APP_URL).searchParams.get("paypal")).toBe("no-cobrado-verificacion");
   } finally {
     await ctxPP.close();
   }
@@ -192,6 +206,15 @@ test("PayPal aprobado en otra pestaña mientras el pago móvil del mismo pedido 
   expect(order(o.orderId)).toMatchObject({ amountPaidCents: o.totalCents, balanceCents: 0 });
   expect(cohort(C.cohortId)).toEqual({ capacity: 3, seatsHeld: 0, seatsConfirmed: 1 });
   expectCohortConsistent(C.cohortId);
+  // Ya inscrito: el médico recarga la pestaña de retorno de PayPal (o PayPal reintenta el webhook APPROVED).
+  // Antes esto capturaba la orden aprobada y le cobraba por segunda vez. Ahora la decisión de no cobrar es definitiva.
+  const late = await request.get(returnUrl, { maxRedirects: 0 });
+  expect(new URL(late.headers()["location"] ?? "/", e2eEnv.APP_URL).searchParams.get("paypal")).toBe("no-cobrado");
+  await runCron(request, "paypal");
+  const ppAfter = (await (await request.get(`${PAYPAL}/__mock/state`)).json()) as { orders: { id: string; status: string }[] };
+  expect(ppAfter.orders.find((x) => x.id === pp)?.status).toBe("APPROVED");
+  expect(paymentRows(o.orderId).filter((p) => p.status === "COMPLETED").map((p) => p.method)).toEqual(["PAGO_MOVIL"]);
+  expect(order(o.orderId)).toMatchObject({ amountPaidCents: o.totalCents, balanceCents: 0 });
 });
 
 test("PayPal cobrado por su lado (captura + webhook) mientras el pago móvil está en verificación → aviso de pago doble y el comprobante sigue en la cola «Por verificar»; rechazarlo no toca el cupo", async ({ browser, page, request }) => {

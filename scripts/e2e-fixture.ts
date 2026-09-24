@@ -101,6 +101,44 @@ const commands: Record<string, (input: Input) => Promise<unknown>> = {
     };
   },
 
+  /**
+   * Reloj simulado: hace «pasar» `minutes` minutos para UN pedido corriendo hacia atrás sus marcas de tiempo
+   * (placedAt, plazo del pedido y de la reserva, creación de sus pagos y el plazo guardado en su evento
+   * CREATED). Es lo único que no pasa por servicios: la app no tiene forma de adelantar el reloj.
+   */
+  async "age-order"(input) {
+    const db = services().deps.db;
+    const id = String(input.orderId);
+    const ms = Number(input.minutes) * 60_000;
+    const back = (x: Date | null) => (x ? new Date(x.getTime() - ms) : x);
+    const o = await db.order.findUniqueOrThrow({ where: { id }, include: { reservations: true, payments: true, events: { where: { type: "CREATED" } } } });
+    await db.order.update({ where: { id }, data: { placedAt: back(o.placedAt)!, expiresAt: back(o.expiresAt) } });
+    for (const r of o.reservations) await db.seatReservation.update({ where: { id: r.id }, data: { expiresAt: back(r.expiresAt)!, createdAt: back(r.createdAt)! } });
+    for (const p of o.payments) await db.payment.update({ where: { id: p.id }, data: { createdAt: back(p.createdAt)! } });
+    for (const e of o.events) {
+      const data = (e.data ?? {}) as Record<string, unknown>;
+      const exp = Date.parse(String(data.expiresAt ?? ""));
+      await db.orderEvent.update({ where: { id: e.id }, data: { createdAt: back(e.createdAt)!, ...(Number.isFinite(exp) ? { data: { ...data, expiresAt: new Date(exp - ms).toISOString() } } : {}) } });
+    }
+    const after = await db.order.findUniqueOrThrow({ where: { id }, select: { placedAt: true, expiresAt: true } });
+    return { orderId: id, placedAt: after.placedAt, expiresAt: after.expiresAt };
+  },
+
+  /** Reembolso desde el panel (ADMIN), con las opciones del formulario. */
+  async refund(input) {
+    const s = services();
+    const r = await s.payments.refundPayment(await adminSession(), {
+      paymentId: String(input.paymentId),
+      amountCents: input.amountCents == null ? undefined : Number(input.amountCents),
+      reason: String(input.reason ?? "e2e"),
+      unenroll: Boolean(input.unenroll ?? true),
+      releaseSeat: Boolean(input.releaseSeat ?? true),
+      keepCertificate: false,
+      idempotencyKey: String(input.idempotencyKey ?? `e2e-${Date.now()}`),
+    });
+    return { refundId: r.refund.id, status: r.refund.status, fullyRefunded: r.fullyRefunded };
+  },
+
   /** Cambia una configuración como lo hace el panel (auditado) y devuelve el valor anterior. */
   async setting(input) {
     const s = services();

@@ -3,7 +3,7 @@
 //      «Confirmando tu pago» (/pedido/[token]/paypal/procesando), que vuelve aquí con &confirmar=1. Así el médico
 //      ve nuestra pantalla de proceso mientras se captura el cobro, en vez de la página de PayPal congelada.
 //   2. Con &confirmar=1 (o cualquier cliente que no sea una navegación: reintentos, pruebas) → captura el pago
-//      (idempotente con el webhook) y 303 a la página del pedido con ?paypal=completado|pendiente|fallido|error.
+//      (idempotente con el webhook) y 303 a la página del pedido con ?paypal=completado|pendiente|fallido|no-cobrado|no-cobrado-verificacion|error.
 // Si el pago quedó cobrado (o en revisión de PayPal) y este navegador tenía ESE pedido en curso en el checkout,
 // se vacía el carrito: la compra terminó (como Shopify tras «Gracias por tu compra»).
 import { CART_COOKIE } from "@/server/cart";
@@ -49,7 +49,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
     const order = await s.orders.getOrderByToken(token);
     if (!order.payments.some((p) => p.paypalOrderId === paypalOrderId)) throw Object.assign(new Error("pago ajeno"), { code: "NOT_FOUND" });
     const r = await s.payments.capturePaypalReturn(paypalOrderId);
-    back.searchParams.set("paypal", { COMPLETED: "completado", PENDING: "pendiente", FAILED: "fallido" }[r.status]);
+    // FAILED con notCaptured: el médico SÍ aprobó en PayPal, pero la app decidió no cobrar (p.ej. su pago móvil ya
+    // está en verificación). No es «PayPal no aprobó»: la página lo explica con su propio aviso.
+    const shown = r.notCaptured === "MANUAL_AWAITING" ? "no-cobrado-verificacion" : r.notCaptured ? "no-cobrado" : { COMPLETED: "completado", PENDING: "pendiente", FAILED: "fallido" }[r.status];
+    back.searchParams.set("paypal", shown);
     if (r.status !== "FAILED" && decodePendingCookie(readCookie(req, CHECKOUT_COOKIE))?.token === token) clear.push(CART_COOKIE, CHECKOUT_COOKIE);
   } catch (e) {
     if (!isDomainError(e)) console.error("[paypal/retorno]", e);
