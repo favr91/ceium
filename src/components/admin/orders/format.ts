@@ -173,6 +173,7 @@ const EVENT_TITLE: Record<string, string> = {
   ENROLLMENT_FAILED: "Matrícula fallida",
   UNENROLLMENT: "Desmatrícula en Moodle",
   UNENROLLMENT_FAILED: "Desmatrícula fallida (se reintenta)",
+  UNENROLLMENT_RECHECK: "Desmatrícula por repetir",
   NOTE: "Comentario",
   EMAIL_SENT: "Correo enviado",
   EMAIL_FAILED: "Correo fallido",

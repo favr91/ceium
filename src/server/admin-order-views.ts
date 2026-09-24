@@ -6,6 +6,7 @@ import type { Deps } from "./deps";
 import type { OrderStatus, PaymentMethod, Prisma } from "./db";
 import { requireAdmin, type SessionUser } from "./auth";
 import { DomainError } from "./errors";
+import { canonicalReference, sameBankMovement } from "./payments";
 
 export const ORDER_STATUSES: readonly OrderStatus[] = ["PENDING_PAYMENT", "AWAITING_VERIFICATION", "PARTIALLY_PAID", "PAID", "ENROLLED", "REJECTED", "CANCELLED", "EXPIRED", "REFUNDED"];
 export const PAYMENT_METHODS: readonly PaymentMethod[] = ["PAYPAL", "PAGO_MOVIL", "TRANSFERENCIA", "ZELLE", "EFECTIVO"];
@@ -305,9 +306,17 @@ export async function getOrderDetail(d: Pick<Deps, "db" | "now">, user: SessionU
   ]);
 
   // Duplicados: la misma referencia en otro pedido (ayuda al verificar un pago manual).
+  // Misma referencia con otro relleno de ceros, formato o solo los últimos dígitos (sameBankMovement): se buscan
+  // candidatas por sus últimos 4 caracteres y se comparan en forma canónica.
   const refs = o.payments.filter((p) => p.reference && p.status === "AWAITING_VERIFICATION").map((p) => p.reference!);
-  const dupRefs = refs.length
-    ? await d.db.payment.findMany({ where: { reference: { in: refs }, orderId: { not: o.id } }, select: { reference: true, status: true, order: { select: { id: true, number: true } } } })
+  const tails = [...new Set(refs.map((r) => canonicalReference(r).slice(-4)).filter(Boolean))];
+  const dupRefs = tails.length
+    ? (
+        await d.db.payment.findMany({
+          where: { OR: tails.map((t) => ({ reference: { contains: t } })), orderId: { not: o.id } },
+          select: { reference: true, status: true, order: { select: { id: true, number: true } } },
+        })
+      ).filter((x) => refs.some((r) => sameBankMovement(r, x.reference)))
     : [];
 
   const now = d.now();
@@ -326,7 +335,7 @@ export async function getOrderDetail(d: Pick<Deps, "db" | "now">, user: SessionU
       proofKind: proofKind(p.proofFile),
       proofFile: undefined,
       refundableCents: p.status === "COMPLETED" || p.status === "PARTIALLY_REFUNDED" ? p.amountUsdCents - p.refundedCents : 0,
-      duplicates: dupRefs.filter((x) => x.reference === p.reference).map((x) => ({ orderId: x.order.id, number: x.order.number, status: x.status })),
+      duplicates: dupRefs.filter((x) => sameBankMovement(p.reference, x.reference)).map((x) => ({ orderId: x.order.id, number: x.order.number, status: x.status })),
     })),
     cohortOptions: reassign.map((c) => ({
       id: c.id,

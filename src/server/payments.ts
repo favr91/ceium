@@ -223,8 +223,31 @@ const MANUAL_METHODS: PaymentMethod[] = ["PAGO_MOVIL", "TRANSFERENCIA", "ZELLE",
 
 /** Clave única de una referencia de pago manual (sin espacios ni guiones, en mayúsculas). */
 export function manualReferenceKey(method: PaymentMethod, reference: string | null): string | null {
-  const norm = reference?.replace(/[\s-]+/g, "").toUpperCase() ?? "";
+  const norm = canonicalReference(reference);
   return norm ? `${method}:${norm}` : null;
+}
+
+/**
+ * Forma canónica de una referencia bancaria: sin espacios, puntos ni guiones, en mayúsculas y, si es numérica,
+ * sin ceros a la izquierda («000123456» y «123456» son el mismo movimiento: cada banco la muestra con otro
+ * relleno). Sin esto, la misma referencia con ceros delante pasaba el índice único y el panel la daba por nueva.
+ */
+export function canonicalReference(reference: string | null | undefined): string {
+  const norm = reference?.replace(/[\s.-]+/g, "").toUpperCase() ?? "";
+  return /^\d+$/.test(norm) ? norm.replace(/^0+(?=\d)/, "") : norm;
+}
+
+/**
+ * ¿Dos referencias pueden ser el mismo movimiento bancario? Iguales en forma canónica, o una termina en la otra
+ * con al menos 6 caracteres (hay bancos que muestran solo los últimos dígitos). Solo para AVISAR en el panel.
+ */
+export function sameBankMovement(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = canonicalReference(a);
+  const y = canonicalReference(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.length >= 6 && long.endsWith(short);
 }
 
 /**
@@ -1127,6 +1150,14 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date): Promise<
     }
   } else if (releaseSeat === true) {
     await releaseOrderReservations(tx, order.id, "REFUNDED", now, input.actor);
+  }
+  // Retiro con retención: un reembolso PARCIAL con el que el admin saca al médico del programa (libera su cupo o
+  // lo desmatricula de todos los cursos del pedido) cierra el pedido (REFUNDED, saldo 0). Si no, seguiría
+  // «Inscrito» sin cupo ni acceso, con saldo pendiente, y el job de cuotas le pediría pagar el resto.
+  if (!fullyRefunded && (releaseSeat === true || input.options.unenroll === true) && ["PAID", "PARTIALLY_PAID", "ENROLLED"].includes(order.status)) {
+    const { amountPaidCents: retained } = await tx.order.findUniqueOrThrow({ where: { id: order.id }, select: { amountPaidCents: true } });
+    const note = `${refund.reason ?? "Reembolso parcial"} (retiro del programa; se retuvieron ${(retained / 100).toFixed(2)} USD)`;
+    await transitionOrder(tx, order.id, "REFUNDED", { actor: input.actor, note, patch: { cancelledAt: now } });
   }
 
   // Mes a mes: una cuota que vuelve a quedar impaga con su curso ya matriculado → decisión del admin.

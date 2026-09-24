@@ -279,9 +279,13 @@ describe("referencias de pago manual únicas (índice, no solo lectura previa)",
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect((results.find((r) => r.status === "rejected") as PromiseRejectedResult).reason).toMatchObject({ code: "VALIDATION" });
     const ok = (results.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<{ id: string; referenceKey: string | null }>).value;
-    expect(ok.referenceKey).toBe("PAGO_MOVIL:00123456");
+    // Forma canónica: sin ceros a la izquierda (cada banco rellena distinto).
+    expect(ok.referenceKey).toBe("PAGO_MOVIL:123456");
+    // La misma referencia sin los ceros (o con más) en otro pedido tampoco pasa.
+    await expect(recordManualPayment(ctx.d, { orderId: o2.id, method: "PAGO_MOVIL", reference: "123456", amountCents: 1_800_000, currency: "VES" })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(recordManualPayment(ctx.d, { orderId: o2.id, method: "PAGO_MOVIL", reference: "0000123456", amountCents: 1_800_000, currency: "VES" })).rejects.toMatchObject({ code: "VALIDATION" });
     // La BD misma lo impide aunque se salte el servicio.
-    await expect(ctx.db.payment.create({ data: { orderId: o2.id, method: "PAGO_MOVIL", status: "AWAITING_VERIFICATION", amountCents: 1, amountUsdCents: 1, referenceKey: "PAGO_MOVIL:00123456" } })).rejects.toThrow();
+    await expect(ctx.db.payment.create({ data: { orderId: o2.id, method: "PAGO_MOVIL", status: "AWAITING_VERIFICATION", amountCents: 1, amountUsdCents: 1, referenceKey: "PAGO_MOVIL:123456" } })).rejects.toThrow();
     // Otro método con el mismo número no choca.
     await recordManualPayment(ctx.d, { orderId: o2.id, method: "TRANSFERENCIA", reference: "00123456", amountCents: 1_800_000, currency: "VES" });
     await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: ok.id, decision: "reject", note: "No aparece en el banco" });
