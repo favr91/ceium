@@ -1,0 +1,97 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Cronograma en vivo de una cohorte. Mismo lenguaje visual que la home (bloques grises de 32 px de radio,
+   tarjetas blancas con borde #eee y radio 20, botón turquesa redondo, tipografía Inter).
+   ───────────────────────────────────────────────────────────────────────────── */
+.cron {
+  --cron-grey: #f1f1f1;
+  --cron-border: #eeeeee;
+  --cron-muted: #667880;
+  padding: 24px 0 64px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.cron p, .cron h1, .cron h2, .cron h3, .cron dl, .cron dd { margin: 0; }
+
+.cron-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: var(--cron-muted); }
+.store-root .cron-crumbs a { color: var(--cron-muted); text-decoration: none; }
+.store-root .cron-crumbs a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+.cron-hero { margin-top: 20px; padding: 28px 16px; border-radius: 24px; background: var(--cron-grey); }
+.cron-hero__eyebrow {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: #ececf9;
+  color: #6363ce;
+  font-size: 10px;
+  line-height: 15px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.store-root .cron-hero__title { margin-top: 14px; font-size: 29px; line-height: 33px; font-weight: 700; }
+.cron-hero__product { margin-top: 8px !important; font-size: 17px; line-height: 23px; font-weight: 600; color: var(--ink); }
+.cron-hero__lead { margin-top: 12px !important; max-width: 620px; font-size: 15px; line-height: 21px; color: rgba(0, 30, 43, 0.75); }
+.cron-note { margin-top: 16px !important; display: inline-block; padding: 8px 12px; border-radius: 10px; background: #fff7e0; color: #7a5a00; font-size: 13px; line-height: 18px; }
+
+.cron-block { margin-top: 40px; }
+.store-root .cron-h2 { font-size: 23px; line-height: 29px; font-weight: 700; }
+.store-root .cron-h3 { margin: 24px 0 12px; font-size: 17px; line-height: 22px; font-weight: 700; }
+
+/* sedes */
+.cron-sedes { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 20px !important; }
+.cron-sede { display: flex; flex-direction: column; padding: 20px; border: 1px solid var(--cron-border); border-radius: 20px; background: #fff; }
+.cron-sede__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.store-root .cron-sede__name { font-size: 19px; line-height: 22px; font-weight: 700; }
+.cron-sede__address { margin-top: 8px !important; font-size: 13px; line-height: 19px; color: var(--cron-muted); }
+.cron-chip { flex: none; padding: 4px 10px; border-radius: 100px; font-size: 12px; line-height: 16px; font-weight: 600; white-space: nowrap; background: #eef1f2; color: #44545b; }
+.cron-chip--open { background: #e2f6f6; color: #067a7a; }
+.cron-chip--sold_out { background: #fdecec; color: #b3261e; }
+.cron-chip--in_progress { background: #ececf9; color: #4f4fb8; }
+.cron-sede__facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 12px; margin-top: 16px !important; padding: 14px 0; border-top: 1px solid var(--cron-border); border-bottom: 1px solid var(--cron-border); }
+.cron-sede__facts dt { font-size: 11px; line-height: 14px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cron-muted); }
+.cron-sede__facts dd { margin-top: 4px; font-size: 15px; line-height: 19px; font-weight: 600; color: var(--ink); }
+.cron-seats { margin-top: 16px; }
+.cron-seats__label { font-size: 14px; line-height: 18px; color: var(--ink); }
+.cron-seats__label strong { font-size: 19px; }
+.cron-seats__label span { color: var(--cron-muted); }
+.cron-seats__bar { margin-top: 8px; height: 6px; overflow: hidden; border-radius: 6px; background: #e6eaeb; }
+.cron-seats__bar span { display: block; height: 100%; border-radius: inherit; background: var(--teal); }
+.cron-sede[data-phase="SOLD_OUT"] .cron-seats__bar span { background: #d9534f; }
+.store-root .cron-sede__btn { align-self: stretch; margin-top: 20px; padding: 14px 24px; font-weight: 600; }
+.store-root .cron-sede__pdf { margin-top: 14px; align-self: flex-start; color: #4a90e2; font-size: 14px; line-height: 18px; text-decoration: none; }
+.store-root .cron-sede__pdf:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* calendario de clases */
+.cron-sessions { margin-top: 20px !important; border: 1px solid var(--cron-border); border-radius: 20px; background: #fff; overflow: hidden; counter-reset: s; }
+.cron-session { display: grid; grid-template-columns: 32px 1fr; gap: 4px 12px; align-items: start; padding: 14px 16px; }
+.cron-session + .cron-session { border-top: 1px solid var(--cron-border); }
+.cron-session__n { grid-row: span 2; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: #e2f6f6; color: #067a7a; font-size: 14px; font-weight: 700; }
+.cron-session__date { display: flex; flex-wrap: wrap; gap: 0 6px; font-size: 13px; line-height: 18px; color: var(--cron-muted); }
+.cron-session__wd { font-weight: 600; color: var(--ink); }
+.cron-session__title { font-size: 15px; line-height: 20px; font-weight: 600; color: var(--ink); }
+.store-root .cron-session__title a { color: inherit; text-decoration: none; }
+.store-root .cron-session__title a:hover { color: var(--teal); text-decoration: underline; text-underline-offset: 3px; }
+.cron-session__time { display: block; font-size: 13px; font-weight: 400; color: var(--cron-muted); }
+.cron-empty { margin-top: 16px !important; color: var(--cron-muted); }
+
+.cron-others { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 40px; }
+.store-root .cron-others__link { display: inline-flex; align-items: center; gap: 10px; color: var(--teal); font-size: 17px; line-height: 21px; font-weight: 600; text-decoration: none; }
+.store-root .cron-others__link:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+@media screen and (min-width: 750px) {
+  .cron { padding: 32px 0 96px; }
+  .cron-hero { margin-top: 24px; padding: 56px 64px; border-radius: 32px; }
+  .store-root .cron-hero__title { margin-top: 16px; font-size: 46px; line-height: 53px; }
+  .cron-hero__product { margin-top: 10px !important; font-size: 19px; line-height: 25px; }
+  .cron-hero__lead { font-size: 16px; line-height: 23px; }
+  .cron-block { margin-top: 56px; }
+  .store-root .cron-h2 { font-size: 33px; line-height: 38px; }
+  .cron-sedes { grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 28px !important; }
+  .cron-sedes:has(> :only-child) { grid-template-columns: minmax(0, 420px); }
+  .cron-sessions { margin-top: 28px !important; }
+  .cron-session { grid-template-columns: 40px 190px 1fr; gap: 16px; align-items: center; padding: 16px 24px; }
+  .cron-session__n { grid-row: auto; width: 36px; height: 36px; }
+  .cron-session__date { font-size: 14px; }
+  .cron-session__title { font-size: 16px; }
+}

@@ -1,12 +1,12 @@
 // Home de la tienda: réplica de la home de ceium.net (hero con fotos rotativas, aliados, diplomados con sus
 // cronogramas, carruseles por colección, confianza, galería y llamada final). El catálogo sale de la BD
-// (colecciones, productos, notas de inscripción, cronogramas de cohortes); lo editorial, de `store.home`.
+// (colecciones, productos, notas de inscripción, cohortes → /cronograma/…); lo editorial, de `store.home`.
 import Link from "next/link";
 import { connection } from "next/server";
 import { Carousel } from "@/components/store/home/Carousel";
 import { getHomeData, sizedImage, type HomeProduct, type HomeRow } from "@/components/store/home/home-data";
 import { HeroSlider } from "@/components/store/home/HeroSlider";
-import { IconArrow } from "@/components/store/icons";
+import { TestimonialVideo } from "@/components/store/home/TestimonialVideo";
 import "./home.css";
 
 function IconCalendar() {
@@ -21,6 +21,15 @@ function IconEdit() {
   return (
     <svg aria-hidden="true" focusable="false" className="home-icon" viewBox="0 0 512 512" width="13" height="13">
       <path fill="currentColor" d="M471.6 21.7c-21.9-21.9-57.3-21.9-79.2 0l-30.1 30 97.9 97.9 30.1-30.1c21.9-21.9 21.9-57.3 0-79.2zM172.4 241.7c-6.1 6.1-10.8 13.6-13.5 21.9l-29.6 88.8c-2.9 8.6-.6 18.1 5.8 24.6s15.9 8.7 24.6 5.8l88.8-29.6c8.2-2.7 15.7-7.4 21.9-13.5l167.3-167.4-97.9-97.9zM96 64c-53 0-96 43-96 96v256c0 53 43 96 96 96h256c53 0 96-43 96-96v-96c0-17.7-14.3-32-32-32s-32 14.3-32 32v96c0 17.7-14.3 32-32 32H96c-17.7 0-32-14.3-32-32V160c0-17.7 14.3-32 32-32h96c17.7 0 32-14.3 32-32s-14.3-32-32-32z" />
+    </svg>
+  );
+}
+
+/** Flecha de los enlaces «Ver todos» / «Empieza ya» (icono arrow-right de PageFly, 14 × 16). */
+function IconArrowRight() {
+  return (
+    <svg aria-hidden="true" focusable="false" className="home-icon home-icon--arrow" viewBox="0 0 448 512" width="14" height="16">
+      <path fill="currentColor" d="M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z" />
     </svg>
   );
 }
@@ -58,11 +67,11 @@ function CollectionRow({ row, index }: { row: HomeRow; index: number }) {
           {row.linkLabel ? (
             <Link href={row.href} className="home-row__link">
               {row.linkLabel}
-              <IconArrow width={14} height={10} />
+              <IconArrowRight />
             </Link>
           ) : null}
         </div>
-        <Carousel label={row.title.replace(/^\P{L}+/u, "")} className="home-row__carousel">
+        <Carousel label={row.title.replace(/^\P{L}+/u, "")} className="home-row__carousel" equalize>
           {row.products.map((p) => (
             <ProductTile key={p.slug} product={p} width={row.layout === "wide" ? 540 : 480} />
           ))}
@@ -145,10 +154,10 @@ export default async function HomePage() {
                         <ul className="home-diploma__schedules list-unstyled">
                           {d.schedules.map((s) => (
                             <li key={s.url}>
-                              <a href={s.url} target="_blank" rel="noopener noreferrer">
+                              <Link href={s.url}>
                                 <IconCalendar />
                                 {s.label}
-                              </a>
+                              </Link>
                             </li>
                           ))}
                         </ul>
@@ -171,14 +180,23 @@ export default async function HomePage() {
       ))}
 
       <section className="home-trust" aria-labelledby="home-trust-title">
-        <div className="home-container">
-          <h2 id="home-trust-title" className="home-h2 home-trust__title">
-            {trust.title}
-          </h2>
-          <Link href={trust.cta.url} className="home-btn home-btn--lg home-btn--outline">
-            {trust.cta.label}
-            <IconArrow width={14} height={10} />
-          </Link>
+        <div className="home-container home-trust__grid">
+          <div className="home-trust__text">
+            <h2 id="home-trust-title" className="home-h2 home-trust__title">
+              {trust.title}
+            </h2>
+            <Link href={trust.cta.url} className="home-btn home-btn--lg home-btn--outline">
+              {trust.cta.label}
+              <IconArrowRight />
+            </Link>
+          </div>
+          {trust.videos.length ? (
+            <Carousel label="Testimonios en video" className="home-trust__carousel">
+              {trust.videos.map((v) => (
+                <TestimonialVideo key={v.id} id={v.id} title={v.title} />
+              ))}
+            </Carousel>
+          ) : null}
         </div>
       </section>
 

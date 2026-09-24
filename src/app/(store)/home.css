@@ -98,9 +98,9 @@
 
 /* ───── diplomados ───── */
 .home-diplomas { padding-bottom: 48px; background: #fff; }
-.home-diplomas__box { padding: 24px 16px 16px; border-radius: 24px; background: var(--home-grey); }
-.home-diplomas__text { margin-top: 17px !important; max-width: 620px; font-size: 15px; line-height: 21px; }
-.home-diplomas__grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 25px !important; align-items: start; }
+.home-diplomas__box { padding: 24px 16px 32px; border-radius: 24px; background: var(--home-grey); }
+.home-diplomas__text { margin-top: 16px !important; max-width: 620px; font-size: 15px; line-height: 21px; }
+.home-diplomas__grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 24px !important; align-items: start; }
 .home-diploma { display: flex; flex-direction: column; align-items: flex-start; padding: 16px; border: 1px solid var(--home-card-border); border-radius: 20px; background: #fff; }
 .home-diploma__media { display: block; width: 100%; aspect-ratio: 467 / 263; overflow: hidden; border-radius: 8px; background: #004e73; }
 .home-diploma__media img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s ease; }
@@ -129,8 +129,8 @@
 .store-root .home-diploma__btn { align-self: stretch; margin-top: 24px; padding: 15px 24px; font-weight: 600; }
 @media screen and (min-width: 750px) {
   .home-diplomas { padding-bottom: 96px; }
-  .home-diplomas__box { padding: 64px 64px 52px; border-radius: 32px; }
-  .home-diplomas__grid { grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 41px !important; }
+  .home-diplomas__box { padding: 64px; border-radius: 32px; }
+  .home-diplomas__grid { grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 40px !important; }
   .home-diploma { padding: 20px; }
   .home-diploma__badge { margin-top: 15px !important; }
   .store-root .home-diploma__title { margin-top: 16px; font-size: 23px; line-height: 29px; }
@@ -147,102 +147,141 @@
 .store-root .home-row__link { display: inline-flex; align-items: center; gap: 12px; color: var(--teal); font-size: 19px; line-height: 23px; font-weight: 600; text-decoration: none; }
 .store-root .home-row__link:hover { text-decoration: underline; text-underline-offset: 4px; }
 .home-row__carousel { margin-top: 32px; }
+.home-row--wide .home-row__carousel { margin-top: 29px; }
 @media screen and (min-width: 750px) {
   .home-row { padding-top: 88px; }
   .home-row--first { padding-top: 96px; }
   .home-row__head { flex-direction: row; align-items: center; justify-content: space-between; gap: 32px; }
   .home-row__title { max-width: 700px; }
-  .home-row__carousel { margin-top: 40px; }
+  .home-row__carousel, .home-row--wide .home-row__carousel { margin-top: 40px; }
 }
 /* la última fila cierra el bloque gris */
-.home-row:has(+ .home-trust) { padding-bottom: 30px; }
+.home-row:has(+ .home-trust) { padding-bottom: 38px; }
 @media screen and (min-width: 750px) {
-  .home-row:has(+ .home-trust) { padding-bottom: 80px; }
+  .home-row:has(+ .home-trust) { padding-bottom: 88px; }
 }
 
-/* ───── carrusel ───── */
-.home-carousel { position: relative; margin-right: -10px; }
+/* ───── carrusel (slider PageFly: scroll nativo con snap, flechas nav-style-1) ───── */
+/* Área visible = contenedor + 5 px (móvil) / 8 px (escritorio) por lado, como el .pf-slider de ceium.net. */
+.home-carousel { position: relative; margin-inline: -5px; }
 .home-carousel__track {
   display: flex;
+  align-items: flex-start; /* cada tarjeta mide lo que su contenido, como en ceium.net */
   gap: 10px;
   overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior-x: contain;
   scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scroll-padding-inline: 5px;
   scrollbar-width: none;
-  padding-bottom: 8px !important;
+  padding: 0 5px 5px !important;
+  outline: none;
 }
 .home-carousel__track::-webkit-scrollbar { display: none; }
-.home-carousel__track > li { scroll-snap-align: start; }
+.home-carousel__track:focus-visible { outline: 2px solid rgba(var(--color-foreground), 0.5); outline-offset: 2px; border-radius: 20px; }
+.home-carousel__track > li { flex-shrink: 0; scroll-snap-align: start; scroll-snap-stop: always; }
 .home-carousel__btn {
   position: absolute;
-  top: calc(50% - 24px);
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  top: calc(50% - 22.5px); /* centrada sobre las tarjetas (la pista deja 5 px abajo; 8 en escritorio) */
+  z-index: 2;
+  display: block;
   width: 40px;
   height: 40px;
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.4);
   color: #fff;
   cursor: pointer;
-  transition: background-color var(--duration-default) ease;
+  transition: background-color 0.35s;
 }
-.home-carousel__btn:hover { background: rgba(0, 0, 0, 0.65); }
+.home-carousel__btn svg { display: block; }
+.home-carousel__btn:hover { background: #000; }
+.home-carousel__btn:focus-visible { outline: 2px solid #fff; outline-offset: -4px; box-shadow: 0 0 0 2px #000; }
 .home-carousel__btn[hidden] { display: none; }
-.home-carousel__btn--prev { left: 10px; }
+.home-carousel__btn--prev { left: 20px; transform: rotate(180deg); }
 .home-carousel__btn--next { right: 20px; }
 @media screen and (min-width: 750px) {
-  .home-carousel { margin-right: -8px; }
-  .home-carousel__track { gap: 16px; }
-  .home-row--wide .home-carousel { margin-right: 0; }
-  .home-row--wide .home-carousel__track { gap: 18px; }
-  .home-carousel__btn--prev { left: 20px; }
+  .home-carousel { margin-inline: -8px; }
+  .home-carousel__track { gap: 16px; scroll-padding-inline: 8px; padding: 0 8px 8px !important; }
+  .home-carousel__btn { top: calc(50% - 24px); }
 }
 
 /* tarjeta de producto de la home */
-.home-card { flex: 0 0 221px; display: flex; flex-direction: column; align-items: flex-start; padding: 10px 10px 34px; border: 1px solid var(--home-card-border); border-radius: 20px; background: #fff; }
+.home-card { flex: 0 0 221px; width: 221px; height: var(--home-card-h, auto); display: flex; flex-direction: column; align-items: flex-start; padding: 10px 10px 45px; border: 1px solid var(--home-card-border); border-radius: 20px; background: #fff; }
 .home-card__media { display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 8px; }
-.home-card__media img { display: block; width: 100%; height: 100%; object-fit: contain; transition: transform 0.6s ease; }
+.home-card__media img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: 50% 0; transition: transform 0.6s ease; }
 .home-card:hover .home-card__media img { transform: scale(1.03); }
 .store-root .home-card__title { margin-top: 11px; font-size: 16px; line-height: 18px; font-weight: 700; }
 .store-root .home-card__title a { color: var(--ink); text-decoration: none; }
 .store-root .home-card__title a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .home-card__note { font-size: 12px; line-height: 14px; color: var(--home-muted); }
-.store-root .home-card__btn { align-self: stretch; margin-top: 16px; }
+.store-root .home-card__btn { align-self: stretch; margin-top: 16px; line-height: 17px; }
+/* En móvil ceium.net no muestra la nota de inscripción en las filas anchas (avanzados, talleres); esas tarjetas
+   igualan al alto de la más larga (relleno inferior 10 px). */
+.home-row--wide .home-card { padding-bottom: 10px; }
+.home-row--wide .home-card__note { display: none; }
+.store-root .home-row--wide .home-card__btn { margin-top: 24px; }
 @media screen and (min-width: 750px) {
-  .home-card { flex-basis: 251px; padding: 16px 16px 34px; }
+  .home-card { flex-basis: 251px; width: 251px; padding: 16px 16px 34px; }
   .home-card__note { margin-top: 8px !important; }
   .store-root .home-card__btn { align-self: flex-start; margin-top: 24px; }
-  .home-row--wide .home-card { flex-basis: calc((100% - 54px) / 4); }
-  .store-root .home-row--wide .home-card__title { font-size: 15px; line-height: 17px; }
+  .home-row--wide .home-card { flex-basis: calc((100% - 48px) / 4); width: calc((100% - 48px) / 4); padding-bottom: 16px; }
+  .home-row--wide .home-card__note { display: block; }
+  /* En escritorio las filas anchas no igualan alturas (cada tarjeta mide su contenido). */
+  .home-row--wide .home-card { height: auto; }
+  /* Solo la primera fila usa títulos de 16/18; las demás, 15/17 (como ceium.net). */
+  .store-root .home-row:not(.home-row--first) .home-card__title { font-size: 15px; line-height: 17px; }
 }
 
-/* ───── confianza ───── */
-.home-trust { padding: 48px 0 42px; background: #fff; }
-.home-trust .home-container { display: flex; flex-direction: column; align-items: flex-start; }
+/* ───── confianza + testimonios en video ───── */
+.home-trust { padding: 48px 0; background: #fff; }
+.home-trust__text { display: flex; flex-direction: column; align-items: flex-start; }
 .store-root .home-trust__title { max-width: 360px; }
-.home-trust .home-btn { margin-top: 24px; }
+.home-trust .home-btn { margin-top: 24px; min-height: 55px; }
+.home-trust__carousel { margin: 30px -6px 0; }
+.home-trust__carousel .home-carousel__track { gap: 12px; padding: 0 6px !important; scroll-padding-inline: 6px; }
+.home-trust__carousel .home-carousel__btn { top: calc(50% - 20px); }
+.home-video { position: relative; width: 221px; height: 165px; overflow: hidden; border-radius: 16px; background: #1d2a30; }
+.home-video__frame { display: block; width: 100%; height: 100%; border: 0; }
+.home-video__poster { position: relative; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: #000; cursor: pointer; color: #fff; font: inherit; text-align: left; }
+.home-video__poster img { display: block; width: 100%; height: 100%; object-fit: cover; transition: opacity 0.2s ease; }
+.home-video__poster::before { content: ""; position: absolute; inset: 0 0 auto; height: 72px; background: linear-gradient(rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0)); pointer-events: none; }
+.home-video__title {
+  position: absolute; top: 12px; left: 14px; right: 14px;
+  overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  font-size: 13px; line-height: 17px; font-weight: 600; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.home-video__play { position: absolute; top: 50%; left: 50%; width: 56px; height: 40px; transform: translate(-50%, -50%); filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3)); transition: transform 0.2s ease; }
+.home-video__play path:first-child { fill-opacity: 0.9; transition: fill-opacity 0.2s ease; }
+.home-video__poster:hover .home-video__play, .home-video__poster:focus-visible .home-video__play { transform: translate(-50%, -50%) scale(1.06); }
+.home-video__poster:hover .home-video__play path:first-child { fill-opacity: 1; }
+.home-video__poster:hover img { opacity: 0.9; }
+.home-video__poster:focus-visible { outline: 3px solid var(--teal); outline-offset: -3px; }
 @media screen and (min-width: 750px) {
   .home-trust { padding: 96px 0; }
-  .home-trust .home-container { justify-content: center; min-height: 305px; }
+  .home-trust__grid { display: grid; grid-template-columns: 370px minmax(0, 1fr); column-gap: 10px; align-items: center; min-height: 305px; }
   .store-root .home-trust__title { max-width: 370px; }
   .home-trust .home-btn { margin-top: 32px; }
+  .home-trust__carousel { margin: 0 -10px 0 0; }
+  .home-trust__carousel .home-carousel__track { gap: 20px; padding: 0 10px !important; scroll-padding-inline: 10px; }
+  .home-video { width: 380px; height: 285px; }
+  .home-video__title { top: 16px; left: 20px; right: 20px; font-size: 17px; line-height: 22px; }
+  .home-video__play { width: 68px; height: 48px; }
 }
 
 /* ───── galería ───── */
 .home-gallery { padding: 48px 0; background: var(--home-grey); }
-.home-gallery__carousel { margin-top: 32px; }
-.home-gallery__carousel .home-carousel__track { gap: 12px; padding-left: 6px !important; padding-bottom: 0 !important; }
+.home-gallery__carousel { margin: 32px 0 0; }
+.home-gallery__carousel .home-carousel__track { gap: 12px; padding: 0 0 0 6px !important; scroll-padding-inline: 6px 0; }
 .home-gallery__item { flex: 0 0 138px; height: 138px; overflow: hidden; border-radius: 20px; background: #dde3e6; }
 .home-gallery__item img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .home-gallery .home-carousel__btn { top: calc(50% - 20px); }
 @media screen and (min-width: 750px) {
   .home-gallery { padding: 96px 0; }
-  .home-gallery__carousel { margin-top: 48px; margin-right: 0; }
-  .home-gallery__carousel .home-carousel__track { gap: 16px; padding-left: 8px !important; }
+  .home-gallery__carousel { margin: 48px 0 0; }
+  .home-gallery__carousel .home-carousel__track { gap: 16px; padding: 0 0 0 8px !important; scroll-padding-inline: 8px 0; }
   .home-gallery__item { flex-basis: 250px; height: 250px; }
 }
 
@@ -252,13 +291,13 @@
 .home-closing__eyebrow { font-size: 13px; line-height: 21px; letter-spacing: 1px; text-transform: uppercase; }
 .store-root .home-closing__title { margin-top: 12px; color: #fff; font-size: 29px; line-height: 33px; font-weight: 700; white-space: pre-line; }
 .home-closing__text { margin-top: 15px !important; font-size: 15px; line-height: 17px; color: rgba(255, 255, 255, 0.9); }
-.home-closing .home-btn { margin-top: 31px; }
+.home-closing .home-btn { margin-top: 33px; }
 @media screen and (min-width: 750px) {
   .home-closing { padding-bottom: 96px; }
   .home-closing__box { padding: 88px 144px; border-radius: 32px; }
   .store-root .home-closing__title { margin-top: 16px; font-size: 46px; line-height: 53px; }
   .home-closing__text { margin-top: 18px !important; font-size: 17px; line-height: 24px; }
-  .home-closing .home-btn { margin-top: 34px; }
+  .home-closing .home-btn { margin-top: 30px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

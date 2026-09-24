@@ -30,10 +30,9 @@ test.describe("t1 home", () => {
     const first = cards.first();
     await expect(first.getByRole("heading", { level: 3 })).toHaveText("Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico");
     await expect(first.getByText("Online y semipresencial")).toBeVisible();
-    // Un enlace por cohorte con cronograma (PDF), con el nombre de la cohorte.
+    // Un enlace por cohorte vigente, con el nombre de la cohorte, a su cronograma en vivo (t3: ya no al PDF).
     const schedule = first.getByRole("link", { name: "Cronograma Cohorte I 2026" });
-    await expect(schedule).toHaveAttribute("href", /CRONOGRAMA_INTEGRAL_Proyecto_Cohorte_I-2026\.pdf/);
-    await expect(schedule).toHaveAttribute("target", "_blank");
+    await expect(schedule).toHaveAttribute("href", "/cronograma/diplomado-universitario-de-ecografia-integral-en-el-diagnostico-medico/cohorte-i-2026");
     await expect(first.getByRole("link", { name: /^Inscríbete/ })).toHaveAttribute(
       "href",
       "/products/diplomado-universitario-de-ecografia-integral-en-el-diagnostico-medico",

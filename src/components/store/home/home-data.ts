@@ -3,6 +3,8 @@
 // SIEMPRE de la BD. Lo editorial (hero, aliados, galería, llamada final) tiene valores por defecto tomados de
 // ceium.net y se puede sobreescribir con la Setting `store.home` (mismo formato que DEFAULT_HOME, parcial).
 import { prisma } from "@/server/db";
+import { isProductEnrollmentOpen } from "@/server/quote";
+import { cohortKey, cohortLabel, cohortScheduleHref, LISTED_COHORT_STATUSES } from "@/components/store/cohort-schedule";
 
 export const HOME_SETTING_KEY = "store.home";
 
@@ -22,6 +24,11 @@ export interface HomeCollectionRowConfig {
   linkLabel?: string;
   /** "compact": tarjetas estrechas (≈4,4 visibles); "wide": 4 columnas que llenan el ancho. */
   layout?: "compact" | "wide";
+  /**
+   * Nota bajo el título: "product" = la del programa (nota de inscripción / fechas / cierre); "status" = solo el
+   * estado de inscripción («✍ Inscripciones abiertas» o «Inscripciones cerradas»), como las filas anchas de ceium.net.
+   */
+  note?: "product" | "status";
 }
 
 export interface HomeConfig {
@@ -37,7 +44,8 @@ export interface HomeConfig {
   partners: { title: string; logos: { src: string; alt: string }[] };
   diplomas: { title: string; text: string; collection: string };
   rows: HomeCollectionRowConfig[];
-  trust: { title: string; cta: HomeLink };
+  /** Banda de confianza: título, botón y carrusel de testimonios en video (YouTube). */
+  trust: { title: string; cta: HomeLink; videos: { id: string; title: string }[] };
   gallery: { title: string; images: { src: string; alt: string }[] };
   closing: { eyebrow: string; title: string; text: string; image: string; cta: HomeLink };
 }
@@ -72,10 +80,22 @@ export const DEFAULT_HOME: HomeConfig = {
   rows: [
     { slug: "cursos-y-talleres-de-marzo-a-junio-2026", emoji: "🥇", linkLabel: "Ver todos", layout: "compact" },
     { slug: "cursos-universitarios", emoji: "🎓", linkLabel: "Explora {count} cursos más", layout: "compact" },
-    { slug: "cursos-avanzados", emoji: "✨", layout: "wide" },
-    { slug: "talleres-especializados", emoji: "🧑‍🏫", layout: "wide" },
+    { slug: "cursos-avanzados", emoji: "✨", layout: "wide", note: "status" },
+    { slug: "talleres-especializados", emoji: "🧑‍🏫", layout: "wide", note: "status" },
   ],
-  trust: { title: "Más de 6000 profesionales han confiado en CEIUM", cta: { label: "Empieza ya", url: "/pages/cursos" } },
+  trust: {
+    title: "Más de 6000 profesionales han confiado en CEIUM",
+    cta: { label: "Empieza ya", url: "/pages/cursos" },
+    // Testimonios de la home de ceium.net (títulos de YouTube).
+    videos: [
+      { id: "HdfLwA6L1Xs", title: "CEIUM: 24 años de Docencia Universitaria" },
+      { id: "7oAF6K-ho6o", title: "Testimonial Dr. Marcos Vásquez, médico urólogo" },
+      { id: "8x2ORKCBQuE", title: "Experiencia de Alumnos CEIUM" },
+      { id: "G23h1hDd4wk", title: "Testimonial Dr. Juan José Ramirez. Diplomado en Ecografía Integral para el Diagnóstico Médico" },
+      { id: "V-8bBbyhVUc", title: "Conocimiento y experiencia de los facilitadores de CEIUM" },
+      { id: "U1D6NK1Y-uc", title: "Superadas las expectativas. Testimonial Dr. Julio Peña" },
+    ],
+  },
   gallery: {
     title: "Viviendo la Experiencia CEIUM",
     images: [
@@ -173,11 +193,18 @@ type SelectedProduct = {
   images: { url: string; alt: string | null }[];
 };
 
-function toHomeProduct(p: SelectedProduct): HomeProduct {
-  const note =
-    p.enrollmentNote?.trim() ||
-    p.eventDateText?.trim() ||
-    (p.enrollmentDeadline ? `Inscripción hasta: ${formatDeadline(p.enrollmentDeadline)}` : null);
+export const NOTE_OPEN = "✍ Inscripciones abiertas";
+export const NOTE_CLOSED = "Inscripciones cerradas";
+
+function toHomeProduct(p: SelectedProduct, mode: "product" | "status" = "product", now: Date = new Date()): HomeProduct {
+  const open = isProductEnrollmentOpen({ published: true, enrollmentDeadline: p.enrollmentDeadline }, now);
+  const note = !open
+    ? NOTE_CLOSED
+    : mode === "status"
+      ? NOTE_OPEN
+      : p.enrollmentNote?.trim() ||
+        p.eventDateText?.trim() ||
+        (p.enrollmentDeadline ? `Inscripción hasta: ${formatDeadline(p.enrollmentDeadline)}` : null);
   return { slug: p.slug, title: p.title, image: p.images[0] ?? null, note };
 }
 
@@ -214,19 +241,21 @@ export async function getHomeData(): Promise<HomeData> {
   const bySlug = new Map(collections.map((c) => [c.slug, c]));
 
   const diplomaProducts = bySlug.get(config.diplomas.collection)?.products.map((cp) => cp.product) ?? [];
+  // «Cronograma Cohorte …»: una entrada por cohorte vigente (misma cohorte en varias sedes = una sola entrada),
+  // enlazada a la ficha en vivo de la cohorte (/cronograma/…: sedes, fechas, clases y cupos), no a un PDF.
   const cohorts = diplomaProducts.length
     ? await prisma.cohort.findMany({
-        where: { product: { slug: { in: diplomaProducts.map((p) => p.slug) } }, scheduleUrl: { not: null }, status: { notIn: ["DRAFT", "CANCELLED"] } },
-        orderBy: { startDate: "asc" },
-        select: { name: true, scheduleUrl: true, product: { select: { slug: true } } },
+        where: { product: { slug: { in: diplomaProducts.map((p) => p.slug) } }, status: { in: [...LISTED_COHORT_STATUSES] } },
+        orderBy: [{ startDate: "asc" }, { name: "asc" }],
+        select: { name: true, product: { select: { slug: true } } },
       })
     : [];
 
   const diplomas: HomeDiploma[] = diplomaProducts.map((p) => {
     const seen = new Set<string>();
     const schedules = cohorts
-      .filter((c) => c.product.slug === p.slug && c.scheduleUrl && !seen.has(c.name) && seen.add(c.name))
-      .map((c) => ({ label: `Cronograma ${c.name.replace(/\s*-\s*/, " ")}`, url: c.scheduleUrl! }));
+      .filter((c) => c.product.slug === p.slug && !seen.has(cohortKey(c.name)) && seen.add(cohortKey(c.name)))
+      .map((c) => ({ label: `Cronograma ${cohortLabel(c.name)}`, url: cohortScheduleHref(p.slug, c.name) }));
     return { ...toHomeProduct(p), excerpt: p.excerpt, modality: modalityLabel(p.offersOnline, p.offersSemipresencial), schedules };
   });
 
@@ -241,7 +270,7 @@ export async function getHomeData(): Promise<HomeData> {
         href: `/collections/${c.slug}`,
         linkLabel: r.linkLabel ? r.linkLabel.replace("{count}", String(count)) : null,
         layout: r.layout ?? "compact",
-        products: c.products.map((cp) => toHomeProduct(cp.product)),
+        products: c.products.map((cp) => toHomeProduct(cp.product, r.note ?? "product")),
       },
     ];
   });
