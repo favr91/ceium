@@ -1,5 +1,5 @@
 // Cliente REST de Moodle (/webservice/rest/server.php) — solo funciones reales de la API:
-// core_user_get_users_by_field, core_user_create_users, core_user_update_users,
+// core_user_get_users (búsqueda por email sin mayúsculas), core_user_get_users_by_field, core_user_create_users, core_user_update_users,
 // enrol_manual_enrol_users, enrol_manual_unenrol_users,
 // core_completion_get_course_completion_status, core_course_get_courses_by_field.
 //
@@ -259,16 +259,65 @@ export class MoodleClient {
       if (e instanceof MoodleError && e.errorcode === "invalidparameter") {
         const again = await this.lookupUser(email);
         if (again.user) return this.ensureActive(again.user);
+        // Moodle rechazó la cuenta nueva y no hay ninguna con este email que podamos ver: sin modo debug Moodle no
+        // dice por qué (casi siempre «Email address already exists» con otras mayúsculas cuando el token no puede
+        // usar core_user_get_users, o un dato que Moodle no admite). Reintentar no lo arregla.
+        throw new MoodleError({
+          kind: "validation",
+          wsfunction: "core_user_create_users",
+          message: `Moodle no aceptó crear la cuenta de ${email} y no se encontró ninguna cuenta con ese correo (${e.short})`,
+          cause: e,
+        });
       }
       throw e;
     }
   }
 
+  /**
+   * Cuentas cuyo email coincide SIN distinguir mayúsculas: core_user_get_users con criterio email usa
+   * `$DB->sql_like(email, :email, false)` (LIKE sin distinguir mayúsculas), así que encuentra «Dra.Lopez@Gmail.com»,
+   * «dra.lOpez@gmail.com» o cualquier otra forma. `_` y `%` son comodines de LIKE: el resultado se filtra aquí por
+   * igualdad exacta sin mayúsculas. Devuelve null si el servicio web de Moodle no tiene habilitada la función
+   * (webservice_access_exception) → quien llama recurre a core_user_get_users_by_field con las variantes habituales.
+   */
+  async searchUsersByEmailCaseless(email: string): Promise<MoodleUser[] | null> {
+    const lower = email.trim().toLowerCase();
+    try {
+      const r = await this.call<{ users?: MoodleUser[] }>("core_user_get_users", { criteria: [{ key: "email", value: email.trim() }] });
+      return (r?.users ?? []).filter((u) => u.email?.toLowerCase() === lower);
+    } catch (e) {
+      if (e instanceof MoodleError && e.kind === "moodle" && !e.retryable && e.errorcode !== "invalidtoken") return null;
+      throw e;
+    }
+  }
+
+  /**
+   * Cuenta de Moodle indicada por el staff para vincularla a un cliente: id numérico («1234» o «#1234»), email
+   * (sin distinguir mayúsculas) o username. null si no existe.
+   */
+  async findUser(ref: string): Promise<MoodleUser | null> {
+    const r = ref.trim().replace(/^#/, "");
+    if (!r) return null;
+    if (/^\d+$/.test(r)) return this.getUserById(Number(r));
+    if (r.includes("@")) {
+      const lower = r.toLowerCase();
+      const byEmail =
+        (await this.searchUsersByEmailCaseless(r)) ??
+        (await this.getUsersByField("email", emailCaseVariants(r))).filter((u) => u.email?.toLowerCase() === lower);
+      if (byEmail.length) return byEmail.find((u) => u.email === r) ?? byEmail[0];
+    }
+    return (await this.getUsersByField("username", [r.toLowerCase()]))[0] ?? null;
+  }
+
   /** Cuenta existente del email, o el primer username derivado libre para crearla. */
   private async lookupUser(email: string): Promise<{ user: MoodleUser | null; freeUsername: string }> {
     const lower = email.toLowerCase();
-    // Moodle busca por email EXACTO: se prueban en una sola llamada las mayúsculas habituales (ver emailCaseVariants).
-    const byEmail = (await this.getUsersByField("email", emailCaseVariants(email))).filter((u) => u.email?.toLowerCase() === lower);
+    // Moodle rechaza crear otra cuenta con el mismo email sin distinguir mayúsculas: la búsqueda tampoco debe
+    // distinguirlas. core_user_get_users (LIKE sin mayúsculas) es completa; si el token no la tiene habilitada,
+    // core_user_get_users_by_field (email EXACTO) con las mayúsculas habituales (ver emailCaseVariants).
+    const byEmail =
+      (await this.searchUsersByEmailCaseless(email)) ??
+      (await this.getUsersByField("email", emailCaseVariants(email))).filter((u) => u.email?.toLowerCase() === lower);
     const base = usernameFromEmail(email);
     const match = byEmail.find((u) => u.email === email) ?? byEmail.find((u) => u.email === lower) ?? byEmail[0];
     if (match) return { user: match, freeUsername: base };

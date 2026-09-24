@@ -35,6 +35,12 @@ export class FakeMoodle implements MoodlePort {
     }
     return { id, created: true, tempPassword: "Tmp#" + crypto.randomBytes(4).toString("hex"), username: key };
   }
+  async findUser(ref: string) {
+    this.calls.push({ fn: "findUser", args: [ref] });
+    const r = ref.trim().replace(/^#/, "").toLowerCase();
+    const u = [...this.users.values()].find((x) => String(x.id) === r || x.email.toLowerCase() === r);
+    return u ? { id: u.id, username: u.email.toLowerCase(), email: u.email, suspended: false } : null;
+  }
   async enrol(userId: number, courseIds: number[]) {
     this.calls.push({ fn: "enrol", args: [userId, courseIds] });
     await new Promise((r) => setTimeout(r, 1));

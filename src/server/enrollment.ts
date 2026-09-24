@@ -17,6 +17,7 @@ import { SETTING_KEYS } from "@/server/settings";
 import { safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
 import { requireAdmin, type SessionUser } from "@/server/auth";
+import { recordAudit } from "@/server/audit";
 
 const LEASE_MS = 2 * MINUTE;
 
@@ -297,7 +298,9 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
           orderId,
           "ATTENTION",
           SYSTEM,
-          permanent
+          permanent && userId == null && (error as { wsfunction?: unknown })?.wsfunction === "core_user_create_users"
+            ? `Moodle no dejó crear la cuenta de ${order.customer.email} y no se encontró ninguna con ese correo (${msg}). Reintentar no lo resuelve. Casi siempre el médico ya tiene cuenta en Moodle con ese correo escrito con otras mayúsculas y el token no puede usar core_user_get_users (habilítala en el servicio web para que se vincule sola). Arreglo: vincula su cuenta con «Vincular cuenta de Moodle» en la ficha del cliente (número, correo o usuario de Moodle; matricula en el acto), o en Moodle deja su correo exactamente como «${order.customer.email}» y usa «Rematricular».`
+            : permanent
             ? `Moodle rechazó la matrícula (${msg}). Reintentar no lo resuelve: corrige los datos (usuario/correo del cliente, curso) y usa «Rematricular».`
             : `La matrícula en Moodle falló ${policy.maxAttempts} veces (${msg}). Revisa Moodle y usa «Rematricular».`,
           { courseIds },
@@ -488,6 +491,60 @@ export async function retryDueEnrollments(d: Deps): Promise<{ orders: number; en
 export async function reenrollOrder(d: Deps, actor: SessionUser, orderId: string) {
   const admin = await requireAdmin(d.db, actor, "enrollments.manage");
   return enrollOrder(d, orderId, { force: true, actor: { type: "ADMIN", id: admin.id } });
+}
+
+/**
+ * «Vincular cuenta de Moodle» (ficha del cliente): el staff indica la cuenta que el médico YA tenía en Moodle (id,
+ * correo o usuario) cuando la tienda no pudo encontrarla sola (p.ej. alta manual antigua con el correo escrito de otra
+ * forma) y la matrícula quedó fallida. Se vincula (con auditoría y evento en cada pedido afectado) y se reintentan en
+ * el acto las matrículas pendientes o fallidas de sus pedidos pagados. No cambia una cuenta ya vinculada ni vincula la
+ * de otro cliente.
+ */
+export async function linkMoodleAccount(d: Deps, actor: SessionUser, customerId: string, ref: string) {
+  const admin = await requireAdmin(d.db, actor, "enrollments.manage");
+  const who = { type: "ADMIN" as const, id: admin.id };
+  const customer = await d.db.customer.findUnique({ where: { id: customerId } });
+  if (!customer) throw new DomainError("NOT_FOUND", "El cliente no existe.");
+  const wanted = String(ref ?? "").trim();
+  if (!wanted) throw new DomainError("VALIDATION", "Indica el número, el correo o el usuario de la cuenta de Moodle.");
+  if (customer.moodleUserId != null) {
+    throw new DomainError("CONFLICT", `El cliente ya está vinculado a la cuenta de Moodle #${customer.moodleUserId} (${customer.moodleUsername ?? "?"}).`);
+  }
+  const u = await d.moodle.findUser(wanted);
+  if (!u) throw new DomainError("NOT_FOUND", `Moodle no tiene ninguna cuenta «${wanted}». Búscala en Moodle (Administración del sitio → Usuarios) y copia su número de usuario (id=… en la dirección del perfil).`);
+  const owner = await d.db.customer.findFirst({ where: { moodleUserId: u.id, id: { not: customerId } }, select: { email: true } });
+  if (owner) throw new DomainError("CONFLICT", `La cuenta de Moodle #${u.id} (${u.username}) ya está vinculada a otro cliente (${owner.email}).`);
+  const orders = await d.db.order.findMany({ where: { customerId, status: { in: [...PAID_STATES] } }, select: { id: true } });
+  await withTx(d, async (tx) => {
+    let n: number;
+    try {
+      n = (await tx.customer.updateMany({ where: { id: customerId, moodleUserId: null }, data: { moodleUserId: u.id, moodleUsername: u.username } })).count;
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new DomainError("CONFLICT", `La cuenta de Moodle #${u.id} ya está vinculada a otro cliente.`);
+      throw e;
+    }
+    if (n !== 1) throw new DomainError("CONFLICT", "El cliente acaba de vincularse a otra cuenta de Moodle. Recarga la página.");
+    const note = `Cuenta de Moodle #${u.id} (${u.username}, ${u.email}) vinculada a mano${u.email.toLowerCase() !== customer.email.toLowerCase() ? ` — su correo en Moodle no es el de la tienda (${customer.email})` : ""}`;
+    await recordAudit(tx, {
+      actor: admin,
+      action: "customer.moodle_link",
+      entityType: "Customer",
+      entityId: customerId,
+      before: { moodleUserId: null, moodleUsername: customer.moodleUsername },
+      after: { moodleUserId: u.id, moodleUsername: u.username },
+      note,
+    });
+    for (const o of orders) await addOrderEvent(tx, o.id, "MOODLE_USER", who, note, { moodleUserId: u.id, created: false, linkedBy: admin.id });
+  });
+  // Reintentar ya las matrículas que esperaban la cuenta (las ya matriculadas no se tocan).
+  const results: { orderId: string; status: EnrollOrderResult["status"]; reason?: string }[] = [];
+  for (const o of orders) {
+    const pending = await d.db.enrollment.count({ where: { customerId, orderId: o.id, status: { in: ["PENDING", "FAILED"] } } });
+    if (!pending) continue;
+    const r = await enrollOrder(d, o.id, { force: true, actor: who });
+    results.push({ orderId: o.id, status: r.status, reason: r.reason });
+  }
+  return { moodleUserId: u.id, username: u.username, email: u.email, suspended: u.suspended, orders: results };
 }
 
 /** Desmatricular desde el panel (unenrollOrder es interno: lo usan los reembolsos con su propio actor). */

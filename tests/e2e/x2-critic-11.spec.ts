@@ -7,7 +7,11 @@
 //      teléfono («Dra.lopez@gmail.com» por el autocorrector, o «Dra.Lopez@Gmail.com»), y la tienda lo guarda en
 //      minúsculas: Moodle busca por email EXACTO pero rechaza crear otra cuenta con el mismo email sin distinguir
 //      mayúsculas («Email address already exists») → antes el médico pagaba y quedaba sin matrícula (error
-//      permanente). Debe quedar matriculado en SU cuenta.
+//      permanente). Debe quedar matriculado en SU cuenta — con CUALQUIER combinación de mayúsculas («dra.lOpez@eXample»):
+//      la búsqueda usa core_user_get_users (LIKE sin distinguir mayúsculas).
+//   3. Si el token de Moodle NO tiene core_user_get_users (se recurre a las variantes habituales) y el correo tiene
+//      mayúsculas raras: el pedido queda pagado sin matrícula con un ATTENTION que dice exactamente qué hacer, y el
+//      admin lo resuelve desde la ficha del cliente con «Vincular cuenta de Moodle» → matriculado en SU cuenta.
 // Carril: E2E_LANE=e2e E2E_PORT=3104 npx playwright test tests/e2e/x2-critic-11.spec.ts --project=desktop
 import fs from "node:fs";
 import path from "node:path";
@@ -162,18 +166,25 @@ test.afterAll(() => {
 
 // ───────────── 1 y 2. el médico ya tiene cuenta en Moodle (alta manual) ─────────────
 
-for (const variant of ["mismo correo", "inicial mayúscula (autocorrector)", "Nombre.Apellido@Dominio"] as const) {
+for (const variant of ["mismo correo", "inicial mayúscula (autocorrector)", "Nombre.Apellido@Dominio", "mayúsculas arbitrarias (dra.lOpez@eXample)"] as const) {
   test(`cuenta de Moodle creada a mano antes (${variant}): aprobar vincula ESA cuenta, matricula una vez y el correo da su usuario`, async ({ browser, page, request }) => {
     const C = newCohort(3);
     const tag = Date.now().toString(36) + Math.floor(Math.random() * 1e4);
     const lower = `dra.lopez${tag}@example.com`;
-    const moodleEmail = variant === "mismo correo" ? lower : variant === "Nombre.Apellido@Dominio" ? `Dra.Lopez${tag}@Example.com` : `Dra.lopez${tag}@example.com`;
+    const moodleEmail =
+      variant === "mismo correo"
+        ? lower
+        : variant === "Nombre.Apellido@Dominio"
+          ? `Dra.Lopez${tag}@Example.com`
+          : variant.startsWith("mayúsculas arbitrarias")
+            ? `dra.lOpez${tag}@eXample.com`
+            : `Dra.lopez${tag}@example.com`;
     const cedulaUser = `v${String(Date.now()).slice(-8)}`;
     const existing = await moodleCreateUser(request, { username: cedulaUser, email: moodleEmail, firstname: "Ana", lastname: "López", password: "Ceium-2025!" });
     const pwdBefore = (await moodleState(request)).users.find((u) => u.id === existing.id)!.password;
 
     // El médico compra escribiendo su correo como en el teléfono (con mayúscula inicial en la variante 2).
-    const o = checkout(C, variant === "mismo correo" ? lower : moodleEmail, { firstName: "Ana", lastName: "López" });
+    const o = checkout(C, variant === "mismo correo" || variant.startsWith("mayúsculas arbitrarias") ? lower : moodleEmail, { firstName: "Ana", lastName: "López" });
     const ref = newRef("0105");
     expect((await reportManual(page, o.token, ref, ves(Math.round(o.dueNowCents * RATE)))).get("pago")).toBe("registrado");
     expect(order(o.orderId).status).toBe("AWAITING_VERIFICATION");
@@ -208,3 +219,60 @@ for (const variant of ["mismo correo", "inicial mayúscula (autocorrector)", "No
     expect(templates(o.orderId)).toEqual(expect.arrayContaining(["payment_under_verification", "payment_approved", "cohort_details"]));
   });
 }
+
+// ───────────── 3. token sin core_user_get_users + mayúsculas raras → ATTENTION exacto → «Vincular cuenta de Moodle» ─────────────
+
+test("sin core_user_get_users y correo con mayúsculas raras: ATTENTION con el arreglo exacto y el admin vincula la cuenta desde la ficha del cliente", async ({ browser, page, request }) => {
+  const C = newCohort(3);
+  const tag = Date.now().toString(36) + Math.floor(Math.random() * 1e4);
+  const lower = `dra.perez${tag}@example.com`;
+  const cedulaUser = `v${String(Date.now()).slice(-8)}`;
+  const existing = await moodleCreateUser(request, { username: cedulaUser, email: `dra.pErez${tag}@example.com`, firstname: "Ana", lastname: "Pérez", password: "Ceium-2025!" });
+
+  const o = checkout(C, lower, { firstName: "Ana", lastName: "Pérez" });
+  const ref = newRef("0106");
+  expect((await reportManual(page, o.token, ref, ves(Math.round(o.dueNowCents * RATE)))).get("pago")).toBe("registrado");
+
+  // El servicio web de Moodle no incluye core_user_get_users (Moodle responde webservice_access_exception).
+  const denied = await request.post(`${MOODLE}/__mock/fail-next`, {
+    data: { wsfunction: "core_user_get_users", count: 2, exception: "webservice_access_exception", errorcode: "accessexception", message: "Excepción al control de acceso" },
+  });
+  expect(denied.ok()).toBe(true);
+  const toast = await adminDecide(browser, o.orderId, ref, "approve");
+  expect(toast).toMatch(/Pago aprobado/);
+  await expect.poll(() => events(o.orderId).filter((e) => e.type === "ATTENTION").length, { timeout: 30_000 }).toBe(1);
+  expect(order(o.orderId).status).toBe("PAID");
+  const attention = events(o.orderId).find((e) => e.type === "ATTENTION")!.note ?? "";
+  expect(attention).toContain(`no dejó crear la cuenta de ${lower}`);
+  expect(attention).toContain("«Vincular cuenta de Moodle» en la ficha del cliente");
+  // No se creó una cuenta duplicada.
+  expect((await moodleState(request)).users.filter((u) => u.email.toLowerCase() === lower).map((u) => u.id)).toEqual([existing.id]);
+
+  // El ATTENTION se ve en el pedido.
+  const cust = customerOf(o.orderId);
+  const { ctx, page: admin } = await adminLogin(browser, `/admin/orders/${o.orderId}`);
+  try {
+    await expect(admin.getByText(/Vincular cuenta de Moodle/).first()).toBeVisible();
+    // Ficha del cliente → «Vincular cuenta de Moodle» con el correo tal como lo escribió el staff.
+    await admin.goto(`/admin/customers/${cust.id}`);
+    const form = admin.getByRole("form", { name: "Vincular cuenta de Moodle" });
+    await form.getByLabel(/Ya tiene cuenta en Moodle/).fill(`#${existing.id}`);
+    await form.getByRole("button", { name: "Vincular cuenta de Moodle" }).click();
+    await expect(admin.getByRole("status").or(admin.getByRole("alert")).filter({ hasText: /vinculada/ }).last()).toContainText(`Cuenta de Moodle #${existing.id} (${cedulaUser}) vinculada. Matrícula completada.`);
+    await expect(admin.getByText(`Moodle #${existing.id}`)).toBeVisible();
+  } finally {
+    await ctx.close();
+  }
+
+  expect(order(o.orderId).status).toBe("ENROLLED");
+  expect(customerOf(o.orderId).moodleUserId).toBe(existing.id);
+  const st = await moodleState(request);
+  expect(st.enrolments.filter((e) => e.userid === existing.id).map((e) => e.courseid)).toEqual([C.moodleCourseId]);
+  expect(reservationOf(o.orderId).status).toBe("CONFIRMED");
+  expectCohortConsistent(C.cohortId);
+  expect(one<{ n: number }>(`SELECT COUNT(*) AS n FROM AuditLog WHERE entityId = ? AND action = 'customer.moodle_link'`, cust.id).n).toBe(1);
+  const access = emails(o.orderId).filter((m) => m.template === "platform_access");
+  expect(access).toHaveLength(1);
+  expect(access[0].text).toContain(cedulaUser);
+  expect(access[0].secretRef).toBeNull();
+});

@@ -21,6 +21,11 @@ export interface MoodlePort {
    * la app nunca fija contraseñas temporales por su cuenta.
    */
   readonly sendsOwnCredentials?: boolean;
+  /**
+   * Cuenta existente por id («1234»), email (sin distinguir mayúsculas) o username, para que el staff vincule a un
+   * cliente con la cuenta que ya tenía en Moodle. null si no existe.
+   */
+  findUser(ref: string): Promise<{ id: number; username: string; email: string; suspended: boolean } | null>;
   /** enrol_manual_enrol_users (rol estudiante). Moodle lo trata de forma idempotente. */
   enrol(userId: number, courseIds: number[]): Promise<unknown>;
   /** enrol_manual_unenrol_users */

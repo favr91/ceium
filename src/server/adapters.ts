@@ -21,6 +21,10 @@ export function moodlePort(source: ClientSource<MoodleClient>): MoodlePort {
       const r = await client.findOrCreateUser({ email, firstname: names.firstname, lastname: names.lastname }, hooks);
       return { id: r.user.id, created: r.created, tempPassword: r.tempPassword, username: r.user.username };
     },
+    async findUser(ref) {
+      const u = await client.findUser(ref);
+      return u ? { id: u.id, username: u.username, email: u.email, suspended: !!u.suspended } : null;
+    },
     enrol: (userId, courseIds) => client.enrol(userId, courseIds),
     unenrol: (userId, courseIds) => client.unenrol(userId, courseIds),
     async getCompletion(userId, courseId) {

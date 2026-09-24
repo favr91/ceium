@@ -8,7 +8,7 @@ import { useState } from "react";
 import type { CustomerDetail } from "@/server/admin-learning";
 import { refreshProgressAction, retryEnrollmentsAction } from "@/app/admin/(panel)/enrollments/actions";
 import { checkCertificateAction, resendCertificateAction } from "@/app/admin/(panel)/certificates/actions";
-import { saveCustomerNoteAction } from "@/app/admin/(panel)/customers/actions";
+import { linkMoodleAccountAction, saveCustomerNoteAction } from "@/app/admin/(panel)/customers/actions";
 import { Icon } from "../Icon";
 import { Badge, Copy, Spinner, useDismiss } from "../orders/bits";
 import { EMAIL_TEMPLATE, ORDER_STATUS, PLAN, calDate, dayKey, dayLabel, eventDetails, eventKind, eventMessage, listDate, time, usd } from "../orders/format";
@@ -245,7 +245,10 @@ export function CustomerView({ c, perms }: { c: C; perms: Perms }) {
                   {cu.moodleProfileUrl ? <p><a className="lk" href={cu.moodleProfileUrl} target="_blank" rel="noreferrer">Ver perfil en Moodle <Icon name="external" size={14} /></a></p> : null}
                 </>
               ) : (
-                <p className="muted">Se crea con el primer pago confirmado.</p>
+                <>
+                  <p className="muted">Se crea con el primer pago confirmado.</p>
+                  {perms.manage ? <MoodleLinkForm customerId={cu.id} run={run} busy={busy} /> : null}
+                </>
               )}
             </div>
           </section>
@@ -350,6 +353,27 @@ function CertificateStrip({ p, c, perms, run, busy }: { p: C["programs"][number]
         </button>
       ) : null}
     </div>
+  );
+}
+
+/** Si el médico ya tenía cuenta en Moodle y la tienda no la encontró, el staff la vincula a mano. */
+function MoodleLinkForm({ customerId, run, busy }: { customerId: string; run: Run; busy: string | null }) {
+  const [ref, setRef] = useState("");
+  return (
+    <form
+      aria-label="Vincular cuenta de Moodle"
+      style={{ marginTop: 8 }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (ref.trim()) await run("moodle-link", () => linkMoodleAccountAction(customerId, ref));
+      }}
+    >
+      <label className="small muted" htmlFor="moodle-link-ref">¿Ya tiene cuenta en Moodle? Número, correo o usuario</label>
+      <input id="moodle-link-ref" className="inp" value={ref} maxLength={200} onChange={(e) => setRef(e.target.value)} placeholder="p. ej. 1234 o Dra.Lopez@gmail.com" />
+      <div className="cu-acts">
+        <button type="submit" className="btn" disabled={!ref.trim() || busy === "moodle-link"}>{busy === "moodle-link" ? <Spinner /> : null} Vincular cuenta de Moodle</button>
+      </div>
+    </form>
   );
 }
 

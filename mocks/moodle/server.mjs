@@ -5,7 +5,7 @@
 //   errores con HTTP 200 y cuerpo {"exception","errorcode","message","debuginfo"} (debuginfo como con debug activado).
 //
 // Funciones (las únicas que usa la app, ver SPEC.md):
-//   core_user_get_users_by_field, core_user_create_users, core_user_update_users,
+//   core_user_get_users, core_user_get_users_by_field, core_user_create_users, core_user_update_users,
 //   enrol_manual_enrol_users, enrol_manual_unenrol_users,
 //   core_completion_get_course_completion_status, core_course_get_courses_by_field
 //
@@ -285,6 +285,31 @@ export function createMoodleMock(opts = {}) {
         throw invalidParam(`The search field '${p.field}' is not supported, look at the web service documentation`);
       const vals = new Set(p.values.map((v) => (p.field === 'id' ? Number(v) : v)));
       return state.users.filter((u) => !u.deleted && vals.has(u[p.field])).map(publicUser);
+    },
+
+    // core_user_get_users: criterios AND; email/firstname/lastname con LIKE SIN distinguir mayúsculas
+    // ($DB->sql_like(campo, :valor, false): % y _ son comodines), id/idnumber/username/auth por igualdad.
+    core_user_get_users(params) {
+      const p = validateTop({ criteria: V.multiple(V.single({ key: V.text(), value: V.text() })) }, params);
+      const allowed = ['id', 'lastname', 'firstname', 'idnumber', 'username', 'email', 'auth'];
+      const warnings = [];
+      const used = new Set();
+      const preds = [];
+      for (const c of p.criteria) {
+        if (!allowed.includes(c.key) || used.has(c.key)) {
+          warnings.push({ item: c.key, warningcode: 'invalidfieldparameter', message: `The search key '${c.key}' is not supported, look at the web service documentation` });
+          continue;
+        }
+        used.add(c.key);
+        const value = String(c.value).trim();
+        if (['email', 'firstname', 'lastname'].includes(c.key)) {
+          const re = new RegExp('^' + value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'is');
+          preds.push((u) => re.test(String(u[c.key] ?? '')));
+        } else if (c.key === 'id') preds.push((u) => u.id === Number(value));
+        else preds.push((u) => String(u[c.key] ?? '') === value);
+      }
+      const users = preds.length ? state.users.filter((u) => !u.deleted && preds.every((f) => f(u))).map(publicUser) : [];
+      return { users, warnings };
     },
 
     core_user_create_users(params) {

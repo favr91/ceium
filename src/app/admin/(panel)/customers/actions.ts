@@ -1,5 +1,5 @@
 "use server";
-// Ficha del cliente: nota interna (con auditoría).
+// Ficha del cliente: nota interna y vincular la cuenta de Moodle que ya tenía (con auditoría).
 import { revalidatePath } from "next/cache";
 import { services } from "@/server/services";
 import { updateCustomerNote } from "@/server/admin-learning";
@@ -14,5 +14,22 @@ export async function saveCustomerNoteAction(customerId: string, note: string): 
     return { ok: true, message: note.trim() ? "Nota guardada." : "Nota eliminada." };
   } catch (e) {
     return failLearn(e, "No pudimos guardar la nota.");
+  }
+}
+
+/** Vincula al cliente con su cuenta de Moodle existente (id, correo o usuario) y reintenta sus matrículas. */
+export async function linkMoodleAccountAction(customerId: string, ref: string): Promise<LearnResult> {
+  const user = await requireAdminAction();
+  try {
+    const r = await services().enrollment.linkMoodleAccount(user, customerId, ref);
+    revalidatePath(`/admin/customers/${customerId}`);
+    revalidatePath("/admin/enrollments");
+    for (const o of r.orders) revalidatePath(`/admin/orders/${o.orderId}`);
+    const base = `Cuenta de Moodle #${r.moodleUserId} (${r.username}) vinculada.`;
+    const failed = r.orders.filter((o) => o.status !== "ENROLLED");
+    if (failed.length) return { ok: false, error: `${base} La matrícula aún no se completó: ${failed.map((o) => o.reason ?? o.status).join("; ")}` };
+    return { ok: true, message: r.orders.length ? `${base} Matrícula completada.` : base };
+  } catch (e) {
+    return failLearn(e, "No pudimos vincular la cuenta de Moodle.");
   }
 }
