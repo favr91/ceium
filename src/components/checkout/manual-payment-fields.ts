@@ -48,14 +48,39 @@ export function todayCaracas(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Caracas", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
-/** «33.564,60», «33564,60», «33564.60», «33.564» → céntimos (NaN si no es un número). */
+/**
+ * Monto escrito por el médico → céntimos (NaN si no es un número o es ambiguo).
+ * El ÚLTIMO separador es el decimal si le siguen 1 o 2 dígitos: «33.564,60» y «33,564.60» (formato de EE. UU.,
+ * el que muestran algunas apps de banco) son ambos Bs. 33.564,60. Con exactamente 3 dígitos detrás y el mismo
+ * separador en grupos de 3 («33.564», «33,564», «1.234.567») es separador de miles. Cualquier otra forma
+ * («1.234,567», «33.56.4», «12,3456», «33,564,60») se rechaza en vez de adivinar un monto 100 o 1000 veces menor.
+ */
 export function parseAmountCents(raw: string): number {
-  let s = raw.trim().replace(/[^\d.,]/g, "");
-  if (!s) return NaN;
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
-  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
-  const n = Number(s);
-  return Number.isFinite(n) ? Math.round(n * 100) : NaN;
+  const s = raw
+    .trim()
+    .replace(/^(?:bs\.?\s*s\.?|bs\.?|ves|usd|us\$|\$)\s*/i, "")
+    .replace(/\s*(?:bs\.?\s*s?\.?|ves|usd|\$)$/i, "")
+    .replace(/[\s\u00a0']/g, "");
+  if (!/^\d[\d.,]*$/.test(s)) return NaN;
+  const last = Math.max(s.lastIndexOf("."), s.lastIndexOf(","));
+  if (last < 0) return Number(s) * 100;
+  const tail = s.slice(last + 1);
+  const sep = s[last];
+  // Miles sin decimales: un solo tipo de separador, grupos de 3 y el primero sin cero a la izquierda.
+  const thousands = (x: string, t: string) => new RegExp(`^(?:0|[1-9]\\d{0,2}(?:\\${t}\\d{3})*)$`).test(x);
+  if (tail.length === 3) return thousands(s, sep) ? Number(s.split(sep).join("")) * 100 : NaN;
+  if (tail.length < 1 || tail.length > 2) return NaN;
+  const intPart = s.slice(0, last);
+  if (!intPart) return NaN;
+  let int: string;
+  if (/^\d+$/.test(intPart)) int = intPart;
+  else {
+    const other = sep === "," ? "." : ",";
+    // La parte entera sólo puede llevar el OTRO separador, como miles bien agrupados.
+    if (intPart.includes(sep) || !thousands(intPart, other)) return NaN;
+    int = intPart.split(other).join("");
+  }
+  return Number(int) * 100 + Number(tail.padEnd(2, "0"));
 }
 
 /** Monto para escribir/pegar en la app del banco: «33564,60» (sin separador de miles). */
