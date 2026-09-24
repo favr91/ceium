@@ -47,3 +47,80 @@ export function PayPalWordmark() {
     </svg>
   );
 }
+
+// ───────────── Checkout (réplica del checkout de Shopify de ceium.net) ─────────────
+type SvgProps = React.SVGProps<SVGSVGElement>;
+const ico = { "aria-hidden": true, focusable: false } as const;
+
+/** Bolsa del header del checkout (enlace al carrito). */
+export function BagIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 14 14" fill="none" {...p}>
+      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.1" d="M4.5 4.5V3.9a2.5 2.5 0 0 1 5 0v.6m-7 0h9l.6 7.1a1.2 1.2 0 0 1-1.2 1.3H3.1a1.2 1.2 0 0 1-1.2-1.3z" />
+      <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.1" d="M4.8 7.1a2.2 2.2 0 0 0 4.4 0" />
+    </svg>
+  );
+}
+
+export function HelpIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 14 14" fill="none" {...p}>
+      <circle cx="7" cy="7" r="6.1" stroke="currentColor" strokeWidth="1.1" />
+      <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.1" d="M5.4 5.4a1.65 1.65 0 1 1 2.3 1.5c-.4.2-.7.5-.7.9v.4" />
+      <circle cx="7" cy="10" r=".7" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function ChevronDownIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 14 14" fill="none" {...p}>
+      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.3" d="m11.9 5.6-4.8 4.2L2.2 5.6" />
+    </svg>
+  );
+}
+
+export function ClockIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 20 20" fill="none" {...p}>
+      <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" />
+      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M10 5.5V10l3 2" />
+    </svg>
+  );
+}
+
+export function LockIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 14 14" fill="none" {...p}>
+      <rect width="9" height="6.5" x="2.5" y="6" stroke="currentColor" strokeWidth="1.1" rx="1.4" />
+      <path stroke="currentColor" strokeWidth="1.1" d="M4.4 6V4.3a2.6 2.6 0 0 1 5.2 0V6" />
+    </svg>
+  );
+}
+
+export function CopyIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 14 14" fill="none" {...p}>
+      <rect width="7.6" height="7.6" x="4.9" y="4.9" stroke="currentColor" strokeWidth="1.1" rx="1.4" />
+      <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.1" d="M9.1 2.9V2.6c0-.7-.5-1.2-1.2-1.2H2.6c-.7 0-1.2.5-1.2 1.2v5.3c0 .7.5 1.2 1.2 1.2h.3" />
+    </svg>
+  );
+}
+
+export function CheckIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 14 14" fill="none" {...p}>
+      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.4" d="m2.5 7.4 2.9 2.9 6.1-6.6" />
+    </svg>
+  );
+}
+
+export function FieldErrorIcon(p: SvgProps) {
+  return (
+    <svg {...ico} viewBox="0 0 14 14" fill="none" {...p}>
+      <circle cx="7" cy="7" r="6.1" stroke="currentColor" strokeWidth="1.1" />
+      <path stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" d="M7 3.9v3.7" />
+      <circle cx="7" cy="9.9" r=".75" fill="currentColor" />
+    </svg>
+  );
+}
