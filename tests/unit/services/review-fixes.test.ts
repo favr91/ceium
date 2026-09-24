@@ -327,7 +327,7 @@ describe("PayPal: aprobado pero sin retorno", () => {
 describe("auditoría de verificación manual", () => {
   it("la corrección del equivalente en USD queda como antes/después", async () => {
     const o = await createCheckout(ctx.d, { customer: buyer(), items: [{ productId: ctx.fx.course, modality: "ONLINE", planKind: "FULL" }], paymentMethod: "PAGO_MOVIL" });
-    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "R-1", amountCents: 990_000, currency: "VES", exchangeRate: 100 });
+    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "R-0001", amountCents: 990_000, currency: "VES", exchangeRate: 100 });
     await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve", amountUsdCents: 10000 });
     const ev = await ctx.db.orderEvent.findFirstOrThrow({ where: { orderId: o.id, type: "PAYMENT_VERIFIED" } });
     expect(ev.data).toMatchObject({ amountUsdCentsBefore: 9900, amountUsdCentsAfter: 10000, corrected: true });

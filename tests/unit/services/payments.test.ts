@@ -82,14 +82,14 @@ describe("pago manual (pago móvil / transferencia)", () => {
 
   it("plan mitad: primer pago matricula (PARTIALLY_PAID→ENROLLED) y el saldo sigue visible; segundo pago lo cancela", async () => {
     const o = await semiCourseOrder("PAGO_MOVIL", "HALF");
-    const p1 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A1", amountCents: 900_000, currency: "VES" }); // tasa del setting: 100
+    const p1 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A00001", amountCents: 900_000, currency: "VES" }); // tasa del setting: 100
     await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p1.id, decision: "approve" });
     let after = await order(o.id);
     expect(after.status).toBe("ENROLLED");
     expect(after.balanceCents).toBe(9000);
     const events = await ctx.db.orderEvent.findMany({ where: { orderId: o.id, type: "STATUS_CHANGE" }, orderBy: { createdAt: "asc" } });
     expect(events.map((e) => e.toStatus)).toEqual(["AWAITING_VERIFICATION", "PARTIALLY_PAID", "ENROLLED"]);
-    const p2 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A2", amountCents: 900_000, currency: "VES" });
+    const p2 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A00002", amountCents: 900_000, currency: "VES" });
     expect((await order(o.id)).status).toBe("ENROLLED"); // un pago de cuota no hace retroceder el estado
     await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p2.id, decision: "approve" });
     after = await order(o.id);
@@ -101,7 +101,7 @@ describe("pago manual (pago móvil / transferencia)", () => {
 
   it("pago insuficiente para el primer pago → vuelve a PENDING_PAYMENT sin matricular", async () => {
     const o = await semiCourseOrder("PAGO_MOVIL");
-    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "B1", amountCents: 500_000, currency: "VES", exchangeRate: 100 });
+    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "B00001", amountCents: 500_000, currency: "VES", exchangeRate: 100 });
     await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
     const after = await order(o.id);
     expect(after.status).toBe("PENDING_PAYMENT");
@@ -235,7 +235,7 @@ describe("PayPal", () => {
 
   it("reembolso de pago manual se registra sin llamar a PayPal", async () => {
     const o = await semiCourseOrder("PAGO_MOVIL");
-    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "M1", amountCents: 1_800_000, currency: "VES" });
+    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "M00001", amountCents: 1_800_000, currency: "VES" });
     await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
     const r = await refundPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, reason: "Devolución por pago móvil", unenroll: false });
     expect(r.refund.manual).toBe(true);

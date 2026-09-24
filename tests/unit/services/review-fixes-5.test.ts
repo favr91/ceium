@@ -222,7 +222,7 @@ describe("reembolsos PayPal idempotentes", () => {
     expect(ctx.paypal.refunds).toHaveLength(1);
 
     const o = await semiCourse();
-    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "M-9", amountCents: 1_800_000, currency: "VES" });
+    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "M-0009", amountCents: 1_800_000, currency: "VES" });
     await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
     await refundPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, amountCents: 500, idempotencyKey: "form-2" });
     await refundPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, amountCents: 500, idempotencyKey: "form-2" });

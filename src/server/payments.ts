@@ -223,8 +223,29 @@ export function manualReferenceKey(method: PaymentMethod, reference: string | nu
  * método configurado: el cliente no puede fijar ninguna de las dos.
  */
 export async function recordManualPayment(d: Deps, input: ManualPaymentInput) {
-  return recordManual(d, input, { type: "CUSTOMER" });
+  try {
+    return await recordManual(d, input, { type: "CUSTOMER" });
+  } catch (e) {
+    // El comprobante se guardó antes de validar (/pedido/<token>, /api/checkout/comprobante): si el pago no se
+    // registra, no debe quedar huérfano en disco (datos personales del pagador sin pedido que los respalde).
+    await discardProofFile(d, input.proofFile);
+    throw e;
+  }
 }
+
+async function discardProofFile(d: Deps, proofFile: string | null | undefined) {
+  if (!proofFile) return;
+  const root = path.resolve(d.config.privateFilesDir, "proofs") + path.sep;
+  const abs = path.resolve(proofFile);
+  if (!abs.startsWith(root)) return;
+  if (await d.db.payment.findFirst({ where: { proofFile }, select: { id: true } })) return; // sí quedó registrado
+  await fs.unlink(abs).catch(() => {});
+}
+
+/** Día (AAAA-MM-DD) en Venezuela: la fecha declarada del pago se compara en la zona del banco. */
+const caracasDay = (t: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Caracas", year: "numeric", month: "2-digit", day: "2-digit" }).format(t);
+/** Un pago de más de este múltiplo de lo adeudado es casi seguro un error de tipeo (decimales, ceros de más). */
+const MAX_OVERPAY_FACTOR = 10;
 
 /** Pago manual registrado desde el panel (efectivo en sede, pago recibido por WhatsApp…). Puede fijar la tasa. */
 export async function adminRecordManualPayment(d: Deps, user: SessionUser, input: ManualPaymentInput) {
@@ -244,6 +265,20 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) throw new DomainError("VALIDATION", "Ingresa el monto pagado.", { field: "amountCents" });
   const reference = input.reference?.trim() || null;
   if (input.method !== "EFECTIVO" && !reference) throw new DomainError("VALIDATION", "Ingresa el número de referencia del pago.", { field: "reference" });
+  if (isCustomer) {
+    // Mismas reglas que el checkout (manual-payment-fields.ts), aplicadas aquí para TODA entrada del cliente:
+    // el formulario de /pedido/<token> también llega a este servicio.
+    if (reference && !/^[A-Z0-9-]{4,30}$/.test(reference.replace(/[\s.]/g, "").toUpperCase())) {
+      throw new DomainError("VALIDATION", "La referencia debe tener entre 4 y 30 dígitos o letras.", { field: "reference" });
+    }
+    if (input.paidAt != null) {
+      if (!(input.paidAt instanceof Date) || Number.isNaN(input.paidAt.getTime())) throw new DomainError("VALIDATION", "Ingresa la fecha del pago.", { field: "paidAt" });
+      const day = caracasDay(input.paidAt);
+      const today = caracasDay(d.now());
+      if (day > today) throw new DomainError("VALIDATION", "La fecha del pago no puede ser posterior a hoy.", { field: "paidAt" });
+      if (Date.parse(`${today}T12:00:00Z`) - Date.parse(`${day}T12:00:00Z`) > 60 * 86_400_000) throw new DomainError("VALIDATION", "La fecha es de hace más de 60 días. Revísala o escríbenos.", { field: "paidAt" });
+    }
+  }
   const referenceKey = manualReferenceKey(input.method, reference);
 
   let rate: number | null = null;
@@ -274,6 +309,12 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
     const acceptsFirst = PREPAID_STATES.includes(order.status);
     const acceptsInstallment = PAID_STATES.includes(order.status) && order.balanceCents > 0;
     if (!acceptsFirst && !acceptsInstallment) throw new DomainError("INVALID_STATE", "Este pedido no admite nuevos pagos.");
+    if (isCustomer) {
+      const owed = Math.max(order.totalCents - order.amountPaidCents, order.dueNowCents - order.amountPaidCents, 0);
+      if (amountUsdCents > Math.max(owed, 100) * MAX_OVERPAY_FACTOR) {
+        throw new DomainError("VALIDATION", "El monto es mucho mayor que el de tu pedido. Revisa los decimales y los ceros del monto que pagaste.", { field: "amountCents" });
+      }
+    }
     // Lectura para un error amable; la garantía real es el índice único de referenceKey (ver catch).
     if (referenceKey && (await tx.payment.findUnique({ where: { referenceKey }, select: { id: true } }))) throw duplicateRef();
     // Primer pago de un pedido cuyo cupo ya se liberó (venció o se rechazó el pago anterior; p.ej. la pestaña
@@ -623,6 +664,13 @@ export async function onPaypalCaptureCompleted(
     return { apply, refundCents };
   });
   if (!out) return { alreadyProcessed: true, orderId: p.orderId, paymentId: p.id };
+  // Webhooks fuera de orden: PayPal pudo avisar un reembolso de esta captura ANTES de que la conociéramos
+  // (COMPLETED falló en su primera entrega). Se aplica ahora, antes de confirmar ni matricular: si devolvió todo,
+  // el pedido queda reembolsado y no se matricula ni se confirma el pago al médico.
+  if ((await applyParkedPaypalRefunds(d, input.captureId)) > 0) {
+    const { status } = await d.db.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true } });
+    if (status === "REFUNDED") return { alreadyProcessed: false, orderId: p.orderId, paymentId: p.id };
+  }
   await afterPaymentApplied(d, p.id, out.apply, "paypal");
   if (out.refundCents > 0) {
     try {
@@ -777,6 +825,44 @@ const cents = (v: unknown): number | undefined => {
   return Number.isFinite(n) ? Math.round(n * 100) : undefined;
 };
 
+/** Datos de un reembolso a partir del recurso de PAYMENT.CAPTURE.REFUNDED (la captura sale del enlace «up»). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function refundEventInput(resource: Record<string, any> | null | undefined) {
+  if (!resource || typeof resource !== "object") return null;
+  const up = (resource.links as { rel: string; href: string }[] | undefined)?.find?.((l) => l.rel === "up")?.href ?? "";
+  const captureId: string | null = up.match(/captures\/([^/?]+)/)?.[1] ?? resource.capture_id ?? resource.supplementary_data?.related_ids?.capture_id ?? null;
+  if (!captureId || !resource.id) return null;
+  return { captureId: String(captureId), refundId: String(resource.id), amountCents: cents(resource.amount?.value), reason: (resource.note_to_payer as string | undefined) ?? null, invoiceId: (resource.invoice_id as string | undefined) ?? null };
+}
+
+/**
+ * Webhooks fuera de orden: un PAYMENT.CAPTURE.REFUNDED que llegó cuando la captura aún no estaba registrada
+ * (p.ej. su PAYMENT.CAPTURE.COMPLETED falló en la primera entrega y PayPal lo reintenta después) quedó guardado
+ * con error. En cuanto la captura existe, se aplica (idempotente por id de reembolso de PayPal). Devuelve
+ * cuántos reembolsos aparcados se aplicaron.
+ */
+async function applyParkedPaypalRefunds(d: Deps, captureId: string): Promise<number> {
+  if (!(await d.db.payment.findUnique({ where: { paypalCaptureId: captureId }, select: { id: true } }))) return 0;
+  const parked = await d.db.webhookEvent.findMany({
+    where: { provider: "paypal", eventType: "PAYMENT.CAPTURE.REFUNDED", error: { not: null } },
+    orderBy: { createdAt: "asc" },
+    take: 500,
+  });
+  let applied = 0;
+  for (const ev of parked) {
+    const input = refundEventInput((ev.payload as { resource?: Record<string, unknown> } | null)?.resource);
+    if (input?.captureId !== captureId) continue;
+    try {
+      const r = await onPaypalRefundCompleted(d, input);
+      await d.db.webhookEvent.update({ where: { id: ev.id }, data: { processedAt: d.now(), error: null } });
+      if (!("duplicate" in r && r.duplicate)) applied++;
+    } catch (e) {
+      d.log.error(`[paypal] no se pudo aplicar el reembolso aparcado ${input.refundId} de la captura ${captureId}`, e);
+    }
+  }
+  return applied;
+}
+
 /**
  * Webhook de PayPal: verifica firma, registra el evento (idempotencia por event id) y lo despacha.
  * Devuelve `retry: true` solo ante errores transitorios (la ruta debe responder 5xx para que PayPal reintente).
@@ -832,10 +918,9 @@ export async function handlePaypalWebhook(d: Deps, headers: Record<string, strin
         await onPaypalCaptureDenied(d, { captureId: resource.id, paypalOrderId: resource.supplementary_data?.related_ids?.order_id ?? null, raw: resource, source: "webhook" });
         break;
       case "PAYMENT.CAPTURE.REFUNDED": {
-        const up = (resource.links as { rel: string; href: string }[] | undefined)?.find((l) => l.rel === "up")?.href ?? "";
-        const captureId = up.match(/captures\/([^/?]+)/)?.[1] ?? resource.capture_id ?? null;
-        if (!captureId) throw new DomainError("VALIDATION", "Reembolso sin captura asociada.");
-        await onPaypalRefundCompleted(d, { captureId, refundId: resource.id, amountCents: cents(resource.amount?.value), reason: resource.note_to_payer ?? null, invoiceId: resource.invoice_id ?? null });
+        const r = refundEventInput(resource);
+        if (!r) throw new DomainError("VALIDATION", "Reembolso sin captura asociada.");
+        await onPaypalRefundCompleted(d, r);
         break;
       }
       default:
@@ -848,6 +933,10 @@ export async function handlePaypalWebhook(d: Deps, headers: Record<string, strin
     if (isDomainError(e)) {
       // Error permanente (pago desconocido, datos inválidos): se registra y no se reintenta.
       await d.db.webhookEvent.update({ where: { id: row.id }, data: { processedAt: d.now(), error: msg } });
+      // Reembolso de una captura aún desconocida: queda «aparcado» (error) y se aplica cuando llegue la captura
+      // (applyParkedPaypalRefunds). Si la captura se registró mientras tanto (carrera), se aplica ya.
+      const parkedCapture = evt.event_type === "PAYMENT.CAPTURE.REFUNDED" && e.code === "NOT_FOUND" ? refundEventInput(resource)?.captureId : null;
+      if (parkedCapture && (await applyParkedPaypalRefunds(d, parkedCapture)) > 0) return { ok: true, duplicate: false, eventType: evt.event_type, retry: false };
       return { ok: false, duplicate: false, eventType: evt.event_type, retry: false, error: msg };
     }
     await d.db.webhookEvent.update({ where: { id: row.id }, data: { error: msg } });

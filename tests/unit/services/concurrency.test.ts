@@ -66,8 +66,8 @@ describe("confirmaciones simultáneas del mismo pedido (sin actualizaciones perd
     const s = await startPaypalPayment(ctx.d, o.id);
     ctx.paypal.approve(s.paypalOrderId);
     await capturePaypalReturn(ctx.d, s.paypalOrderId);
-    const p1 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A-1", amountCents: 1_800_000, currency: "VES" });
-    const p2 = await recordManualPayment(ctx.d, { orderId: o.id, method: "TRANSFERENCIA", reference: "B-2", amountCents: 1_800_000, currency: "VES" });
+    const p1 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A-0001", amountCents: 1_800_000, currency: "VES" });
+    const p2 = await recordManualPayment(ctx.d, { orderId: o.id, method: "TRANSFERENCIA", reference: "B-0002", amountCents: 1_800_000, currency: "VES" });
     // dos conexiones (como dos instancias de la app) con espera real entre reintentos
     const other = ctx.extraClient();
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
