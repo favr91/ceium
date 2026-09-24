@@ -185,9 +185,29 @@ describe("certificados", () => {
     expect(sweep.issued).toBe(1);
   });
 
-  it("la política se puede desactivar explícitamente (certificates.policy)", async () => {
+  it("el saldo 0 es obligatorio: ningún ajuste lo desactiva (certificates.policy se ignora)", async () => {
     await ctx.db.setting.create({ data: { key: "certificates.policy", value: { requireFullPayment: false } } });
     const { customer } = await diplomaOrder("HALF");
+    const r = await checkDiplomaCompletion(ctx.d, customer.id, ctx.fx.diploma);
+    expect(r).toMatchObject({ issued: false, completed: 9, blockedByBalance: true });
+    expect(await ctx.db.certificate.count()).toBe(0);
+  });
+
+  it("una finalización de una matrícula dada de baja (UNENROLLED) no cuenta", async () => {
+    const { customer } = await diplomaOrder("FULL");
+    // curso 1 completado en una matrícula que luego se dio de baja (p.ej. reembolso de otro pedido)
+    await ctx.db.enrollment.update({
+      where: { customerId_moodleCourseId: { customerId: customer.id, moodleCourseId: ctx.fx.diplomaMoodleIds[0] } },
+      data: { status: "UNENROLLED", completedAt: ctx.clock.now() },
+    });
+    const r = await checkDiplomaCompletion(ctx.d, customer.id, ctx.fx.diploma);
+    expect(r).toMatchObject({ issued: false, completed: 8, total: 9, pendingCourseIds: [ctx.fx.diplomaMoodleIds[0]] });
+    expect(await ctx.db.certificate.count()).toBe(0);
+    // al volver a matricularse, la finalización vigente sí cuenta
+    await ctx.db.enrollment.update({
+      where: { customerId_moodleCourseId: { customerId: customer.id, moodleCourseId: ctx.fx.diplomaMoodleIds[0] } },
+      data: { status: "ENROLLED" },
+    });
     expect((await checkDiplomaCompletion(ctx.d, customer.id, ctx.fx.diploma)).issued).toBe(true);
   });
 

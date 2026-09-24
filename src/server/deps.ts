@@ -1,7 +1,7 @@
 // Dependencias inyectables de los servicios de dominio. La app usa getServices() (src/server/services.ts);
 // los tests construyen Deps con una BD SQLite propia y fakes de Moodle/PayPal/correo.
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import { isTransientDbError } from "@/server/errors";
+import { isTransientDbError, isUniqueViolation } from "@/server/errors";
 import type { MoodlePort, PaypalPort } from "@/server/ports";
 import type { Mailer } from "@/server/email/mailer";
 
@@ -44,17 +44,30 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServiceConf
   };
 }
 
+export interface WithTxOptions {
+  /** Reintentos ante contención (default 10). */
+  retries?: number;
+  /**
+   * Reintentar también ante P2002 (restricción única). Solo para transacciones cuyo P2002 solo puede venir
+   * de una carrera con otra transacción que ya confirmó (alta de cliente por correo, número de pedido):
+   * al reintentar, la lectura ve la fila ajena y el camino es otro.
+   */
+  retryUnique?: boolean;
+}
+
 /**
- * Transacción interactiva con reintento ante contención (SQLITE_BUSY entre conexiones / P2034 en Postgres).
+ * Transacción interactiva con reintento ante contención (SQLITE_BUSY/P1008 entre procesos, P2034 en Postgres).
  * `fn` debe ser re-ejecutable (sin efectos externos dentro).
  */
-export async function withTx<T>(d: Pick<Deps, "db" | "sleep">, fn: (tx: Tx) => Promise<T>, retries = 8): Promise<T> {
+export async function withTx<T>(d: Pick<Deps, "db" | "sleep">, fn: (tx: Tx) => Promise<T>, opts: number | WithTxOptions = {}): Promise<T> {
+  const { retries = 10, retryUnique = false } = typeof opts === "number" ? { retries: opts } : opts;
   for (let attempt = 0; ; attempt++) {
     try {
       return await d.db.$transaction(fn, { maxWait: 10_000, timeout: 20_000 });
     } catch (e) {
-      if (attempt >= retries || !isTransientDbError(e)) throw e;
-      await d.sleep(10 + Math.floor(Math.random() * 40) * (attempt + 1));
+      const retryable = isTransientDbError(e) || (retryUnique && isUniqueViolation(e));
+      if (attempt >= retries || !retryable) throw e;
+      await d.sleep(Math.min(1000, 10 * 2 ** Math.min(attempt, 6)) + Math.floor(Math.random() * 50));
     }
   }
 }

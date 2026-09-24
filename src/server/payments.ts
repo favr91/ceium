@@ -20,6 +20,7 @@ import {
   recomputeBalance,
   reservationTtlMs,
   getManualMethod,
+  lockOrder,
   SYSTEM,
   transitionOrder,
   type Actor,
@@ -45,12 +46,18 @@ export interface ApplyResult {
 }
 
 async function applyConfirmedPayment(tx: Tx, paymentId: string, actor: Actor, now: Date): Promise<ApplyResult> {
+  const { orderId: lockedOrderId } = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { orderId: true } });
+  await lockOrder(tx, lockedOrderId, now);
   const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
   const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { items: { include: { reservation: true } } } });
   const result: ApplyResult = { orderId: order.id, firstPaymentSatisfied: false, seatProblem: false, closedOrder: false, shouldEnroll: false };
 
-  const amountPaid = order.amountPaidCents + p.amountUsdCents;
-  await tx.order.update({ where: { id: order.id }, data: { amountPaidCents: amountPaid, paidAt: order.paidAt ?? now } });
+  // Incremento atómico (no "leído + monto"): dos confirmaciones concurrentes del mismo pedido no se pisan.
+  const { amountPaidCents: amountPaid } = await tx.order.update({
+    where: { id: order.id },
+    data: { amountPaidCents: { increment: p.amountUsdCents }, paidAt: order.paidAt ?? now },
+    select: { amountPaidCents: true },
+  });
   const balance = await recomputeBalance(tx, order.id);
 
   // Imputar a cuotas (en orden de secuencia; ver installments.ts).
@@ -757,6 +764,8 @@ interface ApplyRefundInput {
 }
 
 async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
+  const { orderId: lockedOrderId } = await tx.payment.findUniqueOrThrow({ where: { id: input.paymentId }, select: { orderId: true } });
+  await lockOrder(tx, lockedOrderId, now);
   const p = await tx.payment.findUniqueOrThrow({ where: { id: input.paymentId } });
   if (input.providerRefundId) {
     // El otro camino (webhook PAYMENT.CAPTURE.REFUNDED o el panel) ya registró este mismo reembolso.
@@ -771,10 +780,10 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
   const refund = await tx.refund.create({
     data: { paymentId: p.id, amountCents: input.amountCents, reason: input.reason ?? null, status: "COMPLETED", providerRefundId: input.providerRefundId ?? null, manual: input.manual, createdById: input.adminId ?? null, completedAt: now },
   });
-  const refunded = p.refundedCents + input.amountCents;
-  await tx.payment.update({ where: { id: p.id }, data: { refundedCents: refunded, status: refunded >= p.amountUsdCents ? "REFUNDED" : "PARTIALLY_REFUNDED" } });
+  const { refundedCents: refunded } = await tx.payment.update({ where: { id: p.id }, data: { refundedCents: { increment: input.amountCents } }, select: { refundedCents: true } });
+  await tx.payment.update({ where: { id: p.id }, data: { status: refunded >= p.amountUsdCents ? "REFUNDED" : "PARTIALLY_REFUNDED" } });
   const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId } });
-  await tx.order.update({ where: { id: order.id }, data: { amountPaidCents: order.amountPaidCents - input.amountCents } });
+  await tx.order.update({ where: { id: order.id }, data: { amountPaidCents: { decrement: input.amountCents } } });
   const balance = await recomputeBalance(tx, order.id);
   // Las cuotas se vuelven a imputar con el neto pagado: la última cubierta vuelve a quedar pendiente.
   const realloc = await reallocateInstallments(tx, order.id, now);

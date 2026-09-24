@@ -76,6 +76,16 @@ export async function transitionOrder(tx: Tx, orderId: string, to: OrderStatus, 
   throw new DomainError("CONFLICT", "El pedido cambió mientras se procesaba; intenta de nuevo.");
 }
 
+/**
+ * Bloquea la fila del pedido hasta el commit. Llamar al INICIO de toda transacción que lee y luego escribe
+ * importes del pedido (pagos, reembolsos, ajustes): en Postgres (READ COMMITTED) el UPDATE toma el lock de
+ * fila, así dos confirmaciones simultáneas del mismo pedido se serializan y la segunda lee lo que la
+ * primera confirmó. En SQLite la transacción (BEGIN IMMEDIATE) ya es exclusiva; esto no cuesta nada.
+ */
+export async function lockOrder(tx: Tx, orderId: string, now: Date = new Date()): Promise<void> {
+  await tx.order.updateMany({ where: { id: orderId }, data: { updatedAt: now } });
+}
+
 /** Recalcula balance = total + ajustes − pagado. */
 export async function recomputeBalance(tx: Tx, orderId: string): Promise<number> {
   const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { totalCents: true, amountPaidCents: true } });
@@ -288,7 +298,7 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
       expiresAt: expiresAt.toISOString(),
     });
     return order.id;
-  });
+  }, { retryUnique: true }); // P2002 aquí = otra transacción creó el mismo cliente o tomó el mismo número
 
   if (input.paymentMethod !== "PAYPAL") await notifyOrderReceived(d, orderId);
   return getOrder(d, orderId);

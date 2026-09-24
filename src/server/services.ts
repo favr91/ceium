@@ -22,8 +22,11 @@ import * as corrections from "@/server/corrections";
 export function createDefaultDeps(overrides: Partial<Deps> = {}): Deps {
   return {
     db: prisma,
-    moodle: moodlePort(getMoodleClient()),
-    paypal: paypalPort(getPayPal()),
+    // Perezosos: el cliente se construye (y valida MOODLE_TOKEN / credenciales PayPal) en la primera llamada,
+    // no al crear los servicios. Sin Moodle configurado, las páginas que solo leen pedidos siguen funcionando;
+    // la matrícula falla de forma controlada (queda para reintento) en vez de tumbar toda la app con un 500.
+    moodle: moodlePort(getMoodleClient),
+    paypal: paypalPort(getPayPal),
     mailer: mailerFromEnv(),
     config: configFromEnv(),
     now: () => new Date(),

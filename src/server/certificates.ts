@@ -1,6 +1,7 @@
 // Certificado de diplomado: se emite SOLO cuando Moodle reporta completados TODOS los cursos del
-// diplomado (core_completion_get_course_completion_status) Y el pedido no tiene saldo pendiente
-// (certificates.policy.requireFullPayment, por defecto true: evita certificar a quien pagó 1 de 8 cuotas).
+// diplomado (core_completion_get_course_completion_status) en matrículas VIGENTES (una finalización de una
+// matrícula dada de baja, p.ej. tras un reembolso, no cuenta) Y el pedido tiene saldo 0. El saldo 0 es
+// obligatorio (SPEC): no hay ajuste que lo desactive; para certificar a quien debe, el admin condona el saldo.
 // Nunca dos veces (única por cliente+diplomado). PDF con pdf-lib y código verificable público.
 // La entrega (PDF + correo) es recuperable: si falla, el barrido la reintenta.
 import crypto from "node:crypto";
@@ -8,11 +9,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { Deps } from "@/server/deps";
-import { readSetting, withTx } from "@/server/deps";
+import { withTx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
 import { addOrderEvent, SYSTEM } from "@/server/orders";
 import { formatUSD } from "@/server/pricing";
-import { SETTING_KEYS } from "@/server/settings";
 import { deliverOutboxEmail, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
 
@@ -72,11 +72,17 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
   for (const c of courses) {
     const mid = c.moodleCourseId!;
     const enr = await d.db.enrollment.findUnique({ where: { customerId_moodleCourseId: { customerId, moodleCourseId: mid } } });
-    if (enr?.completedAt) {
+    // Solo cuenta una matrícula vigente: una finalización registrada en una matrícula que luego se dio de
+    // baja (reembolso, cambio de cohorte) es obsoleta y no se combina con las demás.
+    if (!enr || enr.status !== "ENROLLED") {
+      pending.push(mid);
+      continue;
+    }
+    if (enr.completedAt) {
       completed++;
       continue;
     }
-    if (!enr || enr.status !== "ENROLLED" || customer.moodleUserId == null) {
+    if (customer.moodleUserId == null) {
       pending.push(mid);
       continue;
     }
@@ -94,9 +100,8 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
   const result: CompletionCheck = { ...base, total: courses.length, completed, pendingCourseIds: pending };
   if (completed < courses.length) return result;
 
-  // Todos completos. Política: sin saldo pendiente (configurable en certificates.policy).
-  const policy = await readSetting(d.db, SETTING_KEYS.certificatePolicy, { requireFullPayment: true });
-  if (policy.requireFullPayment && purchase.order.balanceCents > 0) {
+  // Todos completos. Requisito obligatorio: saldo 0 (no configurable).
+  if (purchase.order.balanceCents > 0) {
     return { ...result, blockedByBalance: true, reason: `Completó todos los cursos, pero el pedido tiene saldo pendiente (${formatUSD(purchase.order.balanceCents)}). Se emitirá al cancelar el saldo.` };
   }
 

@@ -602,6 +602,10 @@ export function createMoodleMock(opts = {}) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // Ejecutado como CLI: carga app/.env (sin pisar variables ya definidas: las del proceso padre, p.ej. el
+  // `env` de playwright.config.ts, tienen prioridad).
+  const { config: loadEnv } = await import('dotenv');
+  loadEnv({ path: new URL('../../.env', import.meta.url).pathname, quiet: true });
   const mock = createMoodleMock();
   mock.listen().then((url) => console.log('mock moodle escuchando en ' + url));
 }

@@ -12,7 +12,7 @@ import type { OrderStatus } from "@/generated/prisma/client";
 import type { Deps, Tx } from "@/server/deps";
 import { withTx } from "@/server/deps";
 import { DomainError } from "@/server/errors";
-import { addOrderEvent, PAID_STATES, recomputeBalance, reservationTtlMs, transitionOrder, type Actor } from "@/server/orders";
+import { addOrderEvent, PAID_STATES, lockOrder, recomputeBalance, reservationTtlMs, transitionOrder, type Actor } from "@/server/orders";
 import { reassignItemCohort } from "@/server/seats";
 import { reallocateInstallments } from "@/server/installments";
 import { satisfyFirstPayment } from "@/server/payments";
@@ -46,6 +46,7 @@ interface AdjustInput {
 
 async function applyAdjustment(tx: Tx, input: AdjustInput, now: Date) {
   const actor: Actor = { type: "ADMIN", id: input.adminId };
+  await lockOrder(tx, input.orderId, now);
   const order = await tx.order.findUnique({ where: { id: input.orderId } });
   if (!order) throw new DomainError("NOT_FOUND", "El pedido no existe.");
   if (!ADJUSTABLE.includes(order.status)) throw new DomainError("INVALID_STATE", `No se puede ajustar el saldo de un pedido en estado ${order.status}.`);

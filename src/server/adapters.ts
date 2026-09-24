@@ -4,7 +4,18 @@ import type { PayPalClient } from "@/server/paypal";
 import type { MoodlePort, PaypalPort, PaypalCaptureResult, PaypalRefundResult } from "@/server/ports";
 import { normalizeRefund } from "@/server/ports";
 
-export function moodlePort(client: MoodleClient): MoodlePort {
+/** Un cliente o una función que lo construye al primer uso (así la app arranca aunque falte configuración). */
+export type ClientSource<C> = C | (() => C);
+
+function lazy<C extends object>(src: ClientSource<C>): () => C {
+  if (typeof src !== "function") return () => src;
+  let c: C | undefined;
+  return () => (c ??= (src as () => C)());
+}
+
+export function moodlePort(source: ClientSource<MoodleClient>): MoodlePort {
+  const get = lazy(source);
+  const client = new Proxy({} as MoodleClient, { get: (_t, prop) => { const c = get(); const v = Reflect.get(c, prop, c); return typeof v === "function" ? v.bind(c) : v; } });
   return {
     async findOrCreateUser(email, names) {
       const r = await client.findOrCreateUser({ email, firstname: names.firstname, lastname: names.lastname });
@@ -20,7 +31,9 @@ export function moodlePort(client: MoodleClient): MoodlePort {
   };
 }
 
-export function paypalPort(client: PayPalClient): PaypalPort {
+export function paypalPort(source: ClientSource<PayPalClient>): PaypalPort {
+  const get = lazy(source);
+  const client = new Proxy({} as PayPalClient, { get: (_t, prop) => { const c = get(); const v = Reflect.get(c, prop, c); return typeof v === "function" ? v.bind(c) : v; } });
   return {
     async createOrder(input) {
       const r = await client.createOrder({

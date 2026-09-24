@@ -8,6 +8,7 @@ export type DomainErrorCode =
   | "INVALID_STATE"
   | "PAYMENT_PROVIDER"
   | "UNAUTHORIZED"
+  | "FORBIDDEN"
   | "CONFLICT";
 
 export class DomainError extends Error {
@@ -30,6 +31,7 @@ export const HTTP_STATUS: Record<DomainErrorCode, number> = {
   INVALID_STATE: 409,
   PAYMENT_PROVIDER: 502,
   UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
   CONFLICT: 409,
 };
 
@@ -43,9 +45,17 @@ export function isUniqueViolation(e: unknown): boolean {
   return !!err && (err.code === "P2002" || /Unique constraint failed/i.test(err.message ?? ""));
 }
 
-/** Contención de escritura en SQLite (otra conexión tiene el lock) o conflicto de transacción en Postgres. */
+/**
+ * Error transitorio de BD: reintentar la transacción completa es seguro.
+ *  - P1008 "Operation has timed out": así reporta Prisma un SQLITE_BUSY (otra conexión/proceso tiene el lock).
+ *  - P2034: conflicto de escritura / deadlock (Postgres, serialización).
+ *  - P2028 "Unable to start a transaction in the given time": maxWait agotado por contención.
+ */
 export function isTransientDbError(e: unknown): boolean {
   const err = e as { code?: string; message?: string } | null;
   if (!err) return false;
-  return err.code === "P2034" || /SQLITE_BUSY|database is locked|write conflict|deadlock/i.test(err.message ?? "");
+  const msg = err.message ?? "";
+  if (err.code === "P1008" || err.code === "P2034") return true;
+  if (err.code === "P2028" && /Unable to start a transaction/i.test(msg)) return true;
+  return /SQLITE_BUSY|database is locked|Operation has timed out|write conflict|deadlock|could not serialize/i.test(msg);
 }

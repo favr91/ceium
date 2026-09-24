@@ -21,8 +21,9 @@ for (const f of [file, `${file}-journal`, `${file}-wal`, `${file}-shm`]) {
     console.log(`[db:reset] borrado ${path.relative(process.cwd(), f)}`);
   }
 }
+fs.mkdirSync(path.dirname(file), { recursive: true });
 const run = (cmd) => execSync(cmd, { stdio: "inherit", env: process.env });
 run("npx prisma db push");
-run("npx prisma generate");
+if (process.env.DB_RESET_SKIP_GENERATE !== "1") run("npx prisma generate");
 run("npx tsx prisma/seed.ts");
 console.log("[db:reset] listo");

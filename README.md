@@ -11,14 +11,15 @@ npm run db:seed             # BORRA y recrea catálogo real, sedes, cohortes de 
 npm run mocks               # mock Moodle :4010 + mock PayPal :4020 (placeholders hasta que se implementen)
 npm run dev                 # http://localhost:3000   · panel: /admin (admin@ceium.net / ceium-admin-2026)
 ```
-Otros: `build`, `start`, `test` (vitest, `tests/unit`), `test:e2e` (playwright, `tests/e2e`, levanta mocks + app en :3100),
+Otros: `build`, `start`, `test` (vitest, `tests/unit`), `test:e2e` (playwright, `tests/e2e`: entorno aislado — BD `var/e2e/e2e.db` recreada y sembrada, app en :3100 con
+`APP_URL` = :3100, mocks Moodle :4110 / PayPal :4120 con webhooks → :3100; no reutiliza servidores salvo `E2E_REUSE=1`),
 `typecheck`, `lint`, `db:reset`, `db:studio`, `catalog:extract` (re-extrae fichas de ceium.net → `prisma/seed-data/product-details.json`).
 `jobs` (`scripts/cron.ts`): pagos PayPal sin retorno, vencimientos, reintentos de matrícula, **cuotas** (vencidas + recordatorio
 de la siguiente cuota con enlace de pago), certificados y reintento de correos.
 
 ### Base de datos limpia (verificación / agentes)
-`db:reset` usa `prisma db push --force-reset`, que Prisma 7 bloquea cuando lo ejecuta un agente de IA sin consentimiento
-explícito del usuario. Para verificar desde cero **no** se resetea `dev.db`: se apunta a una BD nueva y vacía.
+`db:reset` borra el archivo SQLite de `DATABASE_URL` y hace `prisma db push` + seed (no usa `--force-reset`, que
+Prisma 7 bloquea cuando lo ejecuta un agente de IA). Para verificar desde cero sin tocar `dev.db`, apuntar a una BD nueva:
 ```bash
 DATABASE_URL="file:/tmp/ceium-check.db" npx prisma db push && DATABASE_URL="file:/tmp/ceium-check.db" npm run db:seed
 ```

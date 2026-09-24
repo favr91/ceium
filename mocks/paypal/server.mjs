@@ -779,6 +779,10 @@ ${items ? `<ul>${items}</ul>` : ''}
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  // Ejecutado como CLI: carga app/.env (sin pisar variables ya definidas: las del proceso padre, p.ej. el
+  // `env` de playwright.config.ts, tienen prioridad).
+  const { config: loadEnv } = await import('dotenv');
+  loadEnv({ path: new URL('../../.env', import.meta.url).pathname, quiet: true });
   const port = Number(process.env.MOCK_PAYPAL_PORT ?? 4020);
   const mock = createPaypalMock({ baseUrl: process.env.MOCK_PAYPAL_PUBLIC_URL });
   mock.listen(port).then(({ url }) => {

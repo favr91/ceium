@@ -299,7 +299,6 @@ async function main() {
     [SETTING_KEYS.enrollmentRetry, { maxAttempts: 8, baseDelaySeconds: 60 }, "Reintentos con backoff exponencial de la matrícula en Moodle"],
     [SETTING_KEYS.installmentReminders, { daysBefore: 3, overdueGraceDays: 0, overdueEveryDays: 7, maxOverdueReminders: 3 }, "Recordatorios por correo de la siguiente cuota (días antes del vencimiento, gracia y frecuencia de recordatorios vencidos)"],
     [SETTING_KEYS.certificateJob, { intervalMinutes: 60 }, "Frecuencia del job que revisa finalización en Moodle y emite certificados"],
-    [SETTING_KEYS.certificatePolicy, { requireFullPayment: true }, "El certificado del diplomado se emite solo con el saldo del pedido en 0 (además de completar todos los cursos en Moodle)"],
     [SETTING_KEYS.storeContact, { phones: ["+58 412-0840407", "+58 412-5250748"], emails: ["registroceium@gmail.com", "roacar@gmail.com"], whatsapp: "+584120840718", instagram: "https://instagram.com/ceiumoficial" }, "Datos de contacto (de ceium.net/pages/contacto)"],
     [SETTING_KEYS.sampleData, { cohortsAreSample: true, note: "Las cohortes (fechas, cupos, sesiones) son DATOS DE EJEMPLO del seed (Cohort.isSample = true). Reemplazar por los cronogramas reales." }, "Marca de datos de ejemplo"],
   ];
