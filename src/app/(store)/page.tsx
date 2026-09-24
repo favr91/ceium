@@ -107,7 +107,7 @@ export default async function HomePage() {
             </h2>
             <ul className="home-partners__list list-unstyled">
               {partners.logos.map((l) => (
-                <li key={l.src}>
+                <li key={l.src} data-wa-avoid>
                   {/* eslint-disable-next-line @next/next/no-img-element -- logos SVG/WebP del CDN */}
                   <img src={l.src} alt={l.alt} loading="lazy" />
                 </li>

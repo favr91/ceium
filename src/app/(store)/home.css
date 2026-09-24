@@ -66,9 +66,14 @@
   .home-hero { background: #1d2a30; }
   .home-hero__slides { position: absolute; inset: 0; height: auto; }
   .home-hero__slide img { object-position: 50% 0; }
+  /* Velo oscuro a la izquierda: el título blanco no choca con el rótulo «CEIUM» ni «TECNOLOGÍA» del fondo. */
+  .home-hero__slides::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(90deg, rgba(0, 20, 28, 0.7) 0%, rgba(0, 20, 28, 0.6) 32%, rgba(0, 20, 28, 0.46) 48%, rgba(0, 20, 28, 0.18) 62%, rgba(0, 20, 28, 0) 74%);
+  }
   .home-hero__content { padding-top: 104px; padding-bottom: 104px; text-align: left; }
   .home-hero__content > * { max-width: 585px; }
-  .store-root .home-hero__title { font-size: 46px; line-height: 53px; color: #fff; }
+  .store-root .home-hero__title { font-size: 46px; line-height: 53px; color: #fff; text-shadow: 0 2px 12px rgba(0, 20, 28, 0.45); }
   .home-hero__subtitle { font-size: 19px; line-height: 22px; color: #fff; }
   .home-hero__buttons { justify-content: flex-start; gap: 16px; margin-top: 32px; }
   .store-root .home-hero__buttons .home-btn { min-width: 205px; border: 0; }

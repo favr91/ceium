@@ -771,7 +771,8 @@ details[open] > .header__menu-item .icon-caret { transform: rotate(180deg); }
 .policies li::before { content: "\00B7"; padding: 0 8px; }
 
 /* ───────────── WhatsApp ───────────── */
-.whatsapp-widget { position: fixed; right: 10px; bottom: 10px; z-index: 40; }
+.whatsapp-widget { position: fixed; right: 10px; bottom: 10px; z-index: 40; transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s; }
+.whatsapp-widget[data-yield] { opacity: 0; visibility: hidden; transform: translateY(16px); pointer-events: none; }
 .whatsapp-widget__link { display: block; line-height: 0; text-decoration: none; transition: transform var(--duration-default) ease; }
 .whatsapp-widget__link:hover { transform: scale(1.05); }
 .whatsapp-widget__link svg { display: block; width: 63px; height: 63px; }

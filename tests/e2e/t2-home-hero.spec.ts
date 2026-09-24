@@ -119,4 +119,48 @@ test.describe("t2 home: hero y aliados", () => {
       .poll(() => imgs.evaluateAll((els) => els.every((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth > 0)))
       .toBe(true);
   });
+
+  test("escritorio: velo oscuro bajo el título para que no choque con el rótulo del fondo", async ({ page }) => {
+    test.skip(isMobile(page), "en móvil el texto va sobre gris, sin foto detrás");
+    await open(page);
+    const bg = await page.locator(".home-hero__slides").evaluate((e) => getComputedStyle(e, "::after").backgroundImage);
+    expect(bg).toContain("linear-gradient");
+    // El velo queda debajo del texto: el título sigue siendo el elemento en su punto.
+    const t = (await page.locator(".home-hero__title").boundingBox())!;
+    const onTop = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest(".home-hero__title"), [t.x + 20, t.y + 20]);
+    expect(onTop).toBe(true);
+  });
+
+  test("el WhatsApp flotante nunca tapa un logo de aliados y vuelve al alejarse", async ({ page }) => {
+    await open(page);
+    const wa = page.locator(".whatsapp-widget");
+    const logos = page.locator(".home-partners__list li");
+    const covered = () =>
+      page.evaluate(() => {
+        const w = document.querySelector(".whatsapp-widget")!;
+        if (getComputedStyle(w).visibility === "hidden") return false;
+        const r = w.getBoundingClientRect();
+        return Array.from(document.querySelectorAll(".home-partners__list li")).some((li) => {
+          const b = li.getBoundingClientRect();
+          return b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top;
+        });
+      });
+    // Recorre la banda de aliados paso a paso: en ningún punto el botón visible se cruza con un logo.
+    const top = await box(page, ".home-partners");
+    for (let y = Math.max(0, top.y - 900); y <= top.y + top.h; y += 40) {
+      await page.evaluate((yy) => window.scrollTo(0, yy), y);
+      await expect.poll(covered).toBe(false);
+    }
+    if (isMobile(page)) {
+      // A 390 × 844 la fila de San Javier cae justo donde reposa el botón: se aparta.
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await expect(wa).toHaveAttribute("data-yield", "");
+      await expect(wa).toBeHidden();
+    }
+    // Lejos de los logos vuelve a verse y a ser clicable.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(wa).not.toHaveAttribute("data-yield");
+    await expect(wa.getByRole("link", { name: "Escríbenos por WhatsApp" })).toBeVisible();
+    await expect(logos).toHaveCount(5);
+  });
 });
