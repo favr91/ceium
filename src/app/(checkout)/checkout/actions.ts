@@ -82,7 +82,7 @@ export async function placeOrder(_prev: PlaceOrderState, fd: FormData): Promise<
     }
     const field = typeof e.details?.field === "string" ? (e.details.field as CheckoutField) : null;
     if (field && FIELD_ORDER.includes(field)) return fail("Revisa los campos marcados.", { [field]: e.message });
-    return fail(e.code === "SOLD_OUT" ? `${e.message} Vuelve al carrito para elegir otra cohorte.` : e.message);
+    return fail(e.code === "SOLD_OUT" ? `Sin cupo. ${e.message} Vuelve al carrito para elegir otra cohorte.` : e.message);
   }
 
   (await cookies()).set(CHECKOUT_COOKIE, encodePendingCookie(order.token, cartSignature(lines)), CHECKOUT_COOKIE_OPTIONS);

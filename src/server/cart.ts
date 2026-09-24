@@ -275,7 +275,7 @@ export async function resolveCart(d: { db: Db; now: () => Date }, lines: CartLin
       if (!cohort || cohort.productId !== p.id) error = "Elige una cohorte para la modalidad semipresencial.";
       else {
         const av = await getCohortAvailability(d, cohort.id);
-        if (!av.purchasable) error = av.available <= 0 ? "Esta cohorte ya no tiene cupos disponibles. Elige otra cohorte." : "Las inscripciones de esta cohorte están cerradas.";
+        if (!av.purchasable) error = av.available <= 0 ? "Sin cupo. Esta cohorte ya no tiene cupos disponibles; elige otra cohorte." : "Las inscripciones de esta cohorte están cerradas.";
         else if (av.available <= LOW_SEATS) seatNote = av.available === 1 ? "¡Queda 1 cupo!" : `¡Quedan ${av.available} cupos!`;
       }
     }
