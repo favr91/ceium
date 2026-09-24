@@ -34,6 +34,8 @@ export class MoodleError extends Error {
     debuginfo?: string;
     status?: number;
     cause?: unknown;
+    /** Fuerza la clasificación (p. ej. cuerpo no JSON con HTTP 200: página de error pasajera de Moodle o del proxy). */
+    retryable?: boolean;
   }) {
     super(`Moodle ${init.wsfunction}: ${init.message}${init.debuginfo ? ` (${init.debuginfo})` : ""}`, { cause: init.cause });
     this.name = "MoodleError";
@@ -44,11 +46,12 @@ export class MoodleError extends Error {
     this.debuginfo = init.debuginfo;
     this.status = init.status;
     this.retryable =
-      init.kind === "network" ||
-      init.kind === "timeout" ||
-      (init.kind === "http" && (init.status === undefined || init.status >= 500 || init.status === 429)) ||
-      (init.kind === "protocol" && (init.status ?? 200) >= 500) ||
-      (init.kind === "moodle" && !!init.errorcode && RETRYABLE_ERRORCODES.has(init.errorcode));
+      init.retryable ??
+      (init.kind === "network" ||
+        init.kind === "timeout" ||
+        (init.kind === "http" && (init.status === undefined || init.status >= 500 || init.status === 429)) ||
+        (init.kind === "protocol" && (init.status ?? 200) >= 500) ||
+        (init.kind === "moodle" && !!init.errorcode && RETRYABLE_ERRORCODES.has(init.errorcode)));
   }
 
   /** Mensaje corto para guardar en Enrollment.lastError / mostrar en el panel. */

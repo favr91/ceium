@@ -174,12 +174,17 @@ export class MoodleClient {
     try {
       data = JSON.parse(text);
     } catch (e) {
+      // El web service de Moodle siempre responde JSON (también sus excepciones). Un cuerpo que no lo es (HTML con
+      // «Error de lectura de la base de datos», página de mantenimiento o del proxy, respuesta cortada) es un fallo
+      // pasajero del servidor, no un rechazo: se reintenta con backoff (acotado por enrollment.retry.maxAttempts).
+      // Como definitivo dejaba la matrícula FAILED al primer intento, sin reintentos, con un pago ya aprobado.
       throw new MoodleError({
         kind: "protocol",
         wsfunction,
         status: res.status,
         message: `respuesta no JSON: ${text.slice(0, 120)}`,
         cause: e,
+        retryable: true,
       });
     }
     if (data && typeof data === "object" && !Array.isArray(data) && "exception" in data && "errorcode" in data) {
