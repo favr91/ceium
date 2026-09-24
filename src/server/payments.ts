@@ -602,9 +602,9 @@ export async function storeProofFile(d: Deps, orderId: string, filename: string,
   const ext = (path.extname(filename).toLowerCase().match(/^\.(jpg|jpeg|png|webp|pdf)$/)?.[0]) ?? "";
   if (!ext) throw new DomainError("VALIDATION", "El comprobante debe ser una imagen (JPG, PNG o WEBP) o un PDF.");
   if (bytes.byteLength > 10 * 1024 * 1024) throw new DomainError("VALIDATION", "El comprobante no puede superar 10 MB.");
-  const rel = path.join(d.config.privateFilesDir, "proofs", orderId.replace(/[^a-z0-9]/gi, ""), `${crypto.randomBytes(8).toString("hex")}${ext}`);
-  await fs.mkdir(path.dirname(path.resolve(rel)), { recursive: true });
-  await fs.writeFile(path.resolve(rel), bytes);
+  const rel = path.join(/* turbopackIgnore: true */ d.config.privateFilesDir, "proofs", orderId.replace(/[^a-z0-9]/gi, ""), `${crypto.randomBytes(8).toString("hex")}${ext}`);
+  await fs.mkdir(path.dirname(path.resolve(/* turbopackIgnore: true */ rel)), { recursive: true });
+  await fs.writeFile(path.resolve(/* turbopackIgnore: true */ rel), bytes);
   return rel;
 }
 

@@ -59,6 +59,9 @@ export async function submitCheckout(ctx: APIRequestContext, fields: Record<stri
   const r = await ctx.post("/checkout", {
     maxRedirects: 0,
     timeout: 120_000,
+    // Conexión nueva: tras una preparación larga, reutilizar un socket keep-alive que el servidor ya cerró por
+    // inactividad da «socket hang up» antes de que el pedido llegue a la app (no es un fallo de la app).
+    headers: { connection: "close" },
     multipart: {
       ...fields,
       email: doc.email,

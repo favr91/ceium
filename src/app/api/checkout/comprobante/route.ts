@@ -87,7 +87,7 @@ export async function POST(req: Request) {
       proofFile,
     });
   } catch (e) {
-    if (proofFile) await fs.unlink(path.resolve(proofFile)).catch(() => {});
+    if (proofFile) await fs.unlink(path.resolve(/* turbopackIgnore: true */ proofFile)).catch(() => {});
     if (!isDomainError(e)) {
       console.error("[checkout/comprobante]", e);
       return fail(500, "No pudimos registrar tu pago. Intenta de nuevo en unos segundos; tu cupo sigue reservado.");

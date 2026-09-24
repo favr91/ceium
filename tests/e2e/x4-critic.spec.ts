@@ -291,3 +291,33 @@ test("I · índice de pedidos: buscar y abrir enseguida un pedido ya visible no 
     }
   }
 });
+
+test("T · índice de pedidos: pestaña y enseguida un filtro → el filtro se aplica sobre la pestaña nueva", async ({ browser }) => {
+  // El admin está en «Por verificar», pulsa «Todos» y sin esperar a que cargue abre el filtro de método: el filtro no
+  // debe devolverlo a «Por verificar» (antes se construía con el estado de la URL anterior).
+  for (let round = 0; round < 3; round++) {
+    const { page, close } = await adminPage(browser, "/admin/orders");
+    try {
+      await page.getByRole("tab", { name: /^Por verificar/ }).click();
+      await expect(page).toHaveURL(/view=AWAITING_VERIFICATION/);
+      // Red lenta para la página de «Todos»: su respuesta RSC tarda, como con una conexión móvil.
+      await page.route(
+        (u) => u.pathname === "/admin/orders" && !u.search.includes("view=") && !u.search.includes("method="),
+        async (route) => {
+          if (route.request().headers()["rsc"]) await new Promise((r) => setTimeout(r, 1_500));
+          await route.fallback();
+        },
+      );
+      await page.getByRole("tab", { name: /^Todos/ }).click();
+      await page.getByRole("button", { name: "Buscar y filtrar" }).click();
+      await page.getByRole("button", { name: "Método de pago" }).click();
+      await page.getByRole("group", { name: "Método de pago" }).getByText("PayPal", { exact: true }).click();
+      await expect(page).toHaveURL(/method=PAYPAL/);
+      await page.waitForTimeout(1_000);
+      expect(page.url(), `ronda ${round}`).not.toMatch(/view=AWAITING_VERIFICATION/);
+      await expect(page.getByRole("tab", { name: /^Todos/ })).toHaveAttribute("aria-selected", "true");
+    } finally {
+      await close();
+    }
+  }
+});

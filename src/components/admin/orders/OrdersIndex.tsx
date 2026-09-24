@@ -124,7 +124,45 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
   const [sortRef, sortOpen, setSortOpen] = useDismiss<HTMLDivElement>();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const go = (patch: Partial<IndexState>) => start(() => router.replace(`${path}${toQuery(state, { page: 1, ...patch })}`, { scroll: false }));
+  // Temporizador de la búsqueda con espera: toda navegación explícita (Enter, filtros, abrir un pedido) lo cancela, y
+  // también desmontar el índice; si no, al vencer haría router.replace('/admin/orders?q=…') y devolvería al admin al
+  // listado después de abrir un pedido.
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelSearch = () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = null;
+  };
+  // Estado PEDIDO más reciente (no solo el de la URL ya confirmada): si el admin pulsa una pestaña y enseguida un
+  // filtro u orden, el filtro se aplica sobre la pestaña nueva aunque su página aún no haya llegado (antes volvía a
+  // la vista anterior con el filtro). Cada navegación propia queda pendiente hasta que la URL la confirma; una
+  // navegación ajena (atrás/adelante, enlace externo) descarta lo pendiente y manda la URL.
+  const intent = useRef(state);
+  const pendingKeys = useRef<string[]>([]);
+  const committedKey = toQuery(state);
+  useEffect(() => {
+    const i = pendingKeys.current.indexOf(committedKey);
+    if (i >= 0) pendingKeys.current = pendingKeys.current.slice(i + 1);
+    else pendingKeys.current = [];
+    if (pendingKeys.current.length === 0) intent.current = state;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [committedKey]);
+  const request = (patch: Partial<IndexState>) => {
+    const next = { ...intent.current, ...patch };
+    intent.current = next;
+    const k = toQuery(next);
+    if (k !== committedKey || pendingKeys.current.length) pendingKeys.current.push(k);
+    return k;
+  };
+  const go = (patch: Partial<IndexState>) => {
+    cancelSearch();
+    const k = request({ page: 1, ...patch });
+    start(() => router.replace(`${path}${k}`, { scroll: false }));
+  };
+  /** Clic simple en un enlace del índice (pestaña, página): registra el estado pedido; los clics con modificador abren otra pestaña. */
+  const onNavClick = (e: React.MouseEvent, patch: Partial<IndexState>) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    request(patch);
+  };
 
   // Búsqueda con espera (como el índice de Shopify: filtra mientras escribes).
   const [lastQ, setLastQ] = useState(state.q);
@@ -134,18 +172,38 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
   }
   // La espera navega con el estado de la URL VIGENTE al vencer (no el de cuando se tecleó): si entretanto se
   // pulsó «Cancelar», una pestaña o un filtro, una navegación rezagada no debe deshacerlos.
-  const latest = useRef({ state, path });
+  const latest = useRef({ path });
   useEffect(() => {
-    latest.current = { state, path };
+    latest.current = { path };
   });
+  const mounted = useRef(true);
   useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      searchTimer.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = null;
     if (q.trim() === state.q) return;
     const t = setTimeout(() => {
+      if (searchTimer.current !== t) return;
+      searchTimer.current = null;
       const cur = latest.current;
-      if (q.trim() === cur.state.q) return;
-      start(() => router.replace(`${cur.path}${toQuery(cur.state, { page: 1, q: q.trim() })}`, { scroll: false }));
+      // Solo si el admin sigue en el listado: nunca navegar desde un pedido abierto ni desde otra página.
+      if (!mounted.current || window.location.pathname !== cur.path) return;
+      if (q.trim() === intent.current.q) return;
+      const k = request({ page: 1, q: q.trim() });
+      start(() => router.replace(`${cur.path}${k}`, { scroll: false }));
     }, 350);
-    return () => clearTimeout(t);
+    searchTimer.current = t;
+    return () => {
+      clearTimeout(t);
+      if (searchTimer.current === t) searchTimer.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
@@ -187,6 +245,7 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
                 role="tab"
                 aria-selected={active}
                 href={`${path}${toQuery(state, { view: v.key, page: 1 })}`}
+                onClick={(e) => onNavClick(e, { view: v.key, page: 1 })}
                 className={`ix-tab${active ? " active" : ""}`}
                 scroll={false}
               >
@@ -328,6 +387,7 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
                       className={sel.has(r.id) ? "sel" : undefined}
                       onClick={(e) => {
                         if ((e.target as HTMLElement).closest("a,button,input,label,.itm-pop")) return;
+                        cancelSearch();
                         router.push(href);
                       }}
                     >
@@ -335,7 +395,7 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
                         <input type="checkbox" className="cb" checked={sel.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Seleccionar pedido #${r.number}`} />
                       </td>
                       <td className="c-num">
-                        <Link href={href}>#{r.number}</Link>
+                        <Link href={href} onClick={cancelSearch}>#{r.number}</Link>
                         {r.awaitingVerification ? <span className="dot-attn" title="Pago por verificar" /> : null}
                       </td>
                       <td className="c-date">{listDate(r.placedAt, now)}</td>
@@ -357,7 +417,7 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
               const enr = enrollmentBadge(r.status, r.enrollment, r.items.some((i) => i.planKind === "MONTHLY") ? { courses: r.installments.total } : null);
               return (
                 <li key={r.id}>
-                  <Link href={`/admin/orders/${r.id}`} aria-label={`Pedido #${r.number} de ${r.customer.name}`}>
+                  <Link href={`/admin/orders/${r.id}`} onClick={cancelSearch} aria-label={`Pedido #${r.number} de ${r.customer.name}`}>
                     <span className="n">
                       #{r.number}
                       {r.awaitingVerification ? <span className="dot-attn" /> : null}
@@ -383,12 +443,12 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
         {pages > 1 ? (
           <nav className="adm-pager" aria-label="Paginación">
             {page > 1 ? (
-              <Link href={`${path}${toQuery(state, { page: page - 1 })}`} aria-label="Página anterior"><Icon name="prev" size={16} /></Link>
+              <Link href={`${path}${toQuery(state, { page: page - 1 })}`} onClick={(e) => onNavClick(e, { page: page - 1 })} aria-label="Página anterior"><Icon name="prev" size={16} /></Link>
             ) : (
               <span aria-disabled="true"><Icon name="prev" size={16} /></span>
             )}
             {page < pages ? (
-              <Link href={`${path}${toQuery(state, { page: page + 1 })}`} aria-label="Página siguiente"><Icon name="next" size={16} /></Link>
+              <Link href={`${path}${toQuery(state, { page: page + 1 })}`} onClick={(e) => onNavClick(e, { page: page + 1 })} aria-label="Página siguiente"><Icon name="next" size={16} /></Link>
             ) : (
               <span aria-disabled="true"><Icon name="next" size={16} /></span>
             )}

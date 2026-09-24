@@ -59,7 +59,7 @@ function toNodemailer(msg: MailMessage) {
 
 async function writeEml(dir: string, id: string, eml: Buffer): Promise<string> {
   await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${id}.eml`);
+  const file = path.join(/* turbopackIgnore: true */ dir, `${id}.eml`);
   await fs.writeFile(file, eml);
   return file;
 }

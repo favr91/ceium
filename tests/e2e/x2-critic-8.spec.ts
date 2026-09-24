@@ -184,7 +184,8 @@ test("Moodle rechaza la matrícula con un error definitivo al aprobar → pagado
   try {
     await admin.getByTestId("payment").getByRole("button", { name: "Aprobar pago" }).click();
     await expect.poll(() => paymentRows(o.orderId)[0].status).toBe("COMPLETED");
-    await expect.poll(() => enrollmentRows(o.orderId).map((e) => e.status).join(","), { timeout: 20_000 }).toMatch(/FAILED|PENDING/);
+    // La fila nace PENDING y pasa a FAILED cuando Moodle responde: esperar al estado final, no al intermedio.
+    await expect.poll(() => enrollmentRows(o.orderId).map((e) => e.status).join(","), { timeout: 20_000 }).toBe("FAILED");
     // Pagado y con el cupo ocupado; Moodle falló de forma definitiva: FAILED + aviso en el panel, sin reintentos a ciegas.
     expect(order(o.orderId).status).toBe("PAID");
     expect(reservationOf(o.orderId).status).toBe("CONFIRMED");
