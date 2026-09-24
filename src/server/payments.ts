@@ -400,11 +400,20 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
     const acceptsInstallment = PAID_STATES.includes(order.status) && order.balanceCents > 0;
     if (!acceptsFirst && !acceptsInstallment) throw new DomainError("INVALID_STATE", "Este pedido no admite nuevos pagos.");
     if (isCustomer) {
+      // Se serializa con las capturas de PayPal del mismo pedido (secureSeatBeforeCapture también bloquea el pedido).
+      await lockOrder(tx, order.id, now);
       // PayPal ya retiene el dinero del primer pago o de la cuota (CAPTURE_PENDING): igual que startPaypalPayment, no se acepta
       // otro pago (p.ej. desde una pestaña del pedido abierta antes). Pagaría dos veces y, si el staff rechazaba ese
       // comprobante, el pedido se cerraba y liberaba el cupo con el dinero de PayPal aún retenido.
       const held = await tx.payment.findFirst({ where: { orderId: order.id, method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" }, select: { id: true } });
       if (held) throw new DomainError("INVALID_STATE", "PayPal está revisando tu pago anterior de este pedido. Te avisaremos por correo cuando se confirme; no hace falta pagar de nuevo.", { paymentId: held.id });
+      // Una orden PayPal de este pedido se está capturando AHORA (el médico la aprobó hace instantes, p. ej. en otra
+      // pestaña): ese cobro aún no está imputado; aceptar además este comprobante cobraría dos veces la misma cuota.
+      const capturing = await tx.payment.findFirst({
+        where: { orderId: order.id, method: "PAYPAL", providerStatus: CAPTURING, status: { in: ["PENDING", "CANCELLED"] }, updatedAt: { gte: new Date(now.getTime() - CAPTURING_LEASE_MS) } },
+        select: { id: true },
+      });
+      if (capturing) throw new DomainError("INVALID_STATE", "Estamos confirmando con PayPal un pago de este pedido que aprobaste hace un momento. Espera unos minutos y revisa tu correo antes de registrar otro pago.", { paymentId: capturing.id });
     }
     if (isCustomer && input.currency === "VES" && configuredRate) {
       // La tasa pudo cambiar entre el monto que se le indicó al médico y el registro del comprobante.

@@ -181,7 +181,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
       : target
         ? Math.max(0, Math.min(target.amountCents - target.paidCents, order.balanceCents))
         : Math.max(0, order.balanceCents);
-  const canPay = !closed && amountDueCents > 0 && !(firstPayment && awaiting) && !reviewing;
+  // Mientras se verifica un pago (el primero o el de una cuota) no se ofrece pagar otra vez: el médico pagaría dos
+  // veces la misma cuota (el servicio rechaza PayPal; un segundo Pago Móvil ya habría salido de su banco).
+  const canPay = !closed && amountDueCents > 0 && !awaiting && !reviewing;
   const blockedCuota = cuota && target && cuota.id !== target.id && (cuota.status === "PENDING" || cuota.status === "OVERDUE") ? target : null;
 
   const productIds = [...new Set(order.items.map((i) => i.productId))];
@@ -539,6 +541,19 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
             ) : null}
 
             {cohortCards}
+
+            {!canPay && paid && awaiting && proof && order.balanceCents > 0 ? (
+              <section className="co-card" id="pagar" aria-labelledby="co-pay-verify-title" data-testid="order-pay-verifying">
+                <h2 id="co-pay-verify-title" className="co-card-title">
+                  {target ? `Cuota ${target.sequence}: pago en verificación` : "Pago en verificación"}
+                </h2>
+                <p className="co-card-text">
+                  Recibimos tu {methodLabel(proof.method)}
+                  {proof.reference ? <> ref. <strong>{proof.reference}</strong></> : null}. Lo confirmamos con el banco y te avisaremos por correo a <strong>{c.email}</strong>. No hace falta que pagues de nuevo.
+                </p>
+                <LiveRefresh everyMs={20_000} forMs={30 * 60_000} />
+              </section>
+            ) : null}
 
             {canPay ? (
               <section className="co-card" id="pagar" aria-labelledby="co-pay-title" data-testid="order-pay">

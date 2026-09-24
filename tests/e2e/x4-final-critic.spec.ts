@@ -1,7 +1,8 @@
 // Crítico x4 final (puerta de entrega) — ataques al plan «mes a mes» ya integrado, por el navegador contra el carril
 // (E2E_LANE=final E2E_PORT=3106). La BD solo se lee; los mocks se usan como el mundo real (aprobar en PayPal).
-//   V. El médico registra el Pago Móvil de una cuota y, mientras el admin lo verifica, paga la MISMA cuota con PayPal
-//      desde el enlace del recordatorio: no se le cobra dos veces (como ya ocurre con el primer pago del pedido).
+//   V. El médico registra el Pago Móvil de una cuota y, mientras el admin lo verifica, abre el enlace de PayPal del
+//      recordatorio (ya no ofrece pagar: «en verificación») o pulsa PayPal en una pestaña abierta antes (se rechaza
+//      sin ir a PayPal); la página del pedido tampoco invita a pagar la cuota otra vez. Un solo cobro.
 //   V2. Lo mismo con la pestaña de PayPal abierta ANTES de registrar el Pago Móvil (se aprueba después): no se captura.
 //   T. Dos pestañas de la última cuota con PayPal, ambas aprobadas a la vez: un solo cobro (antes: dos capturas y un
 //      reembolso automático del excedente — cobro doble al médico y comisión de PayPal perdida).
@@ -145,22 +146,43 @@ test.afterAll(async () => {
 test("V · Pago Móvil de la cuota 2 en verificación y la MISMA cuota con PayPal desde el recordatorio → un solo cobro", async ({ page, browser, request }) => {
   const { co } = await monthlyEnrolled(page, "x4fv");
   const ins2 = co.installments[1];
+  // Pestaña vieja: la página de PayPal de la cuota 2 (enlace del recordatorio) quedó abierta ANTES del Pago Móvil.
+  const stale = await browser.newPage({ locale: "es-VE" });
   const ref = newRef();
-  await payManual(page, co.token, ins2.id, 18000, ref);
-  const before = completedPaypal(co.orderId);
-  const reached = await tryPaypal(page, `/pedido/${co.token}/cuota/${ins2.id}/paypal`);
-  await page.waitForTimeout(1500);
-  const snapshot = { reachedPaypal: reached, paypalCaptured: completedPaypal(co.orderId) - before, captures: await capturesOf(request, paypalOrderIdsOf(co.orderId)), url: page.url() };
-  console.log(JSON.stringify(snapshot));
-  // Lo que cuenta: PayPal no cobra la cuota 2 mientras su Pago Móvil espera verificación.
-  expect(snapshot.paypalCaptured, "PayPal cobró la cuota que ya estaba pagada por Pago Móvil (en verificación)").toBe(0);
-  expect(snapshot.captures, "capturas en PayPal: solo la de la cuota 1").toBe(1);
-  expect(new URL(page.url()).searchParams.get("motivo") ?? "").toContain("lo estamos verificando");
+  try {
+    await stale.goto(`${e2eEnv.APP_URL}/pedido/${co.token}/cuota/${ins2.id}/paypal`);
+    await expect(stale.getByRole("button", { name: /con PayPal/ })).toBeVisible();
+    await payManual(page, co.token, ins2.id, 18000, ref);
+    const before = completedPaypal(co.orderId);
+
+    // El mismo enlace abierto ahora ya no ofrece PayPal: dice que el pago está en verificación.
+    expect(await tryPaypal(page, `/pedido/${co.token}/cuota/${ins2.id}/paypal`), "la página de la cuota ofreció PayPal con el Pago Móvil en verificación").toBe(false);
+    await expect(page.getByTestId("cuota-verifying")).toContainText("lo estamos verificando");
+    // La página del pedido (enlace de Pago Móvil del recordatorio) tampoco invita a pagar la cuota otra vez.
+    await page.goto(`/pedido/${co.token}?cuota=${ins2.id}#pagar`);
+    await expect(page.getByTestId("order-pay-verifying")).toContainText(ref);
+    await expect(page.getByTestId("order-pay")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /con PayPal/ })).toHaveCount(0);
+
+    // La pestaña vieja pulsa «Pagar con PayPal»: el servicio lo rechaza antes de ir a PayPal.
+    await stale.getByRole("button", { name: /con PayPal/ }).click();
+    await stale.waitForURL((u) => u.href.startsWith(`${PAYPAL}/checkoutnow`) || u.searchParams.get("pago") === "error", { timeout: 60_000 });
+    expect(stale.url().startsWith(PAYPAL), "la pestaña vieja llegó a PayPal").toBe(false);
+    expect(new URL(stale.url()).searchParams.get("motivo") ?? "").toContain("lo estamos verificando");
+    await page.waitForTimeout(1500);
+    expect(completedPaypal(co.orderId) - before, "PayPal cobró la cuota que ya estaba pagada por Pago Móvil (en verificación)").toBe(0);
+    expect(await capturesOf(request, paypalOrderIdsOf(co.orderId)), "capturas en PayPal: solo la de la cuota 1").toBe(1);
+  } finally {
+    await stale.close();
+  }
 
   await adminApprove(browser, co.orderId, ref);
   await expect.poll(() => insOf(co.orderId)[1].status, { timeout: 30_000 }).toBe("PAID");
   expect(insOf(co.orderId)[2].status, "la cuota 3 no se paga sola").not.toBe("PAID");
   expect(order(co.orderId).balanceCents).toBe(7 * 18000);
+  // Aprobado el Pago Móvil, la cuota 3 vuelve a ofrecerse con PayPal.
+  await page.goto(`/pedido/${co.token}/cuota/${co.installments[2].id}/paypal`);
+  await expect(page.getByRole("button", { name: /con PayPal/ })).toBeVisible();
 });
 
 test("V2 · PayPal de la cuota 3 abierto ANTES de registrar su Pago Móvil y aprobado después → no se captura", async ({ page, browser, request }) => {

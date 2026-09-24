@@ -38,6 +38,10 @@ export default async function PayInstallmentPage({ params }: PageProps<"/pedido/
   const settled = ins.status === "PAID" || ins.status === "WAIVED" || pending <= 0;
   const next = order.installments.find((i) => i.status === "PENDING" || i.status === "OVERDUE");
   const blockedBy = !settled && next && next.id !== ins.id ? next : null;
+  // Ya hay un pago de este pedido en verificación (Pago Móvil, transferencia…) o retenido por PayPal: no se ofrece
+  // pagar de nuevo (el servicio lo rechaza igual; así el médico no llega a pulsar un botón que da error).
+  const verifying = !settled && order.payments.some((p) => p.status === "AWAITING_VERIFICATION");
+  const held = !settled && order.payments.some((p) => p.method === "PAYPAL" && p.status === "PENDING" && p.providerStatus === "CAPTURE_PENDING");
   const action = payInstallmentWithPaypal.bind(null, token, installmentId);
 
   return (
@@ -67,6 +71,14 @@ export default async function PayInstallmentPage({ params }: PageProps<"/pedido/
         </dl>
         {settled ? (
           <p className="co-process-text">Esta cuota ya está pagada. ¡Gracias!</p>
+        ) : verifying ? (
+          <p className="co-process-text" data-testid="cuota-verifying">
+            Ya registraste un pago de este pedido y lo estamos verificando. Te avisaremos por correo al aprobarlo; no hace falta pagar de nuevo.
+          </p>
+        ) : held ? (
+          <p className="co-process-text" data-testid="cuota-held">
+            PayPal está revisando tu pago anterior de este pedido. Te avisaremos por correo cuando se confirme; no hace falta pagar de nuevo.
+          </p>
         ) : blockedBy ? (
           <p className="co-process-text">Primero debes pagar la cuota {blockedBy.sequence}.</p>
         ) : (

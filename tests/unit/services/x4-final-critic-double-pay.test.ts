@@ -7,7 +7,7 @@
 //  - El job de recordatorios no le pide pagar la cuota mientras su pago está en verificación.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCheckout } from "@/server/orders";
-import { adminRecordManualPayment, capturePaypalReturn, startPaypalPayment } from "@/server/payments";
+import { adminRecordManualPayment, capturePaypalReturn, recordManualPayment, startPaypalPayment } from "@/server/payments";
 import { runInstallmentReminders } from "@/server/installments";
 import { buyer, setupContext, type TestContext } from "./helpers/setup";
 
@@ -119,5 +119,46 @@ describe("cuota ya pagada por otra vía", () => {
     ctx.paypal.approve(b.paypalOrderId);
     expect((await capturePaypalReturn(ctx.d, b.paypalOrderId)).status).toBe("COMPLETED");
     expect(await ctx.db.payment.findUniqueOrThrow({ where: { id: a.paymentId } })).toMatchObject({ status: "CANCELLED", providerStatus: "CAPTURE_UNKNOWN" });
+  });
+
+  it("Pago Móvil del médico mientras PayPal captura esa misma cuota (otra pestaña): se rechaza, un solo cobro", async () => {
+    const o = await monthlyEnrolled();
+    const s = await startPaypalPayment(ctx.d, o.id, { installmentId: o.installments[1].id });
+    ctx.paypal.approve(s.paypalOrderId);
+    const real = ctx.paypal.captureOrder.bind(ctx.paypal);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let entered!: () => void;
+    const inCapture = new Promise<void>((r) => (entered = r));
+    ctx.paypal.captureOrder = async (id: string) => {
+      entered();
+      await gate;
+      return real(id);
+    };
+    const capture = capturePaypalReturn(ctx.d, s.paypalOrderId);
+    await inCapture;
+    await expect(
+      recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "01348888", bank: "Banesco", amountCents: 1_800_000, currency: "VES" }),
+    ).rejects.toThrow(/Estamos confirmando con PayPal/);
+    release();
+    expect((await capture).status).toBe("COMPLETED");
+    ctx.paypal.captureOrder = real;
+    expect(await ctx.db.payment.count({ where: { orderId: o.id, status: "AWAITING_VERIFICATION" } })).toBe(0);
+    const ins = await ctx.db.installment.findMany({ where: { orderId: o.id }, orderBy: { sequence: "asc" } });
+    expect(ins.map((i) => i.status).slice(0, 3)).toEqual(["PAID", "PAID", expect.not.stringMatching(/^PAID$/)]);
+    // Ya confirmada la captura, la cuota 3 sí admite su Pago Móvil.
+    await expect(
+      recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "01349999", bank: "Banesco", amountCents: 1_800_000, currency: "VES" }),
+    ).resolves.toMatchObject({ status: "AWAITING_VERIFICATION" });
+  });
+
+  it("el job de recordatorios tampoco pide pagar mientras PayPal retiene el pago de la cuota (CAPTURE_PENDING)", async () => {
+    const o = await monthlyEnrolled();
+    const s = await startPaypalPayment(ctx.d, o.id, { installmentId: o.installments[1].id });
+    await ctx.db.payment.update({ where: { id: s.paymentId }, data: { providerStatus: "CAPTURE_PENDING" } });
+    const ins2 = await ctx.db.installment.findUniqueOrThrow({ where: { id: o.installments[1].id } });
+    ctx.clock.t = new Date(ins2.dueDate!.getTime() + 60_000);
+    await runInstallmentReminders(ctx.d);
+    expect(await ctx.db.emailOutbox.count({ where: { orderId: o.id, template: "installment_reminder" } })).toBe(0);
   });
 });

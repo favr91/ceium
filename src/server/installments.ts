@@ -123,7 +123,8 @@ export async function runInstallmentReminders(d: Deps): Promise<{ overdue: numbe
   for (const { id } of orders) {
     // El médico ya registró el pago (Pago Móvil, transferencia…) y el staff lo está verificando: no se le pide que
     // pague de nuevo (el recordatorio lleva el enlace de PayPal de la misma cuota; ver startPaypalPayment).
-    if (await d.db.payment.count({ where: { orderId: id, status: "AWAITING_VERIFICATION" } })) continue;
+    // Igual si PayPal retiene su pago (CAPTURE_PENDING): el dinero ya salió de su cuenta.
+    if (await d.db.payment.count({ where: { orderId: id, OR: [{ status: "AWAITING_VERIFICATION" }, { method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" }] } })) continue;
     const ins = await nextUnpaidInstallment(d.db, id);
     if (!ins?.dueDate) continue;
     const stage = reminderStage(now, ins.dueDate, policy);
