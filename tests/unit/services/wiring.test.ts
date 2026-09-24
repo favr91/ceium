@@ -148,7 +148,7 @@ describe("cableado real: servicios → clientes Moodle/PayPal → mocks", () => 
     expect(await ctx.db.payment.count({ where: { orderId: order.id, status: "COMPLETED" } })).toBe(1);
 
     // reembolso total por la API de PayPal → desmatricula, libera cupo, correo
-    await s.payments.refundPayment({ paymentId: payment.id, reason: "Solicitud del alumno", adminId: ctx.fx.adminId });
+    await s.payments.refundPayment(ctx.fx.admin, { paymentId: payment.id, reason: "Solicitud del alumno" });
     await until(async () => (await ctx.db.order.findUniqueOrThrow({ where: { id: order.id } })).status === "REFUNDED");
     const after = await ctx.db.order.findUniqueOrThrow({ where: { id: order.id }, include: { items: { include: { reservation: true } } } });
     expect(after.items[0].reservation?.status).toBe("RELEASED");

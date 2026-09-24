@@ -66,15 +66,15 @@ describe("confirmaciones simultáneas del mismo pedido (sin actualizaciones perd
     const s = await startPaypalPayment(ctx.d, o.id);
     ctx.paypal.approve(s.paypalOrderId);
     await capturePaypalReturn(ctx.d, s.paypalOrderId);
-    const p1 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A-1", amountCents: 18000, currency: "USD" });
-    const p2 = await recordManualPayment(ctx.d, { orderId: o.id, method: "TRANSFERENCIA", reference: "B-2", amountCents: 18000, currency: "USD" });
+    const p1 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A-1", amountCents: 1_800_000, currency: "VES" });
+    const p2 = await recordManualPayment(ctx.d, { orderId: o.id, method: "TRANSFERENCIA", reference: "B-2", amountCents: 1_800_000, currency: "VES" });
     // dos conexiones (como dos instancias de la app) con espera real entre reintentos
     const other = ctx.extraClient();
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     try {
       await Promise.all([
-        adminVerifyPayment({ ...ctx.d, sleep }, { paymentId: p1.id, decision: "approve", adminId: ctx.fx.adminId }),
-        adminVerifyPayment({ ...ctx.makeDeps(other), sleep }, { paymentId: p2.id, decision: "approve", adminId: ctx.fx.adminId }),
+        adminVerifyPayment({ ...ctx.d, sleep }, ctx.fx.admin, { paymentId: p1.id, decision: "approve" }),
+        adminVerifyPayment({ ...ctx.makeDeps(other), sleep }, ctx.fx.admin, { paymentId: p2.id, decision: "approve" }),
       ]);
     } finally {
       await other.$disconnect();

@@ -6,6 +6,7 @@ import { isUniqueViolation } from "@/server/errors";
 import { formatUSD } from "@/server/pricing";
 import type { MailAttachment } from "@/server/email/mailer";
 import * as T from "@/server/email/templates";
+import { requireAdmin, type SessionUser } from "@/server/auth";
 
 export type EmailTemplate =
   | "order_confirmation"
@@ -199,7 +200,8 @@ export async function retryFailedEmails(d: Deps, maxAttempts = 5): Promise<numbe
  * Reenvío manual desde el panel: crea una copia nueva (sin dedupe) del correo indicado, con sus adjuntos.
  * Si el correo llevaba contraseña temporal, se genera otra en Moodle (la anterior nunca se guardó).
  */
-export async function resendEmail(d: Deps, emailId: string, adminId?: string | null): Promise<SendEmailResult> {
+export async function resendEmail(d: Deps, actor: SessionUser, emailId: string): Promise<SendEmailResult> {
+  const { id: adminId } = await requireAdmin(d.db, actor, "emails.resend");
   const r = await d.db.emailOutbox.findUniqueOrThrow({ where: { id: emailId } });
   const ref = parseSecretRef(r.secretRef);
   const row = await d.db.emailOutbox.create({
@@ -216,7 +218,7 @@ export async function resendEmail(d: Deps, emailId: string, adminId?: string | n
       secretRef: (ref as object | null) ?? undefined,
     },
   });
-  const status = await deliver(d, row.id, { actor: adminId ? { type: "ADMIN", id: adminId } : undefined });
+  const status = await deliver(d, row.id, { actor: { type: "ADMIN", id: adminId } });
   return { id: row.id, status, duplicate: false };
 }
 

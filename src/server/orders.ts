@@ -11,6 +11,7 @@ import { releaseOrderReservations, reserveSeat } from "@/server/seats";
 import { SETTING_KEYS, type ManualMethodConfig } from "@/server/settings";
 import { buildOrderView, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
+import { requireAdmin, type SessionUser } from "@/server/auth";
 import { formatUSD } from "@/server/pricing";
 
 // ───────────── Máquina de estados ─────────────
@@ -365,7 +366,9 @@ export async function expireStaleOrders(d: Deps): Promise<number> {
   return n;
 }
 
-export async function cancelOrder(d: Deps, orderId: string, actor: Actor, note?: string) {
+export async function cancelOrder(d: Deps, user: SessionUser, orderId: string, note?: string) {
+  const admin = await requireAdmin(d.db, user, "orders.cancel");
+  const actor: Actor = { type: "ADMIN", id: admin.id };
   const now = d.now();
   return withTx(d, async (tx) => {
     const o = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
@@ -381,6 +384,8 @@ export async function cancelOrder(d: Deps, orderId: string, actor: Actor, note?:
 // Ajustes de saldo, condonación de cuotas y reasignación de cohorte: ver corrections.ts (necesitan
 // disparar la matrícula y confirmar cupos, que viven en enrollment.ts / payments.ts).
 
-export async function addNote(d: Deps, orderId: string, note: string, actor: Actor) {
-  return d.db.$transaction((tx) => addOrderEvent(tx, orderId, "NOTE", actor, note));
+export async function addNote(d: Deps, user: SessionUser, orderId: string, note: string) {
+  const admin = await requireAdmin(d.db, user, "orders.note");
+  if (!note?.trim()) throw new DomainError("VALIDATION", "Escribe la nota.");
+  return d.db.$transaction((tx) => addOrderEvent(tx, orderId, "NOTE", { type: "ADMIN", id: admin.id }, note.trim()));
 }

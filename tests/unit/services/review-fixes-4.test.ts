@@ -47,7 +47,7 @@ describe("certificado: la finalización no sobrevive a un nuevo ciclo de matríc
     expect(blocked).toMatchObject({ issued: false, blockedByBalance: true, completed: 9 });
     expect(await ctx.db.enrollment.count({ where: { customerId: customer.id, completedAt: { not: null } } })).toBe(9);
 
-    await refundPayment(ctx.d, { paymentId: first.paymentId, adminId: ctx.fx.adminId, reason: "Retiro" });
+    await refundPayment(ctx.d, ctx.fx.admin, { paymentId: first.paymentId, reason: "Retiro" });
     const rows = await ctx.db.enrollment.findMany({ where: { customerId: customer.id } });
     expect(rows.every((r) => r.status === "UNENROLLED" && r.completedAt === null && r.completionCheckedAt === null)).toBe(true);
 

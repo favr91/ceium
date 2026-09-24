@@ -108,7 +108,7 @@ describe("diplomado mes a mes", () => {
     // Pago móvil de la cuota 2 → verificación → curso 2.
     const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "556677", amountCents: 1_800_000, currency: "VES", exchangeRate: 100 });
     expect(await enrolledIds(o.customerId)).toEqual([301]); // aún sin verificar
-    await adminVerifyPayment(ctx.d, { paymentId: p.id, decision: "approve", adminId: ctx.fx.adminId });
+    await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
     expect(await enrolledIds(o.customerId)).toEqual([301, 302]);
     const i2 = await ctx.db.installment.findUniqueOrThrow({ where: { id: ins[1].id } });
     expect([i2.status, i2.paidCents]).toEqual(["PAID", 18000]);
@@ -139,7 +139,7 @@ describe("diplomado mes a mes", () => {
     const third = await payPaypal(o.id, ins[2].id);
     expect(await enrolledIds(o.customerId)).toEqual([301, 302, 303]);
 
-    await refundPayment(ctx.d, { paymentId: third.paymentId, amountCents: 10000, reason: "Ajuste", adminId: ctx.fx.adminId });
+    await refundPayment(ctx.d, ctx.fx.admin, { paymentId: third.paymentId, amountCents: 10000, reason: "Ajuste" });
     ins = (await getOrder(ctx.d, o.id)).installments;
     expect(ins.slice(0, 4).map((i) => [i.status, i.paidCents])).toEqual([["PAID", 18000], ["PAID", 18000], ["PENDING", 8000], ["PENDING", 0]]);
     const order = await ctx.db.order.findUniqueOrThrow({ where: { id: o.id } });

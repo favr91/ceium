@@ -76,7 +76,11 @@ interface FakePaypalOrder {
 
 export class FakePaypal implements PaypalPort {
   orders = new Map<string, FakePaypalOrder>();
-  refunds: { id: string; captureId: string; amountCents?: number }[] = [];
+  refunds: { id: string; captureId: string; amountCents?: number; requestId?: string; invoiceId?: string }[] = [];
+  /** Respuestas ya dadas por PayPal-Request-Id (PayPal devuelve la misma sin volver a reembolsar). */
+  refundByRequestId = new Map<string, unknown>();
+  /** Falla la próxima llamada de reembolso con un error de red (resultado incierto), tras hacer o no el reembolso. */
+  refundNetworkErrorAfterRefund: boolean | null = null;
   calls: { fn: string; args: unknown[] }[] = [];
   signatureValid = true;
   declineNextCapture = false;
@@ -132,14 +136,21 @@ export class FakePaypal implements PaypalPort {
     o.captureStatus = captureStatus;
     return o.captureId;
   }
-  async refundCapture(captureId: string, amountCents?: number) {
-    this.calls.push({ fn: "refundCapture", args: [captureId, amountCents] });
+  async refundCapture(captureId: string, amountCents?: number, opts: { requestId?: string; invoiceId?: string; noteToPayer?: string } = {}) {
+    this.calls.push({ fn: "refundCapture", args: [captureId, amountCents, opts] });
     if (this.failRefund) throw new Error("PayPal refund: 422 CAPTURE_FULLY_REFUNDED");
+    if (opts.requestId && this.refundByRequestId.has(opts.requestId)) return this.refundByRequestId.get(opts.requestId);
+    const net = this.refundNetworkErrorAfterRefund;
+    this.refundNetworkErrorAfterRefund = null;
+    if (net === false) throw new Error("fetch failed: ECONNRESET");
     const id = "REF-" + crypto.randomBytes(5).toString("hex").toUpperCase();
-    this.refunds.push({ id, captureId, amountCents });
+    this.refunds.push({ id, captureId, amountCents, requestId: opts.requestId, invoiceId: opts.invoiceId });
     const cap = [...this.orders.values()].find((o) => o.captureId === captureId);
     const value = ((amountCents ?? cap?.input.amountCents ?? 0) / 100).toFixed(2);
-    return { id, status: "COMPLETED", amount: { value, currency_code: "USD" } };
+    const res = { id, status: "COMPLETED", amount: { value, currency_code: "USD" }, ...(opts.invoiceId ? { invoice_id: opts.invoiceId } : {}) };
+    if (opts.requestId) this.refundByRequestId.set(opts.requestId, res);
+    if (net === true) throw new Error("fetch failed: socket hang up");
+    return res;
   }
   async verifyWebhookSignature() {
     return this.signatureValid;
@@ -161,11 +172,11 @@ export class FakePaypal implements PaypalPort {
       },
     });
   }
-  refundEvent(captureId: string, refundId: string, amountCents: number, eventId = "WH-" + crypto.randomBytes(5).toString("hex")) {
+  refundEvent(captureId: string, refundId: string, amountCents: number, eventId = "WH-" + crypto.randomBytes(5).toString("hex"), invoiceId?: string) {
     return JSON.stringify({
       id: eventId,
       event_type: "PAYMENT.CAPTURE.REFUNDED",
-      resource: { id: refundId, status: "COMPLETED", amount: { value: (amountCents / 100).toFixed(2), currency_code: "USD" }, links: [{ rel: "up", href: `https://api.sandbox.paypal.com/v2/payments/captures/${captureId}` }] },
+      resource: { id: refundId, status: "COMPLETED", ...(invoiceId ? { invoice_id: invoiceId } : {}), amount: { value: (amountCents / 100).toFixed(2), currency_code: "USD" }, links: [{ rel: "up", href: `https://api.sandbox.paypal.com/v2/payments/captures/${captureId}` }] },
     });
   }
 }

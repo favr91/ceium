@@ -97,7 +97,7 @@ describe("pedido pagado sin cupo: corrección del admin", () => {
   it("reasignar a otra cohorte toma el cupo CONFIRMED, matricula y envía los datos de la nueva cohorte; el job no lo libera", async () => {
     const { o } = await paidWithoutSeat();
     const other = await ctx.db.cohort.create({ data: { productId: ctx.fx.course, sedeId: ctx.fx.sedes.ccs, name: "Cohorte Caracas", startDate: new Date("2026-11-07T12:00:00Z"), endDate: new Date("2026-11-28T12:00:00Z"), capacity: 5 } });
-    const r = await reassignCohort(ctx.d, o.items[0].id, other.id, ctx.fx.adminId, "Pago tardío sin cupo en Barquisimeto");
+    const r = await reassignCohort(ctx.d, ctx.fx.admin, o.items[0].id, other.id, "Pago tardío sin cupo en Barquisimeto");
     expect(r).toMatchObject({ confirmed: true, seatRestored: true });
     expect(r.enrollment?.status).toBe("ENROLLED");
     const after = await getOrder(ctx.d, o.id);
@@ -116,9 +116,9 @@ describe("pedido pagado sin cupo: corrección del admin", () => {
 
   it("volver a tomar cupo en la MISMA cohorte cuando se libera uno", async () => {
     const { o, others } = await paidWithoutSeat();
-    await expect(reassignCohort(ctx.d, o.items[0].id, ctx.fx.courseCohort, ctx.fx.adminId)).rejects.toMatchObject({ code: "SOLD_OUT" });
-    await cancelOrder(ctx.d, others[0].id, { type: "ADMIN", id: ctx.fx.adminId }, "Desistió");
-    const r = await reassignCohort(ctx.d, o.items[0].id, ctx.fx.courseCohort, ctx.fx.adminId, "Se liberó un cupo");
+    await expect(reassignCohort(ctx.d, ctx.fx.admin, o.items[0].id, ctx.fx.courseCohort)).rejects.toMatchObject({ code: "SOLD_OUT" });
+    await cancelOrder(ctx.d, ctx.fx.admin, others[0].id, "Desistió");
+    const r = await reassignCohort(ctx.d, ctx.fx.admin, o.items[0].id, ctx.fx.courseCohort, "Se liberó un cupo");
     expect(r.confirmed).toBe(true);
     expect((await getOrder(ctx.d, o.id)).status).toBe("ENROLLED");
     expect(await cohort(ctx.fx.courseCohort)).toMatchObject({ seatsHeld: 2, seatsConfirmed: 1 });
@@ -128,7 +128,7 @@ describe("pedido pagado sin cupo: corrección del admin", () => {
     const o = await semiCourse();
     ctx.clock.advance(25 * MINUTE);
     const other = await ctx.db.cohort.create({ data: { productId: ctx.fx.course, sedeId: ctx.fx.sedes.ccs, name: "Cohorte Caracas", startDate: new Date(), endDate: new Date(), capacity: 2 } });
-    const r = await reassignCohort(ctx.d, o.items[0].id, other.id, ctx.fx.adminId);
+    const r = await reassignCohort(ctx.d, ctx.fx.admin, o.items[0].id, other.id);
     expect(r.confirmed).toBe(false);
     expect(r.reservation.expiresAt.getTime()).toBe(ctx.clock.now().getTime() + 30 * MINUTE);
     expect((await getOrder(ctx.d, o.id)).expiresAt!.getTime()).toBe(ctx.clock.now().getTime() + 30 * MINUTE);
@@ -139,7 +139,7 @@ describe("pedido pagado sin cupo: corrección del admin", () => {
     ctx.clock.advance(2 * HOUR);
     await runJobs(ctx.d, ["expire"]);
     const other = await ctx.db.cohort.create({ data: { productId: ctx.fx.course, sedeId: ctx.fx.sedes.ccs, name: "C", startDate: new Date(), endDate: new Date(), capacity: 2 } });
-    await expect(reassignCohort(ctx.d, o.items[0].id, other.id, ctx.fx.adminId)).rejects.toMatchObject({ code: "INVALID_STATE" });
+    await expect(reassignCohort(ctx.d, ctx.fx.admin, o.items[0].id, other.id)).rejects.toMatchObject({ code: "INVALID_STATE" });
   });
 });
 
@@ -158,7 +158,7 @@ describe("ajustes de saldo y condonación de cuotas", () => {
     await payPaypal(o.id);
     expect(await enrolled(o.customerId)).toEqual([301]);
     const ins2 = o.installments[1];
-    const r = await waiveInstallment(ctx.d, ins2.id, "Beca del mes 2", ctx.fx.adminId);
+    const r = await waiveInstallment(ctx.d, ctx.fx.admin, ins2.id, "Beca del mes 2");
     expect(r.balanceCents).toBe(7 * 12500);
     expect(r.enrollment?.status).toBe("ENROLLED");
     expect(await enrolled(o.customerId)).toEqual([301, 302]);
@@ -170,13 +170,13 @@ describe("ajustes de saldo y condonación de cuotas", () => {
     expect(s.amountCents).toBe(12500);
     const ev = await ctx.db.orderEvent.findFirstOrThrow({ where: { orderId: o.id, type: "INSTALLMENT_WAIVED" } });
     expect(ev.note).toBe("Beca del mes 2");
-    await expect(waiveInstallment(ctx.d, ins2.id, "otra vez", ctx.fx.adminId)).rejects.toMatchObject({ code: "INVALID_STATE" });
+    await expect(waiveInstallment(ctx.d, ctx.fx.admin, ins2.id, "otra vez")).rejects.toMatchObject({ code: "INVALID_STATE" });
   });
 
   it("condonar por monto salda las cuotas en orden (habilitando sus cursos) y ajusta la parcial; el recordatorio cobra lo que falta", async () => {
     const o = await monthlyOnline();
     await payPaypal(o.id);
-    const r = await adjustBalanceDetailed(ctx.d, o.id, -(12500 + 5000), "Descuento por convenio", ctx.fx.adminId);
+    const r = await adjustBalanceDetailed(ctx.d, ctx.fx.admin, o.id, -(12500 + 5000), "Descuento por convenio");
     expect(r.installments.map((i) => [i.sequence, i.afterCents, i.waived])).toEqual([
       [2, 0, true],
       [3, 7500, false],
@@ -195,7 +195,7 @@ describe("ajustes de saldo y condonación de cuotas", () => {
   it("no condona más que el saldo", async () => {
     const o = await monthlyOnline();
     await payPaypal(o.id);
-    await expect(adjustBalance(ctx.d, o.id, -(9 * 12500), "demasiado", ctx.fx.adminId)).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(adjustBalance(ctx.d, ctx.fx.admin, o.id, -(9 * 12500), "demasiado")).rejects.toMatchObject({ code: "VALIDATION" });
   });
 
   it("un PARTIALLY_PAID llevado a saldo 0 por ajuste pasa a PAID", async () => {
@@ -204,7 +204,7 @@ describe("ajustes de saldo y condonación de cuotas", () => {
     await payPaypal(o.id);
     const mid = await getOrder(ctx.d, o.id);
     expect([mid.status, mid.balanceCents]).toEqual(["PARTIALLY_PAID", 5000]);
-    expect(await adjustBalance(ctx.d, o.id, -5000, "Saldo condonado", ctx.fx.adminId)).toBe(0);
+    expect(await adjustBalance(ctx.d, ctx.fx.admin, o.id, -5000, "Saldo condonado")).toBe(0);
     const after = await getOrder(ctx.d, o.id);
     expect(after.status).toBe("PAID");
     expect(after.installments.map((i) => i.status)).toEqual(["PAID", "WAIVED"]);
@@ -218,7 +218,7 @@ describe("ajustes de saldo y condonación de cuotas", () => {
   it("un cargo extra agrega una cuota al final y reabre el cobro", async () => {
     const o = await createCheckout(ctx.d, { customer: buyer(), items: [{ productId: ctx.fx.course, modality: "ONLINE", planKind: "FULL" }], paymentMethod: "PAYPAL" });
     await payPaypal(o.id);
-    expect(await adjustBalance(ctx.d, o.id, 1500, "Reposición de material", ctx.fx.adminId)).toBe(1500);
+    expect(await adjustBalance(ctx.d, ctx.fx.admin, o.id, 1500, "Reposición de material")).toBe(1500);
     const after = await getOrder(ctx.d, o.id);
     expect(after.installments.map((i) => [i.sequence, i.amountCents, i.status, i.courseId])).toEqual([
       [1, 10000, "PAID", null],
@@ -229,7 +229,7 @@ describe("ajustes de saldo y condonación de cuotas", () => {
 
   it("una beca completa del pago inicial confirma el cupo y matricula (sin pago)", async () => {
     const o = await semiCourse("PAGO_MOVIL");
-    const r = await adjustBalanceDetailed(ctx.d, o.id, -18000, "Beca completa", ctx.fx.adminId);
+    const r = await adjustBalanceDetailed(ctx.d, ctx.fx.admin, o.id, -18000, "Beca completa");
     expect(r).toMatchObject({ firstPaymentSatisfied: true, balanceCents: 0, dueNowCents: 0 });
     const after = await getOrder(ctx.d, o.id);
     expect(after.status).toBe("ENROLLED");
@@ -239,10 +239,10 @@ describe("ajustes de saldo y condonación de cuotas", () => {
 
   it("una beca parcial del pago inicial baja el primer pago; el comprobante por el resto confirma", async () => {
     const o = await semiCourse("PAGO_MOVIL", undefined, "HALF"); // 180: 90 + 90
-    const r = await adjustBalanceDetailed(ctx.d, o.id, -3000, "Beca parcial", ctx.fx.adminId);
+    const r = await adjustBalanceDetailed(ctx.d, ctx.fx.admin, o.id, -3000, "Beca parcial");
     expect(r).toMatchObject({ firstPaymentSatisfied: false, dueNowCents: 6000, balanceCents: 15000 });
-    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "REF-1", amountCents: 6000, currency: "USD" });
-    await adminVerifyPayment(ctx.d, { paymentId: p.id, decision: "approve", adminId: ctx.fx.adminId });
+    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "REF-1", amountCents: 600_000, currency: "VES" });
+    await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
     const after = await getOrder(ctx.d, o.id);
     expect(after.status).toBe("ENROLLED");
     expect(after.balanceCents).toBe(9000);

@@ -90,7 +90,7 @@ describe("enrollment", () => {
     expect(rows.every((r) => r.status === "FAILED" && r.attempts === 3)).toBe(true);
     expect(await ctx.db.orderEvent.count({ where: { orderId: o.id, type: "ENROLLMENT_FAILED" } })).toBeGreaterThanOrEqual(3);
     ctx.moodle.failEnrol = 0;
-    const r = await reenrollOrder(ctx.d, o.id, ctx.fx.adminId);
+    const r = await reenrollOrder(ctx.d, ctx.fx.admin, o.id);
     expect(r.status).toBe("ENROLLED");
   });
 

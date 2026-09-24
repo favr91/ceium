@@ -45,7 +45,7 @@ describe("pago manual (pago móvil / transferencia)", () => {
     await expireStaleOrders(ctx.d);
     expect((await order(o.id)).items[0].reservation!.status).toBe("HELD");
 
-    await adminVerifyPayment(ctx.d, { paymentId: p.id, decision: "approve", adminId: ctx.fx.adminId });
+    await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
     const after = await order(o.id);
     expect(after.status).toBe("ENROLLED");
     expect([after.amountPaidCents, after.balanceCents]).toEqual([18000, 0]);
@@ -63,14 +63,14 @@ describe("pago manual (pago móvil / transferencia)", () => {
     const payEv = await ctx.db.orderEvent.findFirstOrThrow({ where: { orderId: o.id, type: "PAYMENT_VERIFIED" } });
     expect([payEv.actorType, payEv.actorId]).toEqual(["ADMIN", ctx.fx.adminId]);
     // doble verificación no permitida
-    await expect(adminVerifyPayment(ctx.d, { paymentId: p.id, decision: "approve", adminId: ctx.fx.adminId })).rejects.toMatchObject({ code: "INVALID_STATE" });
+    await expect(adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" })).rejects.toMatchObject({ code: "INVALID_STATE" });
   });
 
   it("admin rechaza → pedido REJECTED, cupo liberado, correo con motivo; no hay matrícula", async () => {
     const o = await semiCourseOrder("PAGO_MOVIL");
-    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "TRANSFERENCIA", reference: "TRX-9", amountCents: 18000, currency: "USD" });
-    await expect(adminVerifyPayment(ctx.d, { paymentId: p.id, decision: "reject", adminId: ctx.fx.adminId })).rejects.toMatchObject({ code: "VALIDATION" });
-    await adminVerifyPayment(ctx.d, { paymentId: p.id, decision: "reject", adminId: ctx.fx.adminId, note: "La referencia no aparece en el banco" });
+    const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "TRANSFERENCIA", reference: "TRX-9", amountCents: 1_800_000, currency: "VES" });
+    await expect(adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "reject" })).rejects.toMatchObject({ code: "VALIDATION" });
+    await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "reject", note: "La referencia no aparece en el banco" });
     const after = await order(o.id);
     expect(after.status).toBe("REJECTED");
     expect(after.items[0].reservation!.status).toBe("RELEASED");
@@ -83,7 +83,7 @@ describe("pago manual (pago móvil / transferencia)", () => {
   it("plan mitad: primer pago matricula (PARTIALLY_PAID→ENROLLED) y el saldo sigue visible; segundo pago lo cancela", async () => {
     const o = await semiCourseOrder("PAGO_MOVIL", "HALF");
     const p1 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A1", amountCents: 900_000, currency: "VES" }); // tasa del setting: 100
-    await adminVerifyPayment(ctx.d, { paymentId: p1.id, decision: "approve", adminId: ctx.fx.adminId });
+    await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p1.id, decision: "approve" });
     let after = await order(o.id);
     expect(after.status).toBe("ENROLLED");
     expect(after.balanceCents).toBe(9000);
@@ -91,7 +91,7 @@ describe("pago manual (pago móvil / transferencia)", () => {
     expect(events.map((e) => e.toStatus)).toEqual(["AWAITING_VERIFICATION", "PARTIALLY_PAID", "ENROLLED"]);
     const p2 = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "A2", amountCents: 900_000, currency: "VES" });
     expect((await order(o.id)).status).toBe("ENROLLED"); // un pago de cuota no hace retroceder el estado
-    await adminVerifyPayment(ctx.d, { paymentId: p2.id, decision: "approve", adminId: ctx.fx.adminId });
+    await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p2.id, decision: "approve" });
     after = await order(o.id);
     expect([after.amountPaidCents, after.balanceCents]).toEqual([18000, 0]);
     const inst = await ctx.db.installment.findMany({ where: { orderId: o.id }, orderBy: { sequence: "asc" } });
@@ -102,7 +102,7 @@ describe("pago manual (pago móvil / transferencia)", () => {
   it("pago insuficiente para el primer pago → vuelve a PENDING_PAYMENT sin matricular", async () => {
     const o = await semiCourseOrder("PAGO_MOVIL");
     const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "B1", amountCents: 500_000, currency: "VES", exchangeRate: 100 });
-    await adminVerifyPayment(ctx.d, { paymentId: p.id, decision: "approve", adminId: ctx.fx.adminId });
+    await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
     const after = await order(o.id);
     expect(after.status).toBe("PENDING_PAYMENT");
     expect(after.amountPaidCents).toBe(5000);
@@ -195,10 +195,11 @@ describe("PayPal", () => {
     ctx.paypal.approve(s.paypalOrderId);
     await capturePaypalReturn(ctx.d, s.paypalOrderId);
     const pay = await ctx.db.payment.findUniqueOrThrow({ where: { id: s.paymentId } });
-    const r = await refundPayment(ctx.d, { paymentId: pay.id, reason: "Retiro antes de iniciar", adminId: ctx.fx.adminId });
+    const r = await refundPayment(ctx.d, ctx.fx.admin, { paymentId: pay.id, reason: "Retiro antes de iniciar" });
     expect(r.fullyRefunded).toBe(true);
     expect(ctx.paypal.refunds).toHaveLength(1);
-    expect(ctx.paypal.refunds[0].amountCents).toBeUndefined(); // total
+    expect(ctx.paypal.refunds[0].amountCents).toBe(18000); // total, con monto explícito
+    expect(ctx.paypal.refunds[0].requestId).toBe(`refund-${r.refund.id}`); // PayPal-Request-Id estable por fila
     const after = await order(o.id);
     expect(after.status).toBe("REFUNDED");
     expect(after.items[0].reservation!.status).toBe("RELEASED");
@@ -209,7 +210,7 @@ describe("PayPal", () => {
     const res = await handlePaypalWebhook(ctx.d, {}, ctx.paypal.refundEvent(pay.paypalCaptureId!, ctx.paypal.refunds[0].id, 18000));
     expect(res.ok).toBe(true);
     expect(await ctx.db.refund.count()).toBe(1);
-    await expect(refundPayment(ctx.d, { paymentId: pay.id, adminId: ctx.fx.adminId })).rejects.toMatchObject({ code: "INVALID_STATE" });
+    await expect(refundPayment(ctx.d, ctx.fx.admin, { paymentId: pay.id })).rejects.toMatchObject({ code: "INVALID_STATE" });
   });
 
   it("reembolso parcial: no cambia estado ni matrícula salvo que se pida; reembolso iniciado desde PayPal se registra por webhook", async () => {
@@ -218,7 +219,7 @@ describe("PayPal", () => {
     ctx.paypal.approve(s.paypalOrderId);
     await capturePaypalReturn(ctx.d, s.paypalOrderId);
     const pay = await ctx.db.payment.findUniqueOrThrow({ where: { id: s.paymentId } });
-    await refundPayment(ctx.d, { paymentId: pay.id, amountCents: 2500, reason: "Descuento posterior", adminId: ctx.fx.adminId });
+    await refundPayment(ctx.d, ctx.fx.admin, { paymentId: pay.id, amountCents: 2500, reason: "Descuento posterior" });
     let after = await order(o.id);
     expect(after.status).toBe("ENROLLED");
     expect([after.amountPaidCents, after.balanceCents]).toEqual([7500, 2500]);
@@ -235,8 +236,8 @@ describe("PayPal", () => {
   it("reembolso de pago manual se registra sin llamar a PayPal", async () => {
     const o = await semiCourseOrder("PAGO_MOVIL");
     const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "M1", amountCents: 1_800_000, currency: "VES" });
-    await adminVerifyPayment(ctx.d, { paymentId: p.id, decision: "approve", adminId: ctx.fx.adminId });
-    const r = await refundPayment(ctx.d, { paymentId: p.id, reason: "Devolución por pago móvil", adminId: ctx.fx.adminId, unenroll: false });
+    await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
+    const r = await refundPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, reason: "Devolución por pago móvil", unenroll: false });
     expect(r.refund.manual).toBe(true);
     expect(ctx.paypal.calls.filter((c) => c.fn === "refundCapture")).toHaveLength(0);
     expect((await order(o.id)).status).toBe("REFUNDED");

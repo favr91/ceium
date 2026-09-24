@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { Deps } from "@/server/deps";
+import type { SessionUser } from "@/server/auth";
 import { createOutboxMailer, type Mailer } from "@/server/email/mailer";
 import { SETTING_KEYS } from "@/server/settings";
 import { priceScopeKey } from "@/server/pricing";
@@ -29,6 +30,10 @@ export interface Fixture {
   diplomaMoodleIds: number[];
   diplomaCohort: string; // Barquisimeto, capacidad 20
   adminId: string;
+  /** Sesión del ADMIN de la fixture (primer argumento de los servicios del panel). */
+  admin: SessionUser;
+  /** Usuario STAFF activo. */
+  staff: SessionUser;
 }
 
 export async function seedFixture(db: PrismaClient): Promise<Fixture> {
@@ -80,7 +85,9 @@ export async function seedFixture(db: PrismaClient): Promise<Fixture> {
     data: { productId: diploma.id, sedeId: bqto.id, name: "Cohorte II - 2026", startDate: new Date("2026-10-03T12:00:00Z"), endDate: new Date("2027-06-30T12:00:00Z"), capacity: 20 },
   });
 
-  const admin = await db.adminUser.create({ data: { email: "admin@ceium.net", name: "Admin", role: "ADMIN", passwordHash: "x" } });
+  const sel = { id: true, email: true, name: true, role: true } as const;
+  const admin = await db.adminUser.create({ data: { email: "admin@ceium.net", name: "Admin", role: "ADMIN", passwordHash: "x" }, select: sel });
+  const staff = await db.adminUser.create({ data: { email: "staff-fixture@ceium.net", name: "Staff", role: "STAFF", passwordHash: "x" }, select: sel });
 
   const settings: [string, unknown][] = [
     [SETTING_KEYS.reservationTtlPaypal, { minutes: 30 }],
@@ -100,7 +107,7 @@ export async function seedFixture(db: PrismaClient): Promise<Fixture> {
   ];
   for (const [key, value] of settings) await db.setting.create({ data: { key, value: value as never } });
 
-  return { sedes: { bqto: bqto.id, ccs: ccs.id, mcbo: mcbo.id }, course: course.id, courseCohort: courseCohort.id, diploma: diploma.id, diplomaCourses, diplomaMoodleIds, diplomaCohort: diplomaCohort.id, adminId: admin.id };
+  return { sedes: { bqto: bqto.id, ccs: ccs.id, mcbo: mcbo.id }, course: course.id, courseCohort: courseCohort.id, diploma: diploma.id, diplomaCourses, diplomaMoodleIds, diplomaCohort: diplomaCohort.id, adminId: admin.id, admin, staff };
 }
 
 export interface TestContext {
@@ -144,6 +151,7 @@ export async function setupContext(name: string, opts: { mailer?: Mailer } = {})
       mailFrom: "CEIUM <no-reply@ceium.net>",
       certificatesDir: certDir,
       privateFilesDir: path.join(tmp, "files"),
+      publicUploadsDir: path.join(tmp, "uploads"),
       enrollInlineRetries: 1,
       enrollInlineDelayMs: 0,
     },

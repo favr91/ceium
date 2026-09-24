@@ -1,9 +1,14 @@
 // Catálogo desde el panel: fichas de programa, precios, planes de pago, colecciones, sedes y cursos de
 // diplomado. Toda escritura valida, aplica las reglas del SPEC y deja su registro en AuditLog en la MISMA
 // transacción. El panel no debe escribir estas tablas con prisma directamente.
+// Cubre: programas (alta, edición, archivo, baja), precios, planes, colecciones, sedes, cursos de diplomado,
+// imágenes (subidas a public/uploads) y opciones de compra (ProductChoice).
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
-import { assertCan, type SessionUser } from "@/server/auth";
+import { requireAdmin, type SessionUser } from "@/server/auth";
 import { recordAudit } from "@/server/audit";
 import { withTx, type Deps, type Tx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
@@ -61,7 +66,7 @@ export const updateProductSchema = z
 export type UpdateProductInput = z.input<typeof updateProductSchema>;
 
 export async function updateProduct(d: Deps, actor: SessionUser, productId: string, input: UpdateProductInput, note?: string) {
-  assertCan(actor, "catalog.manage");
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
   const patch = parse(updateProductSchema, input);
   return withTx(d, async (tx) => {
     const before = await mustProduct(tx, productId);
@@ -108,7 +113,7 @@ export type UpsertPriceInput = z.input<typeof upsertPriceSchema>;
 
 /** Crea o actualiza el precio de un alcance (modalidad + sede + opción). ONLINE ⇒ sin sede; SEMIPRESENCIAL ⇒ con sede. */
 export async function upsertPrice(d: Deps, actor: SessionUser, input: UpsertPriceInput, note?: string) {
-  assertCan(actor, "catalog.manage");
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
   const p = parse(upsertPriceSchema, input);
   const sedeId = p.modality === "ONLINE" ? null : (p.sedeId ?? null);
   if (p.modality === "ONLINE" && p.sedeId) throw new DomainError("VALIDATION", "El precio online no lleva sede.");
@@ -133,7 +138,7 @@ export async function upsertPrice(d: Deps, actor: SessionUser, input: UpsertPric
 
 /** Desactiva (no borra: los pedidos históricos conservan su precio en OrderItem) un precio. */
 export async function setPriceActive(d: Deps, actor: SessionUser, priceId: string, active: boolean, note?: string) {
-  assertCan(actor, "catalog.manage");
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
   return withTx(d, async (tx) => {
     const before = await tx.priceEntry.findUnique({ where: { id: priceId } });
     if (!before) throw new DomainError("NOT_FOUND", "El precio no existe.");
@@ -159,7 +164,7 @@ export const upsertPlanSchema = z
 export type UpsertPlanInput = z.input<typeof upsertPlanSchema>;
 
 export async function upsertPlan(d: Deps, actor: SessionUser, input: UpsertPlanInput, note?: string) {
-  assertCan(actor, "catalog.manage");
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
   const p = parse(upsertPlanSchema, input);
   return withTx(d, async (tx) => {
     const product = await mustProduct(tx, p.productId);
@@ -207,7 +212,7 @@ async function collectionSnapshot(tx: Tx, id: string) {
 }
 
 export async function upsertCollection(d: Deps, actor: SessionUser, input: UpsertCollectionInput, note?: string) {
-  assertCan(actor, "catalog.manage");
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
   const p = parse(upsertCollectionSchema, input);
   return withTx(d, async (tx) => {
     const before = p.id ? await collectionSnapshot(tx, p.id) : null;
@@ -266,7 +271,7 @@ export const upsertSedeSchema = z
 export type UpsertSedeInput = z.input<typeof upsertSedeSchema>;
 
 export async function upsertSede(d: Deps, actor: SessionUser, input: UpsertSedeInput, note?: string) {
-  assertCan(actor, "catalog.manage");
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
   const { id, ...data } = parse(upsertSedeSchema, input);
   return withTx(d, async (tx) => {
     const before = id ? await tx.sede.findUnique({ where: { id } }) : null;
@@ -290,7 +295,7 @@ export async function upsertSede(d: Deps, actor: SessionUser, input: UpsertSedeI
  * curso (PaymentPlan MONTHLY.installments = nº de cursos). Los pedidos ya creados conservan su calendario.
  */
 export async function setDiplomaCourses(d: Deps, actor: SessionUser, diplomaId: string, courseIds: string[], note?: string) {
-  assertCan(actor, "catalog.manage");
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
   const ids = parse(z.array(z.string().min(1)).min(1, "El diplomado necesita al menos un curso").max(50), courseIds);
   if (new Set(ids).size !== ids.length) throw new DomainError("VALIDATION", "Hay cursos repetidos.");
   return withTx(d, async (tx) => {
@@ -313,5 +318,315 @@ export async function setDiplomaCourses(d: Deps, actor: SessionUser, diplomaId: 
     }
     await recordAudit(tx, { actor, action: "diploma.courses", entityType: "DiplomaCourse", entityId: diplomaId, before: { courseIds: before }, after: { courseIds: ids }, note });
     return { courseIds: ids };
+  });
+}
+
+// ───────────── Alta / baja de programas ─────────────
+
+export const createProductSchema = z
+  .object({
+    type: z.enum(["COURSE", "DIPLOMA"]),
+    category: z.enum(["UNIVERSITY_COURSE", "ADVANCED_COURSE", "WORKSHOP", "DIPLOMA"]),
+    title: z.string().trim().min(1).max(300),
+    slug,
+  })
+  .strict();
+export type CreateProductInput = z.input<typeof createProductSchema> & UpdateProductInput;
+
+/**
+ * Alta de un programa. Nace SIN publicar (salvo `published: true` explícito): primero se cargan precios,
+ * planes e imágenes. Un diplomado va con la categoría DIPLOMA y no lleva curso de Moodle propio.
+ */
+export async function createProduct(d: Deps, actor: SessionUser, input: CreateProductInput, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  const { type, category, title, slug: s, ...rest } = input;
+  const base = parse(createProductSchema, { type, category, title, slug: s });
+  const extra = parse(updateProductSchema, rest);
+  if ((base.type === "DIPLOMA") !== (base.category === "DIPLOMA")) throw new DomainError("VALIDATION", "Un diplomado usa la categoría «Diplomado» (y solo los diplomados).");
+  if (base.type === "DIPLOMA" && extra.moodleCourseId != null) throw new DomainError("VALIDATION", "Solo los cursos tienen curso de Moodle; un diplomado matricula los cursos que lo componen.");
+  if (extra.offersOnline === false && extra.offersSemipresencial === false) throw new DomainError("VALIDATION", "El programa debe ofrecerse en al menos una modalidad.");
+  return withTx(d, async (tx) => {
+    const { topics, faculty, benefits, ...fields } = extra;
+    const published = extra.published ?? false;
+    let after;
+    try {
+      after = await tx.product.create({
+        data: {
+          ...fields,
+          ...base,
+          published,
+          publishedAt: published ? d.now() : null,
+          ...(topics !== undefined ? { topics: json(topics) } : {}),
+          ...(faculty !== undefined ? { faculty: json(faculty) } : {}),
+          ...(benefits !== undefined ? { benefits: json(benefits) } : {}),
+        },
+      });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new DomainError("CONFLICT", "Ya existe otro programa con ese slug o curso de Moodle.");
+      throw e;
+    }
+    await recordAudit(tx, { actor, action: "product.create", entityType: "Product", entityId: after.id, before: null, after, note, force: true });
+    return after;
+  });
+}
+
+/** Archivar = despublicar (sale de la tienda; pedidos, matrículas y certificados siguen intactos). */
+export async function archiveProduct(d: Deps, actor: SessionUser, productId: string, note?: string) {
+  return updateProduct(d, actor, productId, { published: false }, note ?? "Archivado");
+}
+
+/**
+ * Borra un programa que nunca se vendió ni se usó (sin pedidos, matrículas, certificados, ni como curso de un
+ * diplomado). Se llevan en cascada sus precios, planes, opciones, imágenes y cohortes sin ventas. Si ya tuvo
+ * uso, hay que archivarlo.
+ */
+export async function deleteProduct(d: Deps, actor: SessionUser, productId: string, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  const res = await withTx(d, async (tx) => {
+    const before = await mustProduct(tx, productId);
+    const [items, enrollments, certs, asCourse, installments, reservations, images] = await Promise.all([
+      tx.orderItem.count({ where: { productId } }),
+      tx.enrollment.count({ where: { productId } }),
+      tx.certificate.count({ where: { diplomaId: productId } }),
+      tx.diplomaCourse.count({ where: { courseId: productId } }),
+      tx.installment.count({ where: { courseId: productId } }),
+      tx.seatReservation.count({ where: { cohort: { productId } } }),
+      tx.productImage.findMany({ where: { productId }, select: { url: true } }),
+    ]);
+    if (items || enrollments || certs || installments || reservations) throw new DomainError("CONFLICT", "El programa ya tiene pedidos, matrículas o certificados: archívalo (despublícalo) en lugar de borrarlo.");
+    if (asCourse) throw new DomainError("CONFLICT", "El curso forma parte de un diplomado: quítalo del diplomado antes de borrarlo.");
+    await tx.product.delete({ where: { id: productId } });
+    await recordAudit(tx, { actor, action: "product.delete", entityType: "Product", entityId: productId, before, after: null, note, force: true });
+    return { deleted: true as const, images: images.map((i) => i.url) };
+  });
+  for (const url of res.images) await removeUploadedFile(d, url);
+  return { deleted: true as const };
+}
+
+// ───────────── Baja de precios, planes y colecciones ─────────────
+
+/** Borra un precio (OrderItem guarda su propio precio: los pedidos no se afectan). Para ocultarlo sin borrar: setPriceActive. */
+export async function deletePrice(d: Deps, actor: SessionUser, priceId: string, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  return withTx(d, async (tx) => {
+    const before = await tx.priceEntry.findUnique({ where: { id: priceId } });
+    if (!before) throw new DomainError("NOT_FOUND", "El precio no existe.");
+    await tx.priceEntry.delete({ where: { id: priceId } });
+    await recordAudit(tx, { actor, action: "price.delete", entityType: "PriceEntry", entityId: priceId, before, after: null, note, force: true });
+    return { deleted: true as const };
+  });
+}
+
+/** Borra un plan de pago que ningún pedido usa; si ya se usó, se desactiva (active: false vía upsertPlan). */
+export async function deletePlan(d: Deps, actor: SessionUser, planId: string, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  return withTx(d, async (tx) => {
+    const before = await tx.paymentPlan.findUnique({ where: { id: planId } });
+    if (!before) throw new DomainError("NOT_FOUND", "El plan no existe.");
+    if (await tx.orderItem.count({ where: { paymentPlanId: planId } })) throw new DomainError("CONFLICT", "Hay pedidos con este plan: desactívalo en lugar de borrarlo.");
+    await tx.paymentPlan.delete({ where: { id: planId } });
+    await recordAudit(tx, { actor, action: "plan.delete", entityType: "PaymentPlan", entityId: planId, before, after: null, note, force: true });
+    return { deleted: true as const };
+  });
+}
+
+/** Borra una colección (los programas no se tocan). Para ocultarla sin borrar: upsertCollection con published: false. */
+export async function deleteCollection(d: Deps, actor: SessionUser, collectionId: string, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  return withTx(d, async (tx) => {
+    const before = await collectionSnapshot(tx, collectionId);
+    if (!before) throw new DomainError("NOT_FOUND", "La colección no existe.");
+    await tx.collection.delete({ where: { id: collectionId } });
+    await recordAudit(tx, { actor, action: "collection.delete", entityType: "Collection", entityId: collectionId, before, after: null, note, force: true });
+    return { deleted: true as const };
+  });
+}
+
+// ───────────── Imágenes de programa (public/uploads) ─────────────
+
+const IMAGE_TYPES: Record<string, { ext: string; sniff: (b: Uint8Array) => boolean }> = {
+  jpg: { ext: ".jpg", sniff: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  png: { ext: ".png", sniff: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 },
+  webp: { ext: ".webp", sniff: (b) => ascii(b, 0, 4) === "RIFF" && ascii(b, 8, 12) === "WEBP" },
+  gif: { ext: ".gif", sniff: (b) => ascii(b, 0, 4) === "GIF8" },
+  avif: { ext: ".avif", sniff: (b) => ascii(b, 4, 8) === "ftyp" && /^avi[fs]$/.test(ascii(b, 8, 12)) },
+};
+const ascii = (b: Uint8Array, from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const UPLOADS_URL = "/uploads/";
+
+/** Detecta el tipo por la firma del archivo (no por el nombre): nada que no sea imagen llega a public/. */
+function sniffImage(bytes: Uint8Array): string {
+  for (const t of Object.values(IMAGE_TYPES)) if (t.sniff(bytes)) return t.ext;
+  throw new DomainError("VALIDATION", "La imagen debe ser JPG, PNG, WEBP, GIF o AVIF.");
+}
+
+function uploadPathFor(d: Deps, url: string): string | null {
+  if (!url.startsWith(UPLOADS_URL)) return null;
+  const root = path.resolve(d.config.publicUploadsDir);
+  const abs = path.resolve(root, url.slice(UPLOADS_URL.length));
+  return abs.startsWith(root + path.sep) ? abs : null;
+}
+
+async function removeUploadedFile(d: Deps, url: string) {
+  const abs = uploadPathFor(d, url);
+  if (!abs) return;
+  try {
+    await fs.rm(abs, { force: true });
+  } catch (e) {
+    d.log.warn(`[catalog] no se pudo borrar ${abs}`, e);
+  }
+}
+
+export const productImageMetaSchema = z
+  .object({
+    alt: z.string().trim().max(300).nullable().optional(),
+    width: z.number().int().positive().max(20_000).nullable().optional(),
+    height: z.number().int().positive().max(20_000).nullable().optional(),
+  })
+  .strict();
+
+export interface AddProductImageInput extends z.input<typeof productImageMetaSchema> {
+  /** Archivo subido desde el panel: se guarda en public/uploads/products/<id>/. */
+  file?: { bytes: Uint8Array };
+  /** O una URL ya alojada (https://… o /uploads/…). */
+  url?: string;
+}
+
+/** Agrega una imagen al final de la galería del programa. */
+export async function addProductImage(d: Deps, actor: SessionUser, productId: string, input: AddProductImageInput, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  const { file, url: givenUrl, ...metaIn } = input;
+  const meta = parse(productImageMetaSchema, metaIn);
+  if (!!file === !!givenUrl) throw new DomainError("VALIDATION", "Sube un archivo o indica una URL (solo uno).");
+  if (givenUrl && !/^(https:\/\/|\/uploads\/)[^\s]+$/.test(givenUrl)) throw new DomainError("VALIDATION", "La URL de la imagen debe empezar por https:// o /uploads/.");
+  await withTx(d, (tx) => mustProduct(tx, productId));
+
+  let url = givenUrl ?? "";
+  let written: string | null = null;
+  if (file) {
+    if (!file.bytes?.byteLength) throw new DomainError("VALIDATION", "El archivo está vacío.");
+    if (file.bytes.byteLength > MAX_IMAGE_BYTES) throw new DomainError("VALIDATION", "La imagen no puede superar 8 MB.");
+    const ext = sniffImage(file.bytes);
+    const rel = `products/${productId.replace(/[^a-z0-9]/gi, "")}/${crypto.randomBytes(8).toString("hex")}${ext}`;
+    written = path.resolve(d.config.publicUploadsDir, rel);
+    await fs.mkdir(path.dirname(written), { recursive: true });
+    await fs.writeFile(written, file.bytes);
+    url = UPLOADS_URL + rel;
+  }
+  try {
+    return await withTx(d, async (tx) => {
+      await mustProduct(tx, productId);
+      const last = await tx.productImage.findFirst({ where: { productId }, orderBy: { position: "desc" }, select: { position: true } });
+      const after = await tx.productImage.create({ data: { productId, url, alt: meta.alt ?? null, width: meta.width ?? null, height: meta.height ?? null, position: (last?.position ?? -1) + 1 } });
+      await recordAudit(tx, { actor, action: "image.create", entityType: "ProductImage", entityId: after.id, before: null, after, note, force: true });
+      return after;
+    });
+  } catch (e) {
+    if (written) await fs.rm(written, { force: true }).catch(() => {});
+    throw e;
+  }
+}
+
+export async function updateProductImage(d: Deps, actor: SessionUser, imageId: string, input: z.input<typeof productImageMetaSchema>, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  const meta = parse(productImageMetaSchema, input);
+  return withTx(d, async (tx) => {
+    const before = await tx.productImage.findUnique({ where: { id: imageId } });
+    if (!before) throw new DomainError("NOT_FOUND", "La imagen no existe.");
+    const after = await tx.productImage.update({ where: { id: imageId }, data: meta });
+    await recordAudit(tx, { actor, action: "image.update", entityType: "ProductImage", entityId: imageId, before, after, note });
+    return after;
+  });
+}
+
+/** Reordena la galería: `imageIds` debe ser la lista COMPLETA de imágenes del programa en el orden nuevo. */
+export async function reorderProductImages(d: Deps, actor: SessionUser, productId: string, imageIds: string[], note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  const ids = parse(z.array(z.string().min(1)).max(200), imageIds);
+  return withTx(d, async (tx) => {
+    const current = await tx.productImage.findMany({ where: { productId }, orderBy: { position: "asc" }, select: { id: true } });
+    const set = new Set(ids);
+    if (set.size !== ids.length || ids.length !== current.length || current.some((c) => !set.has(c.id))) throw new DomainError("VALIDATION", "La lista debe contener exactamente las imágenes del programa, sin repetir.");
+    for (let i = 0; i < ids.length; i++) await tx.productImage.update({ where: { id: ids[i] }, data: { position: i } });
+    await recordAudit(tx, { actor, action: "image.reorder", entityType: "ProductImage", entityId: productId, before: { imageIds: current.map((c) => c.id) }, after: { imageIds: ids }, note });
+    return { imageIds: ids };
+  });
+}
+
+/** Quita la imagen (y su archivo si estaba en /uploads). */
+export async function deleteProductImage(d: Deps, actor: SessionUser, imageId: string, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  const before = await withTx(d, async (tx) => {
+    const row = await tx.productImage.findUnique({ where: { id: imageId } });
+    if (!row) throw new DomainError("NOT_FOUND", "La imagen no existe.");
+    await tx.productImage.delete({ where: { id: imageId } });
+    await recordAudit(tx, { actor, action: "image.delete", entityType: "ProductImage", entityId: imageId, before: row, after: null, note, force: true });
+    return row;
+  });
+  const stillUsed = await d.db.productImage.count({ where: { url: before.url } });
+  if (!stillUsed) await removeUploadedFile(d, before.url);
+  return { deleted: true as const };
+}
+
+// ───────────── Opciones de compra (ProductChoice) ─────────────
+
+export const upsertChoiceSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    productId: z.string().min(1),
+    /** Título del selector en la ficha, p.ej. "Cursos disponibles". */
+    groupName: z.string().trim().min(1).max(200),
+    label: z.string().trim().min(1).max(200),
+    position: z.number().int().optional(),
+    /** Cursos de Moodle que otorga la opción; null → el curso del programa. */
+    moodleCourseIds: z.array(z.number().int().positive()).min(1).max(20).nullable().optional(),
+  })
+  .strict();
+export type UpsertChoiceInput = z.input<typeof upsertChoiceSchema>;
+
+/**
+ * Crea o edita una opción de compra (p.ej. taller transfontanelar: «Nivel 1» → [127], «Todo el taller» →
+ * [127, 128]). Cada opción necesita luego su precio (upsertPrice con choiceId).
+ */
+export async function upsertProductChoice(d: Deps, actor: SessionUser, input: UpsertChoiceInput, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  const p = parse(upsertChoiceSchema, input);
+  if (p.moodleCourseIds && new Set(p.moodleCourseIds).size !== p.moodleCourseIds.length) throw new DomainError("VALIDATION", "Hay cursos de Moodle repetidos.");
+  return withTx(d, async (tx) => {
+    const product = await mustProduct(tx, p.productId);
+    if (product.type !== "COURSE") throw new DomainError("VALIDATION", "Las opciones de compra son para cursos y talleres; un diplomado usa sus cursos.");
+    const before = p.id ? await tx.productChoice.findUnique({ where: { id: p.id } }) : null;
+    if (p.id && (!before || before.productId !== p.productId)) throw new DomainError("NOT_FOUND", "La opción no existe en este programa.");
+    let position = p.position;
+    if (position === undefined && !before) position = ((await tx.productChoice.findFirst({ where: { productId: p.productId }, orderBy: { position: "desc" }, select: { position: true } }))?.position ?? -1) + 1;
+    const data = {
+      groupName: p.groupName,
+      label: p.label,
+      ...(position !== undefined ? { position } : {}),
+      ...(p.moodleCourseIds !== undefined ? { moodleCourseIds: json(p.moodleCourseIds) } : {}),
+    };
+    let after;
+    try {
+      after = before ? await tx.productChoice.update({ where: { id: before.id }, data }) : await tx.productChoice.create({ data: { productId: p.productId, ...data } });
+    } catch (e) {
+      if (isUniqueViolation(e)) throw new DomainError("CONFLICT", "Ya existe una opción con ese nombre en este programa.");
+      throw e;
+    }
+    await recordAudit(tx, { actor, action: before ? "choice.update" : "choice.create", entityType: "ProductChoice", entityId: after.id, before, after, note, force: !before });
+    return after;
+  });
+}
+
+/** Borra una opción que ningún pedido usa (se llevan sus precios). Si ya se vendió, desactiva sus precios. */
+export async function deleteProductChoice(d: Deps, actor: SessionUser, choiceId: string, note?: string) {
+  actor = await requireAdmin(d.db, actor, "catalog.manage");
+  return withTx(d, async (tx) => {
+    const before = await tx.productChoice.findUnique({ where: { id: choiceId }, include: { prices: true } });
+    if (!before) throw new DomainError("NOT_FOUND", "La opción no existe.");
+    if (await tx.orderItem.count({ where: { choiceId } })) throw new DomainError("CONFLICT", "Hay pedidos con esta opción: desactiva sus precios en lugar de borrarla.");
+    await tx.productChoice.delete({ where: { id: choiceId } });
+    await recordAudit(tx, { actor, action: "choice.delete", entityType: "ProductChoice", entityId: choiceId, before, after: null, note, force: true });
+    return { deleted: true as const };
   });
 }

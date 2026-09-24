@@ -18,6 +18,7 @@ import { reallocateInstallments } from "@/server/installments";
 import { satisfyFirstPayment } from "@/server/payments";
 import { enrollOrder, resendCohortDetails } from "@/server/enrollment";
 import { formatUSD } from "@/server/pricing";
+import { requireAdmin, type SessionUser } from "@/server/auth";
 
 const ADJUSTABLE: readonly OrderStatus[] = ["PENDING_PAYMENT", "AWAITING_VERIFICATION", "PAID", "PARTIALLY_PAID", "ENROLLED"];
 const FIRST_PAYMENT_PENDING: readonly OrderStatus[] = ["PENDING_PAYMENT", "AWAITING_VERIFICATION"];
@@ -136,27 +137,29 @@ async function runAdjustment(d: Deps, input: AdjustInput): Promise<AdjustmentRes
 
 /**
  * Ajuste manual de saldo (centavos USD): negativo condona (de la siguiente cuota impaga en adelante),
- * positivo agrega un cargo como cuota nueva al final. Devuelve el saldo resultante.
+ * positivo agrega un cargo como cuota nueva al final. Devuelve el saldo resultante. Solo ADMIN.
  */
-export async function adjustBalance(d: Deps, orderId: string, amountCents: number, reason: string, adminId: string): Promise<number> {
-  return (await adjustBalanceDetailed(d, orderId, amountCents, reason, adminId)).balanceCents;
+export async function adjustBalance(d: Deps, actor: SessionUser, orderId: string, amountCents: number, reason: string): Promise<number> {
+  return (await adjustBalanceDetailed(d, actor, orderId, amountCents, reason)).balanceCents;
 }
 
 /** Igual que adjustBalance, con el detalle (cuotas tocadas, estado, matrícula) para el panel. */
-export async function adjustBalanceDetailed(d: Deps, orderId: string, amountCents: number, reason: string, adminId: string): Promise<AdjustmentResult> {
-  return runAdjustment(d, { orderId, amountCents, reason, adminId, eventType: "BALANCE_ADJUSTED" });
+export async function adjustBalanceDetailed(d: Deps, actor: SessionUser, orderId: string, amountCents: number, reason: string): Promise<AdjustmentResult> {
+  const admin = await requireAdmin(d.db, actor, "orders.adjustBalance");
+  return runAdjustment(d, { orderId, amountCents, reason, adminId: admin.id, eventType: "BALANCE_ADJUSTED" });
 }
 
 /**
  * Condona lo que falta de una cuota (beca de un mes, curso bonificado). En el plan mes a mes la cuota
- * condonada habilita su curso del diplomado y se matricula de inmediato.
+ * condonada habilita su curso del diplomado y se matricula de inmediato. Solo ADMIN (mueve saldo).
  */
-export async function waiveInstallment(d: Deps, installmentId: string, reason: string, adminId: string): Promise<AdjustmentResult> {
+export async function waiveInstallment(d: Deps, actor: SessionUser, installmentId: string, reason: string): Promise<AdjustmentResult> {
+  const admin = await requireAdmin(d.db, actor, "orders.adjustBalance");
   const ins = await d.db.installment.findUnique({ where: { id: installmentId } });
   if (!ins) throw new DomainError("NOT_FOUND", "La cuota no existe.");
   const pending = ins.amountCents - ins.paidCents;
   if (ins.status === "PAID" || ins.status === "WAIVED" || pending <= 0) throw new DomainError("INVALID_STATE", `La cuota ${ins.sequence} ya está saldada.`);
-  return runAdjustment(d, { orderId: ins.orderId, amountCents: -pending, reason, adminId, installmentId, eventType: "INSTALLMENT_WAIVED" });
+  return runAdjustment(d, { orderId: ins.orderId, amountCents: -pending, reason, adminId: admin.id, installmentId, eventType: "INSTALLMENT_WAIVED" });
 }
 
 /**
@@ -164,7 +167,8 @@ export async function waiveInstallment(d: Deps, installmentId: string, reason: s
  * perdido). En un pedido ya pagado el cupo nuevo queda CONFIRMED y se dispara la matrícula (o, si ya estaba
  * matriculado, se envían los datos de la nueva cohorte).
  */
-export async function reassignCohort(d: Deps, orderItemId: string, newCohortId: string, adminId: string, note?: string) {
+export async function reassignCohort(d: Deps, actor: SessionUser, orderItemId: string, newCohortId: string, note?: string) {
+  const { id: adminId } = await requireAdmin(d.db, actor, "orders.reassignCohort");
   const item = await d.db.orderItem.findUnique({ where: { id: orderItemId }, include: { order: { select: { paymentMethod: true } } } });
   if (!item) throw new DomainError("NOT_FOUND", "El ítem del pedido no existe.");
   const ttlMs = await reservationTtlMs(d, item.order.paymentMethod ?? "PAYPAL");

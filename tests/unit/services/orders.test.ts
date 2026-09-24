@@ -113,12 +113,12 @@ describe("máquina de estados", () => {
   it("cancelar libera el cupo; ajustes de saldo y reasignación de cohorte quedan auditados", async () => {
     const o = await createCheckout(ctx.d, { customer: buyer(), items: [{ productId: ctx.fx.course, modality: "SEMIPRESENCIAL", cohortId: ctx.fx.courseCohort, planKind: "FULL" }], paymentMethod: "PAYPAL" });
     const other = await ctx.db.cohort.create({ data: { productId: ctx.fx.course, sedeId: ctx.fx.sedes.ccs, name: "Cohorte Caracas", startDate: new Date(), endDate: new Date(), capacity: 1 } });
-    await reassignCohort(ctx.d, o.items[0].id, other.id, ctx.fx.adminId, "Cambio de sede pedido por el alumno");
+    await reassignCohort(ctx.d, ctx.fx.admin, o.items[0].id, other.id, "Cambio de sede pedido por el alumno");
     expect((await ctx.db.cohort.findUniqueOrThrow({ where: { id: ctx.fx.courseCohort } })).seatsHeld).toBe(0);
     expect((await ctx.db.cohort.findUniqueOrThrow({ where: { id: other.id } })).seatsHeld).toBe(1);
     expect((await ctx.db.orderItem.findUniqueOrThrow({ where: { id: o.items[0].id } })).sedeId).toBe(ctx.fx.sedes.ccs);
-    expect(await adjustBalance(ctx.d, o.id, -2000, "Beca parcial", ctx.fx.adminId)).toBe(16000);
-    await cancelOrder(ctx.d, o.id, { type: "ADMIN", id: ctx.fx.adminId }, "Duplicado");
+    expect(await adjustBalance(ctx.d, ctx.fx.admin, o.id, -2000, "Beca parcial")).toBe(16000);
+    await cancelOrder(ctx.d, ctx.fx.admin, o.id, "Duplicado");
     expect((await ctx.db.cohort.findUniqueOrThrow({ where: { id: other.id } })).seatsHeld).toBe(0);
     const types = (await ctx.db.orderEvent.findMany({ where: { orderId: o.id } })).map((e) => e.type);
     expect(types).toEqual(expect.arrayContaining(["COHORT_REASSIGNED", "BALANCE_ADJUSTED", "STATUS_CHANGE"]));

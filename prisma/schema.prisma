@@ -494,6 +494,9 @@ model Payment {
   exchangeRate    Decimal? // VES por USD cuando currency = VES
   amountUsdCents  Int // equivalente en USD aplicado a la orden
   reference       String? // nº de referencia del pago móvil / transferencia
+  /// "<method>:<referencia normalizada>" mientras el pago manual está vigente (null al rechazarlo). El índice
+  /// único impide registrar la misma referencia dos veces aunque dos pedidos la envíen a la vez (Postgres READ COMMITTED).
+  referenceKey    String?       @unique
   bank            String?
   payerName       String?
   payerPhone      String?
@@ -527,6 +530,12 @@ model Refund {
   status           RefundStatus @default(PENDING)
   providerRefundId String?      @unique // id de refund PayPal
   manual           Boolean      @default(false) // reembolso manual registrado (no PayPal)
+  /// Clave de idempotencia del formulario del panel (o `auto-excess-<paymentId>`): el mismo envío no reembolsa dos veces.
+  requestKey       String?      @unique
+  /// Opciones elegidas por el admin ({ unenroll, releaseSeat, keepCertificate }). Si el webhook
+  /// PAYMENT.CAPTURE.REFUNDED llega antes que la respuesta de PayPal, las aplica igual.
+  options          Json?
+  error            String?
   createdById      String?
   createdBy        AdminUser?   @relation("RefundCreator", fields: [createdById], references: [id])
   createdAt        DateTime     @default(now())

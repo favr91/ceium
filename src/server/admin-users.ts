@@ -1,7 +1,7 @@
 // Usuarios del panel: alta, cambio de rol/estado/nombre y restablecer contraseña, con auditoría
 // (el hash nunca se guarda en AuditLog). Siempre queda al menos un ADMIN activo.
 import { z } from "zod";
-import { assertCan, hashPassword, type SessionUser } from "@/server/auth";
+import { requireAdmin, hashPassword, type SessionUser } from "@/server/auth";
 import { recordAudit } from "@/server/audit";
 import { withTx, type Deps, type Tx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
@@ -25,7 +25,7 @@ async function assertAnotherActiveAdmin(tx: Tx, exceptId: string) {
 }
 
 export async function createAdminUser(d: Deps, actor: SessionUser, input: z.input<typeof createAdminUserSchema>) {
-  assertCan(actor, "users.manage");
+  actor = await requireAdmin(d.db, actor, "users.manage");
   const p = parse(createAdminUserSchema, input);
   const passwordHash = await hashPassword(p.password);
   return withTx(d, async (tx) => {
@@ -43,7 +43,7 @@ export async function createAdminUser(d: Deps, actor: SessionUser, input: z.inpu
 
 /** Desactivar o bajar de rol cierra sus sesiones abiertas. */
 export async function updateAdminUser(d: Deps, actor: SessionUser, userId: string, input: z.input<typeof updateAdminUserSchema>, note?: string) {
-  assertCan(actor, "users.manage");
+  actor = await requireAdmin(d.db, actor, "users.manage");
   const p = parse(updateAdminUserSchema, input);
   return withTx(d, async (tx) => {
     const before = await tx.adminUser.findUnique({ where: { id: userId }, select: publicUser });
@@ -59,7 +59,7 @@ export async function updateAdminUser(d: Deps, actor: SessionUser, userId: strin
 
 /** Restablece la contraseña de otro usuario (o la propia) y cierra sus sesiones. */
 export async function resetAdminPassword(d: Deps, actor: SessionUser, userId: string, newPassword: string, note?: string) {
-  assertCan(actor, "users.manage");
+  actor = await requireAdmin(d.db, actor, "users.manage");
   const pw = parse(password, newPassword);
   const passwordHash = await hashPassword(pw);
   return withTx(d, async (tx) => {

@@ -137,7 +137,7 @@ describe("correo: contraseña temporal y adjuntos", () => {
   it("reenviar desde el panel: nueva contraseña, adjuntos conservados y el historial registra al admin", async () => {
     const { order } = await paidOnlineCourse();
     const access = await ctx.db.emailOutbox.findFirstOrThrow({ where: { orderId: order.id, template: "platform_access" } });
-    const r = await resendEmail(ctx.d, access.id, ctx.fx.adminId);
+    const r = await resendEmail(ctx.d, ctx.fx.admin, access.id);
     expect(r.status).toBe("SENT");
     expect(ctx.moodle.passwordResets).toHaveLength(1);
     expect(mailer.sent.at(-1)!.text).toContain(ctx.moodle.passwordResets[0].password);
@@ -153,7 +153,7 @@ describe("correo: contraseña temporal y adjuntos", () => {
     expect(first.status).toBe("FAILED");
     await retryFailedEmails(ctx.d);
     expect(mailer.sent.at(-1)!.attachments).toEqual([{ filename: "C.pdf", path: pdf, contentType: "application/pdf" }]);
-    await resendEmail(ctx.d, first.id, ctx.fx.adminId);
+    await resendEmail(ctx.d, ctx.fx.admin, first.id);
     expect(mailer.sent.at(-1)!.attachments?.[0].filename).toBe("C.pdf");
   });
 });
@@ -250,10 +250,10 @@ describe("certificados", () => {
   it("revocar deja auditoría (admin, motivo, fecha) en el historial del pedido", async () => {
     const { customer, order } = await diplomaOrder("FULL");
     const r = await checkDiplomaCompletion(ctx.d, customer.id, ctx.fx.diploma);
-    await revokeCertificate(ctx.d, r.certificateId!, "Plagio en el trabajo final", ctx.fx.adminId);
+    await revokeCertificate(ctx.d, ctx.fx.admin, r.certificateId!, "Plagio en el trabajo final");
     const ev = await ctx.db.orderEvent.findFirstOrThrow({ where: { orderId: order.id, type: "CERTIFICATE_REVOKED" } });
     expect([ev.actorType, ev.actorId, ev.note]).toEqual(["ADMIN", ctx.fx.adminId, "Plagio en el trabajo final"]);
-    await expect(revokeCertificate(ctx.d, r.certificateId!, "otra vez", ctx.fx.adminId)).rejects.toMatchObject({ code: "INVALID_STATE" });
+    await expect(revokeCertificate(ctx.d, ctx.fx.admin, r.certificateId!, "otra vez")).rejects.toMatchObject({ code: "INVALID_STATE" });
   });
 });
 
@@ -262,13 +262,13 @@ describe("reembolsos: carrera con el webhook", () => {
     const { order } = await paidOnlineCourse();
     const pay = await ctx.db.payment.findFirstOrThrow({ where: { orderId: order.id, status: "COMPLETED" } });
     const original = ctx.paypal.refundCapture.bind(ctx.paypal);
-    ctx.paypal.refundCapture = async (captureId: string, amountCents?: number) => {
-      const res = await original(captureId, amountCents);
+    ctx.paypal.refundCapture = async (captureId: string, amountCents?: number, opts?: { requestId?: string; invoiceId?: string }) => {
+      const res = (await original(captureId, amountCents, opts)) as { id: string };
       // PayPal notifica antes de que nuestra llamada termine
       await handlePaypalWebhook(ctx.d, {}, ctx.paypal.refundEvent(captureId, res.id, pay.amountUsdCents));
       return res;
     };
-    const r = await refundPayment(ctx.d, { paymentId: pay.id, adminId: ctx.fx.adminId, reason: "Retiro" });
+    const r = await refundPayment(ctx.d, ctx.fx.admin, { paymentId: pay.id, reason: "Retiro" });
     expect(r.duplicate).toBe(true);
     expect(await ctx.db.refund.count()).toBe(1);
     const after = await ctx.db.order.findUniqueOrThrow({ where: { id: order.id } });
@@ -328,7 +328,7 @@ describe("auditoría de verificación manual", () => {
   it("la corrección del equivalente en USD queda como antes/después", async () => {
     const o = await createCheckout(ctx.d, { customer: buyer(), items: [{ productId: ctx.fx.course, modality: "ONLINE", planKind: "FULL" }], paymentMethod: "PAGO_MOVIL" });
     const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "R-1", amountCents: 990_000, currency: "VES", exchangeRate: 100 });
-    await adminVerifyPayment(ctx.d, { paymentId: p.id, decision: "approve", adminId: ctx.fx.adminId, amountUsdCents: 10000 });
+    await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve", amountUsdCents: 10000 });
     const ev = await ctx.db.orderEvent.findFirstOrThrow({ where: { orderId: o.id, type: "PAYMENT_VERIFIED" } });
     expect(ev.data).toMatchObject({ amountUsdCentsBefore: 9900, amountUsdCentsAfter: 10000, corrected: true });
     expect(ev.note).toContain("99.00 → 100.00");

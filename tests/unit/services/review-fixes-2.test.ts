@@ -88,7 +88,7 @@ describe("reembolsos y certificados", () => {
     const cert = await checkDiplomaCompletion(ctx.d, o.customerId, ctx.fx.diploma);
     expect(cert.issued).toBe(true);
 
-    await refundPayment(ctx.d, { paymentId: s.paymentId, reason: "Retiro", adminId: ctx.fx.adminId });
+    await refundPayment(ctx.d, ctx.fx.admin, { paymentId: s.paymentId, reason: "Retiro" });
     expect((await ctx.db.order.findUniqueOrThrow({ where: { id: o.id } })).status).toBe("REFUNDED");
     const v = await verifyCertificate(ctx.d, cert.code!);
     expect([v!.status, v!.revokeReason]).toEqual(["REVOKED", "Pedido reembolsado por completo"]);
@@ -103,7 +103,7 @@ describe("reembolsos y certificados", () => {
     const cust = await ctx.db.customer.findUniqueOrThrow({ where: { id: o.customerId } });
     for (const id of ctx.fx.diplomaMoodleIds) ctx.moodle.markCompleted(cust.moodleUserId!, id);
     const cert = await checkDiplomaCompletion(ctx.d, o.customerId, ctx.fx.diploma);
-    await refundPayment(ctx.d, { paymentId: s.paymentId, amountCents: 5000, reason: "Descuento", adminId: ctx.fx.adminId });
+    await refundPayment(ctx.d, ctx.fx.admin, { paymentId: s.paymentId, amountCents: 5000, reason: "Descuento" });
     expect((await verifyCertificate(ctx.d, cert.code!))!.status).toBe("ISSUED");
     const ev = await ctx.db.orderEvent.findFirstOrThrow({ where: { orderId: o.id, type: "ATTENTION", note: { contains: cert.code! } } });
     expect(ev.note).toContain("saldo pendiente");

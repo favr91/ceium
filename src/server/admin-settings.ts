@@ -4,7 +4,7 @@
 // order.nextNumber y seed.sampleData no se editan desde aquí (los mueve el sistema).
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
-import { assertCan, type SessionUser } from "@/server/auth";
+import { requireAdmin, type SessionUser } from "@/server/auth";
 import { recordAudit } from "@/server/audit";
 import { withTx, type Deps } from "@/server/deps";
 import { DomainError } from "@/server/errors";
@@ -48,7 +48,7 @@ export function isEditableSetting(key: string): key is EditableSettingKey {
 
 /** Actualiza una Setting validada. La tasa de cambio registra automáticamente su fecha de actualización. */
 export async function updateSetting(d: Deps, actor: SessionUser, key: string, value: unknown, note?: string) {
-  assertCan(actor, "settings.manage");
+  actor = await requireAdmin(d.db, actor, "settings.manage");
   if (!isEditableSetting(key)) throw new DomainError("VALIDATION", `La configuración «${key}» no se puede editar desde el panel.`);
   const r = (EDITABLE_SETTINGS[key] as z.ZodType).safeParse(value);
   if (!r.success) throw new DomainError("VALIDATION", r.error.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ` : "") + i.message).join(". "), { issues: r.error.issues });

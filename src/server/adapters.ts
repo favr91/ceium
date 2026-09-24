@@ -56,8 +56,11 @@ export function paypalPort(source: ClientSource<PayPalClient>): PaypalPort {
       return { id: r.orderId, status: String(r.orderStatus), captureId: r.captureId, captureStatus: r.captureStatus, amountCents: r.amountCents, currency: r.capture?.amount?.currency_code, raw: r.raw };
     },
     getOrder: (id) => client.getOrder(id),
-    async refundCapture(captureId, amountCents): Promise<PaypalRefundResult> {
-      return normalizeRefund(await client.refundCapture(captureId, amountCents != null ? { amountCents } : {}));
+    async refundCapture(captureId, amountCents, opts = {}): Promise<PaypalRefundResult> {
+      if (!opts.requestId) throw new Error("refundCapture requiere requestId (PayPal-Request-Id) para no reembolsar dos veces.");
+      return normalizeRefund(
+        await client.refundCapture(captureId, { ...(amountCents != null ? { amountCents } : {}), requestId: opts.requestId, invoiceId: opts.invoiceId, noteToPayer: opts.noteToPayer }),
+      );
     },
     async verifyWebhookSignature(headers, body) {
       const r = await client.verifyWebhookSignature({ headers, body: body as string });

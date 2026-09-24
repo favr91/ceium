@@ -24,7 +24,7 @@ async function main() {
     now: () => new Date(T0),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     log: { info: () => {}, warn: () => {}, error: () => {} },
-    config: { appUrl: "https://ceium.test", moodleLoginUrl: "x", mailFrom: "x", certificatesDir: tmp, privateFilesDir: tmp, enrollInlineRetries: 0, enrollInlineDelayMs: 0 },
+    config: { appUrl: "https://ceium.test", moodleLoginUrl: "x", mailFrom: "x", certificatesDir: tmp, privateFilesDir: tmp, publicUploadsDir: tmp, enrollInlineRetries: 0, enrollInlineDelayMs: 0 },
   };
   let ok = 0;
   let soldOut = 0;

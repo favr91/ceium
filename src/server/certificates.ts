@@ -15,6 +15,7 @@ import { addOrderEvent, SYSTEM } from "@/server/orders";
 import { formatUSD } from "@/server/pricing";
 import { deliverOutboxEmail, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
+import { requireAdmin, type SessionUser } from "@/server/auth";
 
 export interface CompletionCheck {
   customerId: string;
@@ -221,9 +222,9 @@ export async function verifyCertificate(d: Pick<Deps, "db">, code: string) {
 }
 
 /** Revocación desde el panel: queda en el historial del pedido quién, cuándo y por qué. */
-export async function revokeCertificate(d: Deps, certificateId: string, reason: string, adminId: string) {
+export async function revokeCertificate(d: Deps, actor: SessionUser, certificateId: string, reason: string) {
+  const { id: adminId } = await requireAdmin(d.db, actor, "certificates.revoke");
   if (!reason?.trim()) throw new DomainError("VALIDATION", "Indica el motivo de la revocación.");
-  if (!adminId) throw new DomainError("UNAUTHORIZED", "Falta el administrador que revoca.");
   const now = d.now();
   return withTx(d, async (tx) => {
     const cert = await tx.certificate.findUnique({ where: { id: certificateId }, include: { orderItem: { select: { orderId: true } } } });

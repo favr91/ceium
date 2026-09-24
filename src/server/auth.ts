@@ -55,6 +55,19 @@ export function assertCan(user: Pick<AdminUser, "role"> | null | undefined, perm
   if (!can(user, permission)) throw new DomainError("FORBIDDEN", "Tu rol no tiene permiso para esta acción.", { permission });
 }
 
+/**
+ * Guardia de TODO servicio del panel: permiso por rol y, además, que el usuario exista y siga activo en BD
+ * con un rol que tenga el permiso (un objeto de sesión viejo de alguien degradado o desactivado no pasa).
+ * Devuelve el usuario leído de la BD.
+ */
+export async function requireAdmin(db: Db | Tx, user: SessionUser | null | undefined, permission: Permission): Promise<SessionUser> {
+  assertCan(user, permission);
+  const row = user.id ? await db.adminUser.findUnique({ where: { id: user.id }, select: { id: true, email: true, name: true, role: true, active: true } }) : null;
+  if (!row || !row.active) throw new DomainError("UNAUTHORIZED", "Tu usuario del panel no existe o está desactivado.");
+  assertCan(row, permission);
+  return { id: row.id, email: row.email, name: row.name, role: row.role };
+}
+
 // ───────────── Contraseñas ─────────────
 
 export async function hashPassword(password: string): Promise<string> {

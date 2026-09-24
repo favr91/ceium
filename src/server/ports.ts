@@ -54,12 +54,22 @@ export interface PaypalRefundResult {
   amountCents?: number;
 }
 
+export interface PaypalRefundOptions {
+  requestId?: string;
+  invoiceId?: string;
+  noteToPayer?: string;
+}
+
 export interface PaypalPort {
   createOrder(input: PaypalCreateOrderInput): Promise<{ id: string; approveUrl: string }>;
   captureOrder(paypalOrderId: string): Promise<unknown>;
   /** GET /v2/checkout/orders/{id} (respuesta cruda de Orders v2; se normaliza con normalizeCapture). */
   getOrder(paypalOrderId: string): Promise<unknown>;
-  refundCapture(captureId: string, amountCents?: number): Promise<unknown>;
+  /**
+   * POST /v2/payments/captures/{id}/refund. `requestId` va como PayPal-Request-Id: repetir la llamada con el
+   * mismo id devuelve el mismo reembolso (nunca reembolsa dos veces). `invoiceId` vuelve en el webhook.
+   */
+  refundCapture(captureId: string, amountCents?: number, opts?: PaypalRefundOptions): Promise<unknown>;
   verifyWebhookSignature(headers: Record<string, string | string[] | undefined> | Headers, body: string | unknown): Promise<boolean> | boolean;
 }
 

@@ -15,6 +15,7 @@ import { addOrderEvent, PAID_STATES, SYSTEM, transitionOrder, type Actor } from 
 import { SETTING_KEYS } from "@/server/settings";
 import { safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
+import { requireAdmin, type SessionUser } from "@/server/auth";
 
 const LEASE_MS = 2 * MINUTE;
 
@@ -379,8 +380,15 @@ export async function retryDueEnrollments(d: Deps): Promise<{ orders: number; en
 }
 
 /** Rematricular desde el panel: reinicia filas FAILED y reintenta ya. */
-export async function reenrollOrder(d: Deps, orderId: string, adminId: string) {
-  return enrollOrder(d, orderId, { force: true, actor: { type: "ADMIN", id: adminId } });
+export async function reenrollOrder(d: Deps, actor: SessionUser, orderId: string) {
+  const admin = await requireAdmin(d.db, actor, "enrollments.manage");
+  return enrollOrder(d, orderId, { force: true, actor: { type: "ADMIN", id: admin.id } });
+}
+
+/** Desmatricular desde el panel (unenrollOrder es interno: lo usan los reembolsos con su propio actor). */
+export async function adminUnenrollOrder(d: Deps, actor: SessionUser, orderId: string) {
+  const admin = await requireAdmin(d.db, actor, "enrollments.manage");
+  return unenrollOrder(d, orderId, { type: "ADMIN", id: admin.id });
 }
 
 /**

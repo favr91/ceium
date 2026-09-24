@@ -5,7 +5,7 @@
 // Los contadores seatsHeld/seatsConfirmed solo los mueve seats.ts: aquí no se aceptan.
 import { z } from "zod";
 import { Prisma, type CohortStatus } from "@/generated/prisma/client";
-import { assertCan, type SessionUser } from "@/server/auth";
+import { requireAdmin, type SessionUser } from "@/server/auth";
 import { recordAudit } from "@/server/audit";
 import { withTx, type Deps, type Tx } from "@/server/deps";
 import { DomainError } from "@/server/errors";
@@ -56,7 +56,7 @@ async function loadCohort(tx: Tx, id: string) {
 }
 
 export async function createCohort(d: Deps, actor: SessionUser, input: CreateCohortInput) {
-  assertCan(actor, "cohorts.manage");
+  actor = await requireAdmin(d.db, actor, "cohorts.manage");
   const data = parse(createCohortSchema, input);
   checkDates(data);
   return withTx(d, async (tx) => {
@@ -91,7 +91,7 @@ export async function createCohort(d: Deps, actor: SessionUser, input: CreateCoh
  * seatsHeld + seatsConfirmed (leídos dentro del mismo UPDATE) → CONFLICT y no cambia nada.
  */
 export async function updateCohort(d: Deps, actor: SessionUser, cohortId: string, input: UpdateCohortInput, note?: string) {
-  assertCan(actor, "cohorts.manage");
+  actor = await requireAdmin(d.db, actor, "cohorts.manage");
   const patch = parse(updateCohortSchema, input);
   return withTx(d, async (tx) => {
     const before = await loadCohort(tx, cohortId);
@@ -134,7 +134,7 @@ export async function setCohortStatus(d: Deps, actor: SessionUser, cohortId: str
 
 /** Borra una cohorte que nunca se vendió (sin reservas ni pedidos). Si ya tuvo ventas: cancelarla/cerrarla. */
 export async function deleteCohort(d: Deps, actor: SessionUser, cohortId: string, note?: string) {
-  assertCan(actor, "cohorts.manage");
+  actor = await requireAdmin(d.db, actor, "cohorts.manage");
   return withTx(d, async (tx) => {
     const before = await loadCohort(tx, cohortId);
     const [reservations, items] = await Promise.all([tx.seatReservation.count({ where: { cohortId } }), tx.orderItem.count({ where: { cohortId } })]);

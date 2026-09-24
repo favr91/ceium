@@ -8,7 +8,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Currency, PaymentMethod } from "@/generated/prisma/client";
+import type { Currency, PaymentMethod, Prisma, Refund } from "@/generated/prisma/client";
 import type { Deps, Tx } from "@/server/deps";
 import { readSetting, withTx } from "@/server/deps";
 import { DomainError, isDomainError, isUniqueViolation } from "@/server/errors";
@@ -31,6 +31,7 @@ import { enrollOrder, unenrollOrder } from "@/server/enrollment";
 import { reallocateInstallments } from "@/server/installments";
 import { buildOrderView, buildPaymentView, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
+import { requireAdmin, type SessionUser } from "@/server/auth";
 
 // ───────────── Aplicar un pago confirmado al pedido ─────────────
 
@@ -193,7 +194,10 @@ export interface ManualPaymentInput {
   bank?: string | null;
   amountCents: number;
   currency: Currency;
-  /** VES por USD. Si se omite en VES se usa la tasa configurada. */
+  /**
+   * VES por USD. Solo la usa el panel (adminRecordManualPayment). Para el cliente SIEMPRE se aplica la tasa
+   * configurada; la que escriba queda solo como dato declarado en el historial del pedido.
+   */
   exchangeRate?: number | string | null;
   paidAt?: Date | null;
   proofFile?: string | null;
@@ -204,36 +208,70 @@ export interface ManualPaymentInput {
 
 const MANUAL_METHODS: PaymentMethod[] = ["PAGO_MOVIL", "TRANSFERENCIA", "ZELLE", "EFECTIVO"];
 
-/** Registra un pago manual con comprobante → AWAITING_VERIFICATION (y el pedido también si era el primer pago). */
-export async function recordManualPayment(d: Deps, input: ManualPaymentInput, actor: Actor = { type: "CUSTOMER" }) {
+/** Clave única de una referencia de pago manual (sin espacios ni guiones, en mayúsculas). */
+export function manualReferenceKey(method: PaymentMethod, reference: string | null): string | null {
+  const norm = reference?.replace(/[\s-]+/g, "").toUpperCase() ?? "";
+  return norm ? `${method}:${norm}` : null;
+}
+
+/**
+ * Checkout público: registra un pago manual con comprobante → AWAITING_VERIFICATION (y el pedido también si
+ * era el primer pago). El equivalente en USD se calcula SIEMPRE con la tasa configurada y la moneda del
+ * método configurado: el cliente no puede fijar ninguna de las dos.
+ */
+export async function recordManualPayment(d: Deps, input: ManualPaymentInput) {
+  return recordManual(d, input, { type: "CUSTOMER" });
+}
+
+/** Pago manual registrado desde el panel (efectivo en sede, pago recibido por WhatsApp…). Puede fijar la tasa. */
+export async function adminRecordManualPayment(d: Deps, user: SessionUser, input: ManualPaymentInput) {
+  const admin = await requireAdmin(d.db, user, "payments.verify");
+  return recordManual(d, input, { type: "ADMIN", id: admin.id });
+}
+
+async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
   if (!MANUAL_METHODS.includes(input.method)) throw new DomainError("VALIDATION", "Método de pago manual no válido.");
-  if (actor.type === "CUSTOMER") {
+  const isCustomer = actor.type !== "ADMIN";
+  if (isCustomer) {
     const cfg = await getManualMethod(d, input.method);
     if (!cfg?.enabled) throw new DomainError("VALIDATION", "El método de pago seleccionado no está disponible.");
+    if (cfg.currency && cfg.currency !== input.currency) throw new DomainError("VALIDATION", `Este método se paga en ${cfg.currency === "VES" ? "bolívares" : "dólares"}.`, { field: "currency" });
   }
+  if (input.currency !== "USD" && input.currency !== "VES") throw new DomainError("VALIDATION", "Moneda no válida.", { field: "currency" });
   if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) throw new DomainError("VALIDATION", "Ingresa el monto pagado.", { field: "amountCents" });
   const reference = input.reference?.trim() || null;
   if (input.method !== "EFECTIVO" && !reference) throw new DomainError("VALIDATION", "Ingresa el número de referencia del pago.", { field: "reference" });
+  const referenceKey = manualReferenceKey(input.method, reference);
 
   let rate: number | null = null;
+  let declaredRate: number | null = null;
   let amountUsdCents = input.amountCents;
   if (input.currency === "VES") {
-    rate = input.exchangeRate != null && input.exchangeRate !== "" ? Number(input.exchangeRate) : (await readSetting(d.db, SETTING_KEYS.exchangeRate, { vesPerUsd: 0 })).vesPerUsd;
+    const given = input.exchangeRate != null && input.exchangeRate !== "" ? Number(input.exchangeRate) : null;
+    const configured = (await readSetting(d.db, SETTING_KEYS.exchangeRate, { vesPerUsd: 0 })).vesPerUsd;
+    if (isCustomer) {
+      rate = configured;
+      if (given != null && given !== configured) declaredRate = Number.isFinite(given) ? given : null;
+    } else {
+      rate = given ?? configured;
+    }
     if (!rate || !Number.isFinite(rate) || rate <= 0) throw new DomainError("VALIDATION", "Falta la tasa de cambio para pagos en bolívares.", { field: "exchangeRate" });
     amountUsdCents = Math.round(input.amountCents / rate);
+    if (amountUsdCents <= 0) throw new DomainError("VALIDATION", "El monto es demasiado bajo.", { field: "amountCents" });
   }
 
   const now = d.now();
-  const paymentId = await withTx(d, async (tx) => {
+  const duplicateRef = () => new DomainError("VALIDATION", "Esa referencia de pago ya fue registrada.", { field: "reference" });
+  let paymentId: string;
+  try {
+    paymentId = await withTx(d, async (tx) => {
     const order = await tx.order.findUnique({ where: { id: input.orderId } });
     if (!order) throw new DomainError("NOT_FOUND", "El pedido no existe.");
     const acceptsFirst = PREPAID_STATES.includes(order.status);
     const acceptsInstallment = PAID_STATES.includes(order.status) && order.balanceCents > 0;
     if (!acceptsFirst && !acceptsInstallment) throw new DomainError("INVALID_STATE", "Este pedido no admite nuevos pagos.");
-    if (reference) {
-      const dup = await tx.payment.findFirst({ where: { method: input.method, reference, status: { notIn: ["REJECTED", "CANCELLED", "FAILED"] } } });
-      if (dup) throw new DomainError("VALIDATION", "Esa referencia de pago ya fue registrada.", { field: "reference" });
-    }
+    // Lectura para un error amable; la garantía real es el índice único de referenceKey (ver catch).
+    if (referenceKey && (await tx.payment.findUnique({ where: { referenceKey }, select: { id: true } }))) throw duplicateRef();
     const p = await tx.payment.create({
       data: {
         orderId: order.id,
@@ -244,6 +282,7 @@ export async function recordManualPayment(d: Deps, input: ManualPaymentInput, ac
         exchangeRate: rate != null ? String(rate) : null,
         amountUsdCents,
         reference,
+        referenceKey,
         bank: input.bank?.trim() || null,
         payerName: input.payerName ?? null,
         payerPhone: input.payerPhone ?? null,
@@ -252,12 +291,23 @@ export async function recordManualPayment(d: Deps, input: ManualPaymentInput, ac
         proofFile: input.proofFile ?? null,
       },
     });
-    await addOrderEvent(tx, order.id, "PAYMENT_SUBMITTED", actor, `${T.METHOD_LABELS[input.method]} ref. ${reference ?? "—"}`, { paymentId: p.id, amountCents: input.amountCents, currency: input.currency, amountUsdCents });
+    await addOrderEvent(tx, order.id, "PAYMENT_SUBMITTED", actor, `${T.METHOD_LABELS[input.method]} ref. ${reference ?? "—"}`, {
+      paymentId: p.id,
+      amountCents: input.amountCents,
+      currency: input.currency,
+      amountUsdCents,
+      ...(rate != null ? { exchangeRate: rate } : {}),
+      ...(declaredRate != null ? { declaredExchangeRate: declaredRate } : {}),
+    });
     if (acceptsFirst && order.status !== "AWAITING_VERIFICATION") {
       await transitionOrder(tx, order.id, "AWAITING_VERIFICATION", { actor, note: "Comprobante recibido; pendiente de verificación", patch: { paymentMethod: input.method } });
     }
     return p.id;
-  });
+    });
+  } catch (e) {
+    if (referenceKey && isUniqueViolation(e)) throw duplicateRef();
+    throw e;
+  }
 
   await safeNotify(d, "payment_under_verification", async () => {
     const { view, email, customerId } = await buildOrderView(d, input.orderId);
@@ -280,16 +330,16 @@ export async function storeProofFile(d: Deps, orderId: string, filename: string,
 export interface VerifyInput {
   paymentId: string;
   decision: "approve" | "reject";
-  adminId: string;
   note?: string | null;
   /** Corrección del equivalente en USD al aprobar (p.ej. tasa distinta). */
   amountUsdCents?: number;
 }
 
 /** Verificación del admin. Aprobar dispara la matrícula si completa el primer pago. Rechazar libera el cupo. */
-export async function adminVerifyPayment(d: Deps, input: VerifyInput) {
+export async function adminVerifyPayment(d: Deps, user: SessionUser, input: VerifyInput) {
+  const { id: adminId } = await requireAdmin(d.db, user, "payments.verify");
   const now = d.now();
-  const actor: Actor = { type: "ADMIN", id: input.adminId };
+  const actor: Actor = { type: "ADMIN", id: adminId };
   if (input.decision === "reject" && !input.note?.trim()) throw new DomainError("VALIDATION", "Indica el motivo del rechazo.");
   if (input.amountUsdCents != null && (!Number.isInteger(input.amountUsdCents) || input.amountUsdCents <= 0)) throw new DomainError("VALIDATION", "Monto en USD inválido.");
 
@@ -300,8 +350,9 @@ export async function adminVerifyPayment(d: Deps, input: VerifyInput) {
       where: { id: p.id, status: "AWAITING_VERIFICATION" },
       data:
         input.decision === "approve"
-          ? { status: "COMPLETED", verifiedById: input.adminId, verifiedAt: now, ...(input.amountUsdCents != null ? { amountUsdCents: input.amountUsdCents } : {}) }
-          : { status: "REJECTED", verifiedById: input.adminId, verifiedAt: now, rejectionReason: input.note!.trim() },
+          ? { status: "COMPLETED", verifiedById: adminId, verifiedAt: now, ...(input.amountUsdCents != null ? { amountUsdCents: input.amountUsdCents } : {}) }
+          : // Rechazado: la referencia queda libre para registrarla de nuevo (p.ej. con el monto corregido).
+            { status: "REJECTED", verifiedById: adminId, verifiedAt: now, rejectionReason: input.note!.trim(), referenceKey: null },
     });
     if (claimed.count !== 1) throw new DomainError("INVALID_STATE", "Este pago ya fue verificado.");
 
@@ -364,6 +415,10 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
   const { paymentId, amountCents, order } = await withTx(d, async (tx) => {
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: { include: { reservation: true } } } });
     if (!order) throw new DomainError("NOT_FOUND", "El pedido no existe.");
+    // PayPal ya retiene el dinero de un intento anterior (CAPTURE_PENDING): no se abre otro (pagaría dos
+    // veces) ni se cancela ese (su cupo sigue protegido hasta que PayPal lo libere o lo rechace).
+    const held = await tx.payment.findFirst({ where: { orderId, method: "PAYPAL", status: "PENDING", providerStatus: "CAPTURE_PENDING" }, select: { id: true } });
+    if (held) throw new DomainError("INVALID_STATE", "PayPal está revisando tu pago anterior de este pedido. Te avisaremos por correo cuando se confirme; no hace falta pagar de nuevo.", { paymentId: held.id });
     let amount: number;
     let installmentId: string | null = null;
     if (urls?.installmentId && !PAID_STATES.includes(order.status)) {
@@ -505,7 +560,11 @@ export async function onPaypalCaptureCompleted(
   await afterPaymentApplied(d, p.id, out.apply, "paypal");
   if (out.refundCents > 0) {
     try {
-      await refundPayment(d, { paymentId: p.id, amountCents: out.refundCents, reason: out.apply.closedOrder ? "Pago recibido en un pedido cerrado" : "Pago duplicado: reembolso automático del excedente", unenroll: false, releaseSeat: false, keepCertificate: true });
+      await executeRefund(
+        d,
+        { paymentId: p.id, amountCents: out.refundCents, reason: out.apply.closedOrder ? "Pago recibido en un pedido cerrado" : "Pago duplicado: reembolso automático del excedente", unenroll: false, releaseSeat: false, keepCertificate: true, idempotencyKey: `auto-excess-${p.id}` },
+        SYSTEM,
+      );
     } catch (e) {
       d.log.error(`[paypal] no se pudo reembolsar el excedente del pago ${p.id}`, e);
       await withTx(d, (tx) => addOrderEvent(tx, p.orderId, "ATTENTION", SYSTEM, `No se pudo reembolsar automáticamente el excedente (${(out.refundCents / 100).toFixed(2)} USD): hazlo desde el panel. ${String((e as Error)?.message ?? e)}`, { paymentId: p.id }));
@@ -710,7 +769,7 @@ export async function handlePaypalWebhook(d: Deps, headers: Record<string, strin
         const up = (resource.links as { rel: string; href: string }[] | undefined)?.find((l) => l.rel === "up")?.href ?? "";
         const captureId = up.match(/captures\/([^/?]+)/)?.[1] ?? resource.capture_id ?? null;
         if (!captureId) throw new DomainError("VALIDATION", "Reembolso sin captura asociada.");
-        await onPaypalRefundCompleted(d, { captureId, refundId: resource.id, amountCents: cents(resource.amount?.value), reason: resource.note_to_payer ?? null });
+        await onPaypalRefundCompleted(d, { captureId, refundId: resource.id, amountCents: cents(resource.amount?.value), reason: resource.note_to_payer ?? null, invoiceId: resource.invoice_id ?? null });
         break;
       }
       default:
@@ -731,15 +790,16 @@ export async function handlePaypalWebhook(d: Deps, headers: Record<string, strin
 }
 
 // ───────────── Reembolsos ─────────────
+//
+// Reembolso PayPal desde el panel, en tres pasos:
+//  1. Transacción con el pedido bloqueado: se crea (o se retoma) una fila Refund PENDING con las opciones
+//     del admin. Solo puede haber UNA pendiente por pago: un doble clic u otra pestaña retoma la misma.
+//  2. Llamada a PayPal con PayPal-Request-Id = `refund-<id de la fila>`: repetirla nunca reembolsa dos veces.
+//  3. Transacción: la fila pasa a COMPLETED y se aplica al pedido (una sola vez).
+// Si el webhook PAYMENT.CAPTURE.REFUNDED llega antes del paso 3, adopta la fila pendiente (por invoice_id
+// `refund-<id>` o, si falta, por monto) y aplica las opciones que eligió el admin.
 
-export interface RefundInput {
-  paymentId: string;
-  /** USD en centavos; por defecto todo lo reembolsable del pago. */
-  amountCents?: number;
-  reason?: string | null;
-  adminId?: string | null;
-  /** Registrar un reembolso hecho fuera del sistema (obligatorio en métodos manuales). */
-  manual?: boolean;
+export interface RefundOptions {
   /** Desmatricular de Moodle. Por defecto: sí cuando el pedido queda reembolsado por completo. */
   unenroll?: boolean;
   /** Liberar el cupo de la cohorte. Por defecto: sí cuando el pedido queda reembolsado por completo. */
@@ -751,35 +811,82 @@ export interface RefundInput {
   keepCertificate?: boolean;
 }
 
+export interface RefundInput extends RefundOptions {
+  paymentId: string;
+  /** USD en centavos; por defecto todo lo reembolsable del pago. */
+  amountCents?: number;
+  reason?: string | null;
+  /** Registrar un reembolso hecho fuera del sistema (obligatorio en métodos manuales). */
+  manual?: boolean;
+  /**
+   * Clave de idempotencia del envío (p.ej. un id generado al abrir el formulario). Reenviar la misma clave
+   * devuelve el reembolso ya hecho (o retoma el pendiente) en vez de reembolsar otra vez.
+   */
+  idempotencyKey?: string | null;
+  /**
+   * Confirmar que es OTRO reembolso del mismo monto sobre el mismo pago hecho hace menos de
+   * REPEAT_WINDOW_MS (sin esto se rechaza como probable doble envío: doble clic, dos pestañas).
+   */
+  confirmRepeat?: boolean;
+}
+
+const REPEAT_WINDOW_MS = 10 * 60_000;
+
+function refundOptionsOf(v: unknown): RefundOptions {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const b = (x: unknown) => (typeof x === "boolean" ? x : undefined);
+  return { unenroll: b(o.unenroll), releaseSeat: b(o.releaseSeat), keepCertificate: b(o.keepCertificate) };
+}
+
+const optionsJson = (o: RefundOptions) => JSON.parse(JSON.stringify(o)) as object;
+
 interface ApplyRefundInput {
   paymentId: string;
   amountCents: number;
   providerRefundId?: string | null;
+  /** Fila Refund PENDING/FAILED creada antes de llamar a PayPal: se completa en vez de crear otra. */
+  refundRowId?: string | null;
+  requestKey?: string | null;
   manual: boolean;
   reason?: string | null;
   adminId?: string | null;
-  releaseSeat?: boolean;
-  keepCertificate?: boolean;
+  options: RefundOptions;
   actor: Actor;
 }
 
-async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
+type RefundResult = { refund: Refund; fullyRefunded: boolean; orderId: string; duplicate: boolean };
+
+async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date): Promise<RefundResult> {
   const { orderId: lockedOrderId } = await tx.payment.findUniqueOrThrow({ where: { id: input.paymentId }, select: { orderId: true } });
   await lockOrder(tx, lockedOrderId, now);
   const p = await tx.payment.findUniqueOrThrow({ where: { id: input.paymentId } });
+  const dup = async (refund: RefundResult["refund"]) => {
+    const o = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true } });
+    return { refund, fullyRefunded: o.status === "REFUNDED", orderId: p.orderId, duplicate: true };
+  };
   if (input.providerRefundId) {
     // El otro camino (webhook PAYMENT.CAPTURE.REFUNDED o el panel) ya registró este mismo reembolso.
     const existing = await tx.refund.findUnique({ where: { providerRefundId: input.providerRefundId } });
-    if (existing) {
-      const o = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true } });
-      return { refund: existing, fullyRefunded: o.status === "REFUNDED", orderId: p.orderId, duplicate: true as const };
-    }
+    if (existing && existing.id !== input.refundRowId) return dup(existing);
   }
+  let row = input.refundRowId ? await tx.refund.findUnique({ where: { id: input.refundRowId } }) : null;
+  if (input.refundRowId && !row) throw new DomainError("NOT_FOUND", "El reembolso no existe.");
+  if (row?.status === "COMPLETED") return dup(row);
+
   const refundable = p.amountUsdCents - p.refundedCents;
   if (input.amountCents > refundable) throw new DomainError("VALIDATION", `El monto supera lo reembolsable (${(refundable / 100).toFixed(2)} USD).`);
-  const refund = await tx.refund.create({
-    data: { paymentId: p.id, amountCents: input.amountCents, reason: input.reason ?? null, status: "COMPLETED", providerRefundId: input.providerRefundId ?? null, manual: input.manual, createdById: input.adminId ?? null, completedAt: now },
-  });
+  const done = { status: "COMPLETED" as const, completedAt: now, providerRefundId: input.providerRefundId ?? null, error: null };
+  if (row) {
+    const n = await tx.refund.updateMany({ where: { id: row.id, status: { not: "COMPLETED" } }, data: { ...done, amountCents: input.amountCents } });
+    if (n.count !== 1) return dup(row);
+    row = await tx.refund.findUniqueOrThrow({ where: { id: row.id } });
+  } else {
+    row = await tx.refund.create({
+      data: { paymentId: p.id, amountCents: input.amountCents, reason: input.reason ?? null, manual: input.manual, createdById: input.adminId ?? null, requestKey: input.requestKey ?? null, options: optionsJson(input.options), ...done },
+    });
+  }
+  const refund = row;
+  const { releaseSeat, keepCertificate } = input.options;
   const { refundedCents: refunded } = await tx.payment.update({ where: { id: p.id }, data: { refundedCents: { increment: input.amountCents } }, select: { refundedCents: true } });
   await tx.payment.update({ where: { id: p.id }, data: { status: refunded >= p.amountUsdCents ? "REFUNDED" : "PARTIALLY_REFUNDED" } });
   const order = await tx.order.findUniqueOrThrow({ where: { id: p.orderId } });
@@ -787,23 +894,25 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
   const balance = await recomputeBalance(tx, order.id);
   // Las cuotas se vuelven a imputar con el neto pagado: la última cubierta vuelve a quedar pendiente.
   const realloc = await reallocateInstallments(tx, order.id, now);
-  await addOrderEvent(tx, order.id, "REFUND", input.actor, input.reason ?? null, {
+  await addOrderEvent(tx, order.id, "REFUND", input.actor, refund.reason ?? input.reason ?? null, {
     paymentId: p.id,
     refundId: refund.id,
     amountCents: input.amountCents,
     manual: input.manual,
     balanceCents: balance,
     installmentsReopened: realloc.becameUnpaid.map((i) => i.sequence),
+    ...(refund.createdById && input.actor.type !== "ADMIN" ? { requestedById: refund.createdById } : {}),
+    options: optionsJson(input.options) as Prisma.InputJsonValue,
   });
 
   const agg = await tx.payment.aggregate({ where: { orderId: order.id, status: { in: ["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"] } }, _sum: { amountUsdCents: true, refundedCents: true } });
   const fullyRefunded = (agg._sum.amountUsdCents ?? 0) > 0 && (agg._sum.refundedCents ?? 0) >= (agg._sum.amountUsdCents ?? 0);
   if (fullyRefunded) {
-    if (input.releaseSeat !== false) await releaseOrderReservations(tx, order.id, "REFUNDED", now);
+    if (releaseSeat !== false) await releaseOrderReservations(tx, order.id, "REFUNDED", now);
     if (["PAID", "PARTIALLY_PAID", "ENROLLED"].includes(order.status)) {
-      await transitionOrder(tx, order.id, "REFUNDED", { actor: input.actor, note: input.reason ?? "Reembolso total", patch: { cancelledAt: now } });
+      await transitionOrder(tx, order.id, "REFUNDED", { actor: input.actor, note: refund.reason ?? "Reembolso total", patch: { cancelledAt: now } });
     }
-  } else if (input.releaseSeat === true) {
+  } else if (releaseSeat === true) {
     await releaseOrderReservations(tx, order.id, "REFUNDED", now);
   }
 
@@ -822,7 +931,7 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
   // parcial que deja saldo lo avisa en el panel (el certificado exige el diplomado pagado completo).
   const certs = await tx.certificate.findMany({ where: { status: "ISSUED", orderItem: { orderId: order.id } } });
   for (const c of certs) {
-    if (fullyRefunded && input.keepCertificate !== true) {
+    if (fullyRefunded && keepCertificate !== true) {
       const reason = "Pedido reembolsado por completo";
       const n = await tx.certificate.updateMany({ where: { id: c.id, status: "ISSUED" }, data: { status: "REVOKED", revokedAt: now, revokeReason: reason } });
       if (n.count === 1) await addOrderEvent(tx, order.id, "CERTIFICATE_REVOKED", input.actor, `Certificado ${c.code} revocado: ${reason}`, { certificateId: c.id, code: c.code, revokedAt: now.toISOString() });
@@ -830,10 +939,10 @@ async function applyRefund(tx: Tx, input: ApplyRefundInput, now: Date) {
       await addOrderEvent(tx, order.id, "ATTENTION", SYSTEM, `El certificado ${c.code} sigue vigente, pero el pedido quedó con saldo pendiente (${(balance / 100).toFixed(2)} USD) tras el reembolso: revócalo desde el panel si corresponde.`, { certificateId: c.id });
     }
   }
-  return { refund, fullyRefunded, orderId: order.id, duplicate: false as const };
+  return { refund, fullyRefunded, orderId: order.id, duplicate: false };
 }
 
-async function afterRefund(d: Deps, r: { refund: { id: string; amountCents: number; reason: string | null }; fullyRefunded: boolean; orderId: string }, method: PaymentMethod, unenroll: boolean | undefined, actor: Actor) {
+async function afterRefund(d: Deps, r: RefundResult, method: PaymentMethod, unenroll: boolean | undefined, actor: Actor) {
   if (unenroll ?? r.fullyRefunded) {
     try {
       await unenrollOrder(d, r.orderId, actor);
@@ -848,74 +957,158 @@ async function afterRefund(d: Deps, r: { refund: { id: string; amountCents: numb
   });
 }
 
-/** Reembolso desde el panel: PayPal vía API (salvo `manual`), métodos manuales como registro. */
-export async function refundPayment(d: Deps, input: RefundInput) {
-  const now = d.now();
-  const actor: Actor = input.adminId ? { type: "ADMIN", id: input.adminId } : SYSTEM;
-  const p = await d.db.payment.findUnique({ where: { id: input.paymentId } });
-  if (!p) throw new DomainError("NOT_FOUND", "El pago no existe.");
-  if (p.status !== "COMPLETED" && p.status !== "PARTIALLY_REFUNDED") throw new DomainError("INVALID_STATE", "Solo se pueden reembolsar pagos confirmados.");
-  const refundable = p.amountUsdCents - p.refundedCents;
-  const amount = input.amountCents ?? refundable;
-  if (!Number.isInteger(amount) || amount <= 0 || amount > refundable) throw new DomainError("VALIDATION", `El monto debe estar entre 0.01 y ${(refundable / 100).toFixed(2)} USD.`);
+/** Error de PayPal que asegura que el reembolso NO se hizo (4xx de validación), frente a uno incierto (red, 5xx). */
+function isDefinitiveProviderError(e: unknown): boolean {
+  const status = (e as { status?: unknown })?.status;
+  const code = typeof status === "number" ? status : Number(/\b([45]\d\d)\b/.exec(String((e as Error)?.message ?? e))?.[1] ?? NaN);
+  return code >= 400 && code < 500 && code !== 408 && code !== 409 && code !== 429;
+}
 
-  const viaApi = p.method === "PAYPAL" && !input.manual;
-  let providerRefundId: string | null = null;
-  if (viaApi) {
-    if (!p.paypalCaptureId) throw new DomainError("INVALID_STATE", "El pago PayPal no tiene captura asociada.");
-    try {
-      const partial = amount !== refundable || p.refundedCents > 0;
-      const res = normalizeRefund(await d.paypal.refundCapture(p.paypalCaptureId, partial ? amount : undefined));
-      if (res.status === "FAILED" || res.status === "CANCELLED") throw new Error(`PayPal devolvió estado ${res.status}`);
-      providerRefundId = res.id;
-    } catch (e) {
-      await d.db.refund.create({ data: { paymentId: p.id, amountCents: amount, reason: input.reason ?? null, status: "FAILED", manual: false, createdById: input.adminId ?? null } });
-      throw new DomainError("PAYMENT_PROVIDER", "PayPal no procesó el reembolso.", { cause: String((e as Error)?.message ?? e) });
-    }
-  } else if (p.method === "PAYPAL" && input.manual) {
-    // registro manual explícito de un reembolso PayPal hecho desde el dashboard
+/** Reembolso desde el panel (solo ADMIN): PayPal vía API (salvo `manual`), métodos manuales como registro. */
+export async function refundPayment(d: Deps, user: SessionUser, input: RefundInput) {
+  const admin = await requireAdmin(d.db, user, "payments.refund");
+  return executeRefund(d, input, { type: "ADMIN", id: admin.id });
+}
+
+async function executeRefund(d: Deps, input: RefundInput, actor: Actor): Promise<RefundResult> {
+  const now = d.now();
+  const adminId = actor.type === "ADMIN" ? (actor.id ?? null) : null;
+  const requestKey = input.idempotencyKey?.trim() || null;
+  const options: RefundOptions = { unenroll: input.unenroll, releaseSeat: input.releaseSeat, keepCertificate: input.keepCertificate };
+  const head = await d.db.payment.findUnique({ where: { id: input.paymentId }, select: { id: true, orderId: true, method: true } });
+  if (!head) throw new DomainError("NOT_FOUND", "El pago no existe.");
+  const viaApi = head.method === "PAYPAL" && !input.manual;
+
+  // 1. Reservar (o retomar) la fila del reembolso con el pedido bloqueado. Los manuales se aplican aquí mismo.
+  type Prep = { kind: "done"; result: RefundResult } | { kind: "call"; rowId: string; captureId: string; amountCents: number; reason: string | null; options: RefundOptions };
+  const prep: Prep = await withTx(
+    d,
+    async (tx): Promise<Prep> => {
+      await lockOrder(tx, head.orderId, now);
+      if (requestKey) {
+        const prev = await tx.refund.findUnique({ where: { requestKey } });
+        if (prev && prev.paymentId !== head.id) throw new DomainError("CONFLICT", "Esa clave de reembolso pertenece a otro pago.");
+        if (prev?.status === "COMPLETED") {
+          const o = await tx.order.findUniqueOrThrow({ where: { id: head.orderId }, select: { status: true } });
+          return { kind: "done", result: { refund: prev, fullyRefunded: o.status === "REFUNDED", orderId: head.orderId, duplicate: true } };
+        }
+        if (prev?.status === "FAILED") throw new DomainError("PAYMENT_PROVIDER", "Ese reembolso ya falló en PayPal; revisa el motivo e inicia uno nuevo.", { refundId: prev.id, cause: prev.error });
+        if (prev) {
+          const p = await tx.payment.findUniqueOrThrow({ where: { id: head.id } });
+          return { kind: "call", rowId: prev.id, captureId: p.paypalCaptureId!, amountCents: prev.amountCents, reason: prev.reason, options: refundOptionsOf(prev.options) };
+        }
+      }
+      const p = await tx.payment.findUniqueOrThrow({ where: { id: head.id } });
+      if (p.status !== "COMPLETED" && p.status !== "PARTIALLY_REFUNDED") throw new DomainError("INVALID_STATE", "Solo se pueden reembolsar pagos confirmados.");
+      const refundable = p.amountUsdCents - p.refundedCents;
+      const pending = await tx.refund.findFirst({ where: { paymentId: p.id, status: "PENDING" }, orderBy: { createdAt: "asc" } });
+      if (viaApi && pending) {
+        // Doble clic / otra pestaña / reintento tras un error de red: se retoma el MISMO reembolso (mismo
+        // PayPal-Request-Id), nunca se abre otro mientras ese no se resuelva.
+        if (input.amountCents != null && input.amountCents !== pending.amountCents) {
+          throw new DomainError("CONFLICT", `Ya hay un reembolso de ${(pending.amountCents / 100).toFixed(2)} USD en curso para este pago; espera su confirmación.`, { refundId: pending.id });
+        }
+        return { kind: "call", rowId: pending.id, captureId: p.paypalCaptureId!, amountCents: pending.amountCents, reason: pending.reason, options: refundOptionsOf(pending.options) };
+      }
+      const amount = input.amountCents ?? refundable;
+      if (!Number.isInteger(amount) || amount <= 0 || amount > refundable) throw new DomainError("VALIDATION", `El monto debe estar entre 0.01 y ${(refundable / 100).toFixed(2)} USD.`);
+      if (!input.confirmRepeat && actor.type === "ADMIN") {
+        // Mismo pago, mismo monto, hace un momento: casi seguro un doble envío (otra pestaña, doble clic).
+        const recent = await tx.refund.findFirst({ where: { paymentId: p.id, amountCents: amount, status: { in: ["PENDING", "COMPLETED"] }, createdAt: { gte: new Date(now.getTime() - REPEAT_WINDOW_MS) } } });
+        if (recent) throw new DomainError("CONFLICT", `Ya se reembolsaron ${(amount / 100).toFixed(2)} USD de este pago hace un momento. Si de verdad es otro reembolso, confírmalo.`, { refundId: recent.id, needsConfirmRepeat: true });
+      }
+      if (!viaApi) {
+        const result = await applyRefund(tx, { paymentId: p.id, amountCents: amount, manual: true, reason: input.reason, adminId, requestKey, options, actor }, now);
+        return { kind: "done", result };
+      }
+      if (!p.paypalCaptureId) throw new DomainError("INVALID_STATE", "El pago PayPal no tiene captura asociada.");
+      const row = await tx.refund.create({
+        data: { paymentId: p.id, amountCents: amount, reason: input.reason ?? null, status: "PENDING", manual: false, createdById: adminId, requestKey, options: optionsJson(options) },
+      });
+      await addOrderEvent(tx, p.orderId, "REFUND_REQUESTED", actor, input.reason ?? null, { paymentId: p.id, refundId: row.id, amountCents: amount, options: optionsJson(options) as Prisma.InputJsonValue });
+      return { kind: "call", rowId: row.id, captureId: p.paypalCaptureId, amountCents: amount, reason: row.reason, options };
+    },
+    { retryUnique: true },
+  );
+
+  if (prep.kind === "done") {
+    if (!prep.result.duplicate) await afterRefund(d, prep.result, head.method, options.unenroll, actor);
+    return prep.result;
   }
 
-  let result;
+  // 2. PayPal, idempotente por fila.
+  let providerRefundId: string;
+  try {
+    const res = normalizeRefund(await d.paypal.refundCapture(prep.captureId, prep.amountCents, { requestId: `refund-${prep.rowId}`, invoiceId: `refund-${prep.rowId}`, noteToPayer: prep.reason ?? undefined }));
+    if (res.status === "FAILED" || res.status === "CANCELLED") throw Object.assign(new Error(`PayPal devolvió estado ${res.status}`), { status: 422 });
+    providerRefundId = res.id;
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e).slice(0, 500);
+    if (isDefinitiveProviderError(e)) {
+      await d.db.refund.updateMany({ where: { id: prep.rowId, status: "PENDING" }, data: { status: "FAILED", error: msg } });
+      throw new DomainError("PAYMENT_PROVIDER", "PayPal no procesó el reembolso.", { cause: msg, refundId: prep.rowId });
+    }
+    // Resultado incierto: la fila sigue PENDING. Reintentar retoma el mismo PayPal-Request-Id (no duplica) y
+    // el webhook PAYMENT.CAPTURE.REFUNDED la completa si PayPal sí lo hizo.
+    await d.db.refund.updateMany({ where: { id: prep.rowId, status: "PENDING" }, data: { error: msg } });
+    throw new DomainError("PAYMENT_PROVIDER", "PayPal no respondió. El reembolso quedó en curso: vuelve a intentarlo (no se duplicará) o espera la confirmación de PayPal.", { cause: msg, refundId: prep.rowId, pending: true });
+  }
+
+  // 3. Aplicar (o constatar que el webhook ya lo aplicó con estas mismas opciones).
+  let result: RefundResult;
   try {
     result = await withTx(d, (tx) =>
-      applyRefund(tx, { paymentId: p.id, amountCents: amount, providerRefundId, manual: !viaApi, reason: input.reason, adminId: input.adminId, releaseSeat: input.releaseSeat, keepCertificate: input.keepCertificate, actor }, now),
+      applyRefund(tx, { paymentId: head.id, amountCents: prep.amountCents, providerRefundId, refundRowId: prep.rowId, manual: false, reason: prep.reason, adminId, options: prep.options, actor }, now),
     );
   } catch (e) {
-    // Carrera con el webhook PAYMENT.CAPTURE.REFUNDED que registró este mismo reembolso primero.
-    if (providerRefundId && isUniqueViolation(e)) {
-      const existing = await d.db.refund.findUniqueOrThrow({ where: { providerRefundId } });
-      const o = await d.db.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { status: true } });
-      result = { refund: existing, fullyRefunded: o.status === "REFUNDED", orderId: p.orderId, duplicate: true as const };
-    } else throw e;
+    if (!isUniqueViolation(e)) throw e;
+    const existing = await d.db.refund.findUniqueOrThrow({ where: { providerRefundId } });
+    const o = await d.db.order.findUniqueOrThrow({ where: { id: head.orderId }, select: { status: true } });
+    result = { refund: existing, fullyRefunded: o.status === "REFUNDED", orderId: head.orderId, duplicate: true };
   }
   if (result.duplicate) {
-    // PayPal ya lo había notificado: el reembolso SÍ se hizo. Se deja constancia de quién lo pidió; la
-    // desmatrícula y el correo ya los hizo el webhook (salvo que el admin pidiera desmatricular en uno parcial).
-    await withTx(d, (tx) => addOrderEvent(tx, p.orderId, "NOTE", actor, `Reembolso PayPal ${providerRefundId} solicitado desde el panel (ya registrado por el webhook de PayPal).`, { refundId: result.refund.id }));
-    if (input.unenroll === true && !result.fullyRefunded) await afterRefund(d, result, p.method, true, actor);
+    // El webhook de PayPal lo registró primero, con las opciones del admin (guardadas en la fila).
+    await withTx(d, (tx) => addOrderEvent(tx, head.orderId, "NOTE", actor, `Reembolso PayPal ${providerRefundId} confirmado (ya registrado por el webhook de PayPal).`, { refundId: result.refund.id }));
     return result;
   }
-  await afterRefund(d, result, p.method, input.unenroll, actor);
+  await afterRefund(d, result, head.method, prep.options.unenroll, actor);
   return result;
 }
 
 /** Webhook PAYMENT.CAPTURE.REFUNDED: registra reembolsos hechos desde PayPal (o confirma los nuestros). */
-export async function onPaypalRefundCompleted(d: Deps, input: { captureId: string; refundId: string; amountCents?: number; reason?: string | null }) {
+export async function onPaypalRefundCompleted(d: Deps, input: { captureId: string; refundId: string; amountCents?: number; reason?: string | null; invoiceId?: string | null }) {
   if (await d.db.refund.findUnique({ where: { providerRefundId: input.refundId } })) return { duplicate: true };
   const p = await d.db.payment.findUnique({ where: { paypalCaptureId: input.captureId } });
   if (!p) throw new DomainError("NOT_FOUND", "No existe un pago para esa captura.");
-  const amount = Math.min(input.amountCents ?? p.amountUsdCents - p.refundedCents, p.amountUsdCents - p.refundedCents);
+  // ¿Es un reembolso pedido desde el panel cuya respuesta aún no se procesó? Se adopta su fila y sus opciones.
+  const rowId = input.invoiceId?.match(/^refund-(.+)$/)?.[1];
+  let row = rowId ? await d.db.refund.findFirst({ where: { id: rowId, paymentId: p.id } }) : null;
+  if (!row) {
+    row = await d.db.refund.findFirst({
+      where: { paymentId: p.id, status: "PENDING", manual: false, ...(input.amountCents != null ? { amountCents: input.amountCents } : {}) },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+  if (row?.status === "COMPLETED") return { duplicate: true };
+  const refundable = p.amountUsdCents - p.refundedCents;
+  const amount = Math.min(input.amountCents ?? row?.amountCents ?? refundable, refundable);
   if (amount <= 0) return { duplicate: true };
+  const options = row ? refundOptionsOf(row.options) : {};
   const actor: Actor = { type: "WEBHOOK" };
   let result;
   try {
-    result = await withTx(d, (tx) => applyRefund(tx, { paymentId: p.id, amountCents: amount, providerRefundId: input.refundId, manual: false, reason: input.reason ?? "Reembolso registrado por PayPal", actor }, d.now()));
+    result = await withTx(d, (tx) =>
+      applyRefund(
+        tx,
+        { paymentId: p.id, amountCents: amount, providerRefundId: input.refundId, refundRowId: row?.id ?? null, manual: false, reason: row?.reason ?? input.reason ?? "Reembolso registrado por PayPal", adminId: row?.createdById ?? null, options, actor },
+        d.now(),
+      ),
+    );
   } catch (e) {
     if (isUniqueViolation(e)) return { duplicate: true };
     throw e;
   }
   if (result.duplicate) return { duplicate: true }; // el panel lo registró mientras tanto
-  await afterRefund(d, result, "PAYPAL", undefined, actor);
+  await afterRefund(d, result, "PAYPAL", options.unenroll, actor);
   return result;
 }

@@ -15,6 +15,8 @@ export interface ServiceConfig {
   mailBcc?: string;
   certificatesDir: string;
   privateFilesDir: string;
+  /** Imágenes subidas desde el panel; se sirven en `/uploads/...` (por defecto public/uploads). */
+  publicUploadsDir: string;
   /** Reintentos de matrícula dentro de la misma llamada antes de dejarla al job (con backoff). */
   enrollInlineRetries: number;
   enrollInlineDelayMs: number;
@@ -39,6 +41,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServiceConf
     mailBcc: env.MAIL_BCC || undefined,
     certificatesDir: env.CERTIFICATES_DIR ?? "var/certificates",
     privateFilesDir: env.PRIVATE_FILES_DIR ?? "var/files",
+    publicUploadsDir: env.PUBLIC_UPLOADS_DIR ?? "public/uploads",
     enrollInlineRetries: 2,
     enrollInlineDelayMs: 750,
   };
