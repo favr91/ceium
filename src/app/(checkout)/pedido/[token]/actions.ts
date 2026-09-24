@@ -4,6 +4,7 @@
 import { redirect } from "next/navigation";
 import { services } from "@/server/services";
 import { isDomainError } from "@/server/errors";
+import { proofError } from "@/components/checkout/manual-payment-fields";
 
 function back(token: string, params: Record<string, string>, hash = ""): string {
   return `/pedido/${encodeURIComponent(token)}?${new URLSearchParams(params)}${hash}`;
@@ -44,11 +45,16 @@ export async function reportManualPayment(token: string, cuota: string | null, f
     const options = await s.orders.listPaymentOptions();
     const opt = options.find((o) => o.method === method && o.method !== "PAYPAL");
     if (!opt) throw Object.assign(new Error("El método de pago seleccionado no está disponible."), { code: "VALIDATION" });
-    let proofFile: string | null = null;
-    const file = formData.get("proof");
-    if (file && typeof file === "object" && "arrayBuffer" in file && file.size > 0) {
-      proofFile = await s.payments.storeProofFile(order.id, file.name, new Uint8Array(await file.arrayBuffer()));
+    // El comprobante (archivo) es obligatorio para todo pago manual que reporta el cliente, salvo el efectivo en
+    // sede: sin él el admin no tiene nada que verificar. Mismas reglas que /api/checkout/comprobante.
+    const raw = formData.get("proof");
+    const file = raw && typeof raw === "object" && "arrayBuffer" in raw ? (raw as File) : null;
+    const hasFile = !!file && file.size > 0;
+    if (opt.method !== "EFECTIVO" || hasFile) {
+      const problem = proofError(file ? { name: file.name, size: file.size } : null);
+      if (problem) throw Object.assign(new Error(problem), { code: "VALIDATION" });
     }
+    const proofFile = hasFile ? await s.payments.storeProofFile(order.id, file!.name, new Uint8Array(await file!.arrayBuffer())) : null;
     const paidAtRaw = String(formData.get("paidAt") ?? "");
     await s.payments.recordManualPayment({
       orderId: order.id,

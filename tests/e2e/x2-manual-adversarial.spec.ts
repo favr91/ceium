@@ -6,6 +6,7 @@
 //   1. Dos pestañas del admin aprueban a la vez → un pago imputado, una matrícula, un cupo, un correo de cada.
 //   2. Aprobar y rechazar a la vez → gana uno y todo queda coherente con ese resultado.
 //   3. Doble envío del comprobante (misma referencia, dos pestañas) → un solo pago.
+//   3b. Pago móvil sin comprobante o con un archivo que no es imagen/PDF → rechazado por el servidor.
 //   4. Moodle caído al aprobar → pagado y cupo ocupado; el job matricula una sola vez.
 //   5. Comprobante tardío (pestaña abierta antes del vencimiento) con la cohorte ya llena → se rechaza al
 //      enviar; nunca queda un pedido «en verificación» sin cupo ni un «pago aprobado» sin plaza.
@@ -282,6 +283,44 @@ test("doble envío del comprobante con la misma referencia (dos pestañas a la v
 });
 
 // ───────────── 4. Moodle caído ─────────────
+
+test("pago móvil sin comprobante (o con un archivo que no es imagen/PDF) → el servidor lo rechaza: ni pago, ni «en verificación», ni correo", async ({ page }) => {
+  const C = newCohort(2);
+  const o = checkout(C, uniqueEmail("adv-noproof"));
+  const ref = newRef("0105");
+  const fileInput = page.locator('input[type="file"][name="proof"]');
+  // Se salta cualquier validación del navegador (required / accept): la regla la impone el servidor.
+  const bypassBrowserChecks = () => fileInput.evaluate((el) => { el.removeAttribute("required"); el.removeAttribute("accept"); el.closest("form")?.setAttribute("novalidate", ""); });
+
+  await fillManual(page, o.token, { reference: ref, amountBs: bs(o.dueNowCents) });
+  await fileInput.setInputFiles([]);
+  await bypassBrowserChecks();
+  let r = await submitManual(page);
+  expect(r.get("pago")).toBe("error");
+  expect(r.get("motivo")).toMatch(/Adjunta el comprobante/);
+
+  await fillManual(page, o.token, { reference: ref, amountBs: bs(o.dueNowCents) });
+  await fileInput.setInputFiles({ name: "comprobante.txt", mimeType: "text/plain", buffer: Buffer.from("no es un comprobante") });
+  await bypassBrowserChecks();
+  r = await submitManual(page);
+  expect(r.get("pago")).toBe("error");
+  expect(r.get("motivo")).toMatch(/imagen .* o un PDF/);
+
+  expect(paymentRows(o.orderId)).toEqual([]);
+  expect(order(o.orderId).status).toBe("PENDING_PAYMENT");
+  expect(reservationOf(o.orderId).status).toBe("HELD");
+  expect(templates(o.orderId)).not.toContain("payment_under_verification");
+
+  // Con el comprobante sí entra, y el admin tiene el archivo para verlo.
+  await reportManual(page, o.token, { reference: ref, amountBs: bs(o.dueNowCents) });
+  const rows = paymentRows(o.orderId);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ status: "AWAITING_VERIFICATION", reference: ref });
+  expect(rows[0].proofFile).toMatch(/proofs[\\/].+\.png$/);
+  expect(order(o.orderId).status).toBe("AWAITING_VERIFICATION");
+  expect(countOf(templates(o.orderId), "payment_under_verification")).toBe(1);
+  expectCohortConsistent(C.cohortId);
+});
 
 test("Moodle caído al aprobar → pagado y cupo ocupado; el job reintenta y matricula una sola vez", async ({ browser, page, request }) => {
   const C = newCohort(3);
