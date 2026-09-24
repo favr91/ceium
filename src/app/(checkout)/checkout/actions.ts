@@ -73,6 +73,8 @@ export async function placeOrder(_prev: PlaceOrderState, fd: FormData): Promise<
         },
         items: cartCheckoutItems(lines),
         paymentMethod: method,
+        // Doble clic / reintento antes de que exista la cookie del pedido en curso: mismo pedido, un solo cupo.
+        reusePendingTwin: true,
       });
     }
   } catch (e) {

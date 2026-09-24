@@ -132,6 +132,11 @@ export interface CheckoutInput {
   items: CheckoutItemInput[];
   paymentMethod: PaymentMethod;
   customerNote?: string | null;
+  /**
+   * Tienda: un envío repetido del mismo checkout (doble clic, reintento, dos pestañas) devuelve el pedido pendiente
+   * y vigente del mismo médico con los mismos programas, método y nombre, en vez de crear otro pedido y otro cupo.
+   */
+  reusePendingTwin?: boolean;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -258,11 +263,18 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
     // certificado). El nombre escrito queda en el pedido (buyerFirstName/LastName) y el cliente solo lo
     // adopta si este pedido es su primera compra pagada (ver adoptBuyerName en payments.ts). Los demás
     // datos de contacto solo completan campos vacíos.
+    // Bloqueo del cliente ANTES de buscar su pedido gemelo: la escritura explícita de updatedAt toma el candado de
+    // fila (Postgres: UPDATE ⇒ FOR UPDATE implícito hasta el commit; SQLite: candado de escritura de la BD), así dos
+    // sesiones distintas con el mismo correo en el mismo instante se serializan aquí y la segunda, ya con el pedido
+    // de la primera confirmado, lo encuentra en findPendingTwin (READ COMMITTED: cada sentencia ve lo confirmado).
+    // Un cliente nuevo no tiene fila que bloquear: la segunda creación choca con el correo único (P2002) y withTx
+    // reintenta, esta vez por la rama del cliente existente (bloqueado).
     const existing = await tx.customer.findUnique({ where: { email: customer.email } });
     const cust = existing
       ? await tx.customer.update({
           where: { id: existing.id },
           data: {
+            updatedAt: now,
             ...(!existing.cedula && customer.cedula ? { cedula: customer.cedula } : {}),
             ...(!existing.phone && customer.phone ? { phone: customer.phone } : {}),
             ...(!existing.specialty && customer.specialty ? { specialty: customer.specialty } : {}),
@@ -281,6 +293,14 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
             country: customer.country ?? "VE",
           },
         });
+    // Doble envío del MISMO checkout (doble clic, reintento de red, dos pestañas) antes de que exista la cookie
+    // del pedido en curso: si este médico ya tiene un pedido pendiente y vigente con exactamente los mismos
+    // programas y el mismo método, se devuelve ese (sin otro pedido ni otro cupo). Sin esto, 6 envíos
+    // simultáneos de un médico ocupaban los 3 cupos de una cohorte y los demás compradores veían «Sin cupo».
+    if (input.reusePendingTwin) {
+      const twin = await findPendingTwin(tx, cust.id, input.paymentMethod, customer, quotes, now);
+      if (twin) return twin;
+    }
     const number = await nextOrderNumber(tx);
     const order = await tx.order.create({
       data: {
@@ -355,6 +375,35 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
 
   if (input.paymentMethod !== "PAYPAL") await notifyOrderReceived(d, orderId);
   return getOrder(d, orderId);
+}
+
+/** Pedido pendiente y vigente del cliente con los mismos ítems y método (cada ítem semipresencial con su cupo HELD). */
+async function findPendingTwin(
+  tx: Tx,
+  customerId: string,
+  method: PaymentMethod,
+  buyer: { firstName: string; lastName: string },
+  quotes: { q: Quote; item: CheckoutItemInput }[],
+  now: Date,
+): Promise<string | null> {
+  const key = (x: { productId: string; modality: Modality; sedeId: string | null; cohortId: string | null; choiceId: string | null; planKind: PlanKind }) =>
+    [x.productId, x.modality, x.modality === "SEMIPRESENCIAL" ? (x.sedeId ?? "") : "", x.cohortId ?? "", x.choiceId ?? "", x.planKind].join("|");
+  const want = quotes
+    .map(({ q, item }) => key({ productId: q.productId, modality: q.modality, sedeId: q.sedeId, cohortId: item.modality === "SEMIPRESENCIAL" ? (item.cohortId ?? null) : null, choiceId: q.choiceId, planKind: q.planKind }))
+    .sort()
+    .join("\n");
+  const candidates = await tx.order.findMany({
+    where: { customerId, status: "PENDING_PAYMENT", paymentMethod: method, amountPaidCents: 0, expiresAt: { gt: now }, buyerFirstName: buyer.firstName, buyerLastName: buyer.lastName },
+    include: { items: { include: { reservation: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+  });
+  for (const o of candidates) {
+    if (o.items.map(key).sort().join("\n") !== want) continue;
+    if (o.items.some((i) => i.modality === "SEMIPRESENCIAL" && (i.reservation?.status !== "HELD" || i.reservation.expiresAt.getTime() <= now.getTime()))) continue;
+    return o.id;
+  }
+  return null;
 }
 
 export async function getOrder(d: Pick<Deps, "db">, orderId: string) {

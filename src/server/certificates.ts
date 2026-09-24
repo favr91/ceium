@@ -11,7 +11,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { Deps } from "@/server/deps";
 import { withTx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
-import { addOrderEvent, SYSTEM } from "@/server/orders";
+import { addOrderEvent, lockOrder, SYSTEM } from "@/server/orders";
 import { formatUSD } from "@/server/pricing";
 import { deliverOutboxEmail, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
@@ -126,10 +126,20 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
   }
 
   // Emitir: certificado + evento en UNA transacción; el PDF y el correo se entregan después (recuperable).
+  // La verificación con Moodle tarda (una consulta por curso): entretanto pudo llegar un reembolso (webhook de
+  // PayPal o el panel), un ajuste de saldo o una baja. Con el pedido bloqueado (serializa con applyRefund, que
+  // también lo bloquea y revoca los certificados que YA existen) se vuelve a exigir: pedido ENROLLED, saldo 0 y
+  // todas las matrículas vigentes. Si no, no se emite (nunca un certificado de un diplomado reembolsado).
+  const courseIds = courses.map((c) => c.moodleCourseId!);
   let cert;
   for (let i = 0; ; i++) {
     try {
       cert = await withTx(d, async (tx) => {
+        await lockOrder(tx, purchase.orderId, now);
+        const o = await tx.order.findUniqueOrThrow({ where: { id: purchase.orderId }, select: { status: true, balanceCents: true } });
+        if (o.status !== "ENROLLED" || o.balanceCents > 0) return null;
+        const live = await tx.enrollment.count({ where: { customerId, moodleCourseId: { in: courseIds }, status: "ENROLLED" } });
+        if (live !== new Set(courseIds).size) return null;
         const c = await tx.certificate.create({ data: { customerId, diplomaId, orderItemId: purchase.id, code: generateCertificateCode(), status: "ISSUED", issuedAt: now } });
         await addOrderEvent(tx, purchase.orderId, "CERTIFICATE_ISSUED", SYSTEM, `Certificado ${c.code}`, { certificateId: c.id });
         return c;
@@ -143,6 +153,9 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
     }
   }
 
+  if (!cert) {
+    return { ...result, reason: "El pedido cambió durante la verificación (reembolso, saldo pendiente o baja): no se emite el certificado." };
+  }
   const delivery = await deliverCertificate(d, cert.id);
   return { ...result, issued: true, certificateId: cert.id, code: cert.code, delivery };
 }
@@ -187,6 +200,9 @@ export async function deliverCertificate(d: Deps, certificateId: string): Promis
   }
 
   if (cert.emailedAt) return { pdf: true, emailed: true };
+  // Un reembolso total pudo revocarlo mientras se generaba el PDF: no se envía un certificado ya revocado.
+  const current = await d.db.certificate.findUnique({ where: { id: cert.id }, select: { status: true } });
+  if (current?.status !== "ISSUED") return { pdf: true, emailed: false };
   let emailed = false;
   await safeNotify(d, "certificate_issued", async () => {
     const rendered = T.certificateIssued({ firstName: cert.customer.firstName, fullName, diplomaTitle: cert.diploma.title, code: cert.code, verifyUrl: verifyUrl(d, cert.code), issuedAt: cert.issuedAt });
