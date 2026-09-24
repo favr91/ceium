@@ -16,7 +16,9 @@
 //   POST /__mock/complete     {userid, courseid, completed?=true}
 //   POST /__mock/course       {id, fullname?, shortname?, enablecompletion?, criteria?, manualEnrol?}
 //   POST /__mock/fail-next    {wsfunction?, count?=1, type?: "exception"|"http"|"timeout"|"garbage",
-//                              exception?, errorcode?, message?, status?, delayMs?}
+//                              exception?, errorcode?, message?, status?, delayMs?,
+//                              after?: true → la función SE EJECUTA y luego se responde con el fallo
+//                              (respuesta perdida: p.ej. core_user_create_users creó la cuenta)}
 //   GET  /__mock/calls                         → últimas llamadas recibidas (wsfunction + params)
 //
 // Env: MOCK_MOODLE_PORT (4010, igual que .env/playwright), MOCK_MOODLE_TOKEN o MOODLE_TOKEN
@@ -499,6 +501,10 @@ export function createMoodleMock(opts = {}) {
       f.count -= 1;
       if (f.count <= 0) failQueue.splice(idx, 1);
       if (f.delayMs) await new Promise((r) => setTimeout(r, f.delayMs));
+      // after: Moodle EJECUTA la función (p.ej. crea el usuario) y la respuesta se pierde (timeout/5xx/basura).
+      if (f.after && wstoken === token && functions[wsfunction]) {
+        try { functions[wsfunction](params); } catch { /* el error también se pierde */ }
+      }
       switch (f.type ?? 'exception') {
         case 'timeout':
           return; // nunca responde (el socket queda abierto hasta que el cliente aborta)

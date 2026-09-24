@@ -191,7 +191,7 @@ export class MoodleClient {
    *     si es de OTRA persona se prueba medico_ceium@gmail.com-2, -3…
    * Si la cuenta existe suspendida, la reactiva. Email inválido → MoodleError "validation" (no reintentable).
    */
-  async findOrCreateUser(input: NewUserInput): Promise<FindOrCreateUserResult> {
+  async findOrCreateUser(input: NewUserInput, hooks: { beforeCreate?: () => Promise<void> } = {}): Promise<FindOrCreateUserResult> {
     const email = input.email.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       throw new MoodleError({ kind: "validation", wsfunction: "core_user_create_users", message: `email inválido: ${input.email}` });
@@ -215,6 +215,9 @@ export class MoodleClient {
     } else {
       user.createpassword = 1;
     }
+    // Quien llama registra el intento ANTES de crear: si la respuesta se pierde (timeout, 5xx tras crear),
+    // el siguiente intento encontrará la cuenta (created=false) y sabrá que nunca recibió su contraseña.
+    await hooks.beforeCreate?.();
     try {
       const created = await this.call<{ id: number; username: string }[]>("core_user_create_users", { users: [user] });
       const id = created?.[0]?.id;

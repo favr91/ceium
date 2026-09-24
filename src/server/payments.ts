@@ -433,7 +433,15 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
       // El comprador va a PayPal: la reserva y el pedido deben durar al menos `ttl` desde AHORA, o el job
       // podría vencer el pedido y liberar el cupo mientras paga. Si la reserva ya se liberó, se vuelve a
       // retener cupo (o se falla); si sigue HELD (aunque vencida y aún sin barrer), se extiende.
-      const until = new Date(now.getTime() + ttl);
+      // Tope absoluto: cada intento (una orden PayPal nueva) extiende a lo sumo UNA vez y nunca más allá de
+      // `paypalHoldCap` desde placedAt — sin tope, cualquiera con el enlace del pedido podría retener los
+      // últimos cupos para siempre pulsando «Pagar con PayPal» cada 30 min sin aprobar nunca.
+      const holdsSeats = order.amountPaidCents === 0 && order.items.some((it) => it.modality === "SEMIPRESENCIAL" && it.reservation);
+      const cap = holdsSeats ? await paypalHoldCap(tx, order, ttl) : null;
+      const until = new Date(Math.min(now.getTime() + ttl, cap?.getTime() ?? Infinity));
+      if (cap && until.getTime() <= now.getTime()) {
+        throw new DomainError("INVALID_STATE", "Se agotó el tiempo para pagar este pedido y su cupo quedó libre. Vuelve a iniciar la compra.", { holdCap: cap.toISOString() });
+      }
       for (const it of order.items) {
         const r = it.reservation;
         if (it.modality !== "SEMIPRESENCIAL" || !r) continue;
@@ -450,6 +458,9 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
       if (Object.keys(patch).length > 0) {
         const upd = await tx.order.updateMany({ where: { id: order.id, status: "PENDING_PAYMENT" }, data: patch });
         if (upd.count !== 1) throw new DomainError("CONFLICT", "El pedido cambió mientras se procesaba; intenta de nuevo.");
+      }
+      if (extend && cap) {
+        await addOrderEvent(tx, order.id, "SEAT_HOLD_EXTENDED", { type: "CUSTOMER" }, `Reserva extendida hasta ${until.toISOString()} (pago con PayPal)`, { until: until.toISOString(), holdCap: cap.toISOString(), previous: order.expiresAt?.toISOString() ?? null });
       }
     } else if (PAID_STATES.includes(order.status) && order.balanceCents <= 0) {
       throw new DomainError("INVALID_STATE", "Este pedido ya está pagado por completo.");
@@ -492,6 +503,21 @@ export async function startPaypalPayment(d: Deps, orderId: string, urls?: { retu
     await d.db.payment.update({ where: { id: paymentId }, data: { status: "FAILED", providerStatus: "CREATE_FAILED", providerPayload: { error: String((e as Error)?.message ?? e) } } });
     throw new DomainError("PAYMENT_PROVIDER", "No pudimos iniciar el pago con PayPal. Intenta de nuevo.", { cause: String((e as Error)?.message ?? e) });
   }
+}
+
+/** Un pedido PayPal retiene su cupo como máximo este múltiplo del TTL de PayPal desde que se creó (30 min → 90 min). */
+export const PAYPAL_HOLD_CAP_TTLS = 3;
+
+/**
+ * Límite absoluto de la retención de cupo de un pedido sin pagar al iniciar PayPal: el mayor entre el plazo
+ * que tuvo al hacer el checkout (72 h si se eligió un método manual: no se le recorta) y
+ * placedAt + PAYPAL_HOLD_CAP_TTLS × TTL de PayPal.
+ */
+async function paypalHoldCap(tx: Tx, order: { id: string; placedAt: Date }, ttl: number): Promise<Date> {
+  const created = await tx.orderEvent.findFirst({ where: { orderId: order.id, type: "CREATED" }, orderBy: { createdAt: "asc" }, select: { data: true } });
+  const original = Date.parse(String((created?.data as { expiresAt?: unknown } | null)?.expiresAt ?? ""));
+  const base = order.placedAt.getTime() + PAYPAL_HOLD_CAP_TTLS * ttl;
+  return new Date(Number.isFinite(original) ? Math.max(original, base) : base);
 }
 
 export interface CaptureCompletedInput {

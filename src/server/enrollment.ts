@@ -8,6 +8,7 @@
 //    de inmediato y deja un evento ATTENTION: reintentar no lo arregla.
 //  - Qué cursos otorga cada ítem: curso suelto / opción, o los cursos del diplomado. En el plan MES A MES
 //    solo los cursos cuya cuota está pagada (Installment.courseId): cada cuota habilita el siguiente curso.
+import { Prisma } from "@/generated/prisma/client";
 import type { Deps } from "@/server/deps";
 import { MINUTE, readSetting, withTx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
@@ -191,23 +192,56 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
   let tempPassword: string | undefined;
   let created = false;
   let error: unknown = null;
+  let createRequested = false;
   try {
     if (userId == null) {
-      const u = await d.moodle.findOrCreateUser(order.customer.email, { firstname: order.customer.firstName, lastname: order.customer.lastName });
+      const u = await d.moodle.findOrCreateUser(
+        order.customer.email,
+        { firstname: order.customer.firstName, lastname: order.customer.lastName },
+        {
+          beforeCreate: async () => {
+            createRequested = true;
+            await d.db.$transaction((tx) => addOrderEvent(tx, orderId, MOODLE_CREATE_REQUESTED, actor, "Creando la cuenta de Moodle", { email: order.customer.email }));
+          },
+        },
+      );
       created = u.created;
       tempPassword = u.created ? u.tempPassword : undefined;
       // La cuenta Moodle ya pertenece a OTRO cliente (IDs de Moodle reciclados, cuenta compartida…): no se
       // matricula en la cuenta ajena y reintentar no lo arregla → error permanente + ATTENTION.
       const owner = await d.db.customer.findFirst({ where: { moodleUserId: u.id, id: { not: order.customerId } }, select: { email: true } });
       if (owner) throw new PermanentEnrollmentError(`la cuenta de Moodle #${u.id} (${u.username ?? "?"}) ya está vinculada a otro cliente (${owner.email})`);
+      let linked: number;
       try {
-        await d.db.customer.updateMany({ where: { id: order.customerId, moodleUserId: null }, data: { moodleUserId: u.id, moodleUsername: u.username ?? order.customer.email } });
+        linked = (await d.db.customer.updateMany({ where: { id: order.customerId, moodleUserId: null }, data: { moodleUserId: u.id, moodleUsername: u.username ?? order.customer.email } })).count;
       } catch (e) {
         if (isUniqueViolation(e)) throw new PermanentEnrollmentError(`la cuenta de Moodle #${u.id} ya está vinculada a otro cliente`);
         throw e;
       }
+      // La cuenta ya existía, pero la creamos NOSOTROS en un intento cuya respuesta se perdió (Moodle la creó y
+      // no supimos el resultado): el médico nunca recibió su contraseña. Solo quien la vincula (linked === 1)
+      // fija una contraseña temporal nueva; si Moodle no responde, se deshace el vínculo para reintentarlo.
+      let recovered = false;
+      if (!u.created && linked === 1 && (await ownCreationWithoutCredentials(d, order.customerId, now))) {
+        try {
+          tempPassword = await d.moodle.resetTempPassword(u.id);
+          recovered = true;
+        } catch (e) {
+          await d.db.customer.updateMany({ where: { id: order.customerId, moodleUserId: u.id }, data: { moodleUserId: null, moodleUsername: null } });
+          throw e;
+        }
+      }
       userId = u.id;
-      await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "MOODLE_USER", actor, u.created ? "Cuenta de Moodle creada" : "Cuenta de Moodle existente vinculada", { moodleUserId: u.id, created: u.created }));
+      await d.db.$transaction((tx) =>
+        addOrderEvent(
+          tx,
+          orderId,
+          "MOODLE_USER",
+          actor,
+          u.created ? "Cuenta de Moodle creada" : recovered ? "Cuenta de Moodle creada en un intento anterior sin respuesta: se generó una contraseña temporal nueva" : "Cuenta de Moodle existente vinculada",
+          { moodleUserId: u.id, created: u.created, ...(recovered ? { credentialsReset: true } : {}) },
+        ),
+      );
     }
     // 4) Matricular con reintentos inmediatos cortos.
     for (let attempt = 0; ; attempt++) {
@@ -223,6 +257,11 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
     }
   } catch (e) {
     error = e;
+    // core_user_create_users se llamó y no supimos el resultado (timeout, 5xx, respuesta ilegible): la cuenta
+    // pudo quedar creada sin que el médico reciba su contraseña. El próximo intento la recupera.
+    if (createRequested && userId == null) {
+      await d.db.$transaction((tx) => addOrderEvent(tx, orderId, MOODLE_CREATE_UNCONFIRMED, SYSTEM, "Moodle no confirmó la creación de la cuenta; el siguiente intento lo verificará", { email: order.customer.email })).catch(() => {});
+    }
   }
 
   if (error) {
@@ -259,8 +298,8 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
         );
       }
     });
-    // Si la cuenta se creó ahora, la contraseña temporal no se puede volver a obtener: enviarla ya.
-    if (created && tempPassword && userId != null) await sendAccessEmail(d, orderId, userId, tempPassword, true, `platform_credentials:${order.customerId}`, desired.map((c) => c.label));
+    // Si la cuenta se creó (o su contraseña se fijó) ahora, la contraseña temporal no se guarda: enviarla ya.
+    if (tempPassword && userId != null) await sendAccessEmail(d, orderId, userId, tempPassword, true, `platform_credentials:${order.customerId}`, desired.map((c) => c.label));
     return { status: worst === "FAILED" ? "FAILED" : "RETRY_SCHEDULED", reason: msg, enrolledCourseIds: [], pendingCourseIds: courseIds, createdMoodleUser: created };
   }
 
@@ -310,6 +349,34 @@ async function finalize(
     await sendAccessEmail(d, orderId, fresh.userId, fresh.tempPassword, false, `course_access:${orderId}:${ids.join(",")}`, labels);
   }
   return { status: "ENROLLED", enrolledCourseIds: enrolled, pendingCourseIds: [] };
+}
+
+/** Intento de alta en Moodle (antes de core_user_create_users) y alta sin confirmar (respuesta perdida). */
+export const MOODLE_CREATE_REQUESTED = "MOODLE_USER_CREATE_REQUESTED";
+export const MOODLE_CREATE_UNCONFIRMED = "MOODLE_USER_CREATE_UNCONFIRMED";
+
+/**
+ * ¿La cuenta Moodle que encontramos la creamos nosotros sin entregar nunca la contraseña? Sí cuando:
+ *  - la app no la genera Moodle (modo "moodle-email": Moodle ya envió las credenciales al crearla);
+ *  - hubo un core_user_create_users nuestro para este cliente cuyo resultado no conocimos: marcado como sin
+ *    confirmar, o pedido hace más que el lease (el proceso murió a mitad). Un alta EN CURSO de otra llamada
+ *    no cuenta: esa llamada recibirá la contraseña y la enviará;
+ *  - nunca se le envió un correo de acceso con contraseña temporal.
+ * Una cuenta que ya existía antes (alta manual, otra plataforma) nunca pasa por core_user_create_users, así
+ * que su contraseña no se toca.
+ */
+async function ownCreationWithoutCredentials(d: Deps, customerId: string, now: Date): Promise<boolean> {
+  if (d.moodle.sendsOwnCredentials) return false;
+  const marker = await d.db.orderEvent.findFirst({
+    where: {
+      order: { customerId },
+      OR: [{ type: MOODLE_CREATE_UNCONFIRMED }, { type: MOODLE_CREATE_REQUESTED, createdAt: { lte: new Date(now.getTime() - LEASE_MS) } }],
+    },
+    select: { id: true },
+  });
+  if (!marker) return false;
+  const delivered = await d.db.emailOutbox.findFirst({ where: { customerId, template: "platform_access", secretRef: { not: Prisma.DbNull } }, select: { id: true } });
+  return !delivered;
 }
 
 async function sendAccessEmail(d: Deps, orderId: string, userId: number, tempPassword: string | undefined, activationPending: boolean, dedupeKey: string, courses: string[]) {

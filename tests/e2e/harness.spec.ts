@@ -13,7 +13,7 @@ test.beforeEach(({}, info) => {
 
 test("la app bajo prueba usa la BD e2e sembrada", async ({ request, baseURL }) => {
   expect(e2eEnv.APP_URL).toBe(baseURL);
-  expect(e2eEnv.DATABASE_URL).toMatch(/var\/e2e\/e2e\.db$/);
+  expect(e2eEnv.DATABASE_URL).toMatch(/var\/(e2e\/e2e|lanes\/[\w-]+)\.db$/);
   const health = await (await request.get("/api/health")).json();
   expect(health.ok).toBe(true);
   expect(health.products).toBeGreaterThan(0);

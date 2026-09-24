@@ -10,8 +10,17 @@ export interface MoodleUserResult {
 }
 
 export interface MoodlePort {
-  /** core_user_get_users_by_field (email) → si no existe core_user_create_users. */
-  findOrCreateUser(email: string, names: { firstname: string; lastname: string }): Promise<MoodleUserResult>;
+  /**
+   * core_user_get_users_by_field (email) → si no existe core_user_create_users. `beforeCreate` se llama
+   * (y se espera) justo antes de core_user_create_users: si la respuesta se pierde, quien llama sabe que
+   * la cuenta pudo crearse sin que recibiera la contraseña.
+   */
+  findOrCreateUser(email: string, names: { firstname: string; lastname: string }, hooks?: { beforeCreate?: () => Promise<void> }): Promise<MoodleUserResult>;
+  /**
+   * true si Moodle genera y envía él mismo las credenciales al crear la cuenta (createpassword=1): entonces
+   * la app nunca fija contraseñas temporales por su cuenta.
+   */
+  readonly sendsOwnCredentials?: boolean;
   /** enrol_manual_enrol_users (rol estudiante). Moodle lo trata de forma idempotente. */
   enrol(userId: number, courseIds: number[]): Promise<unknown>;
   /** enrol_manual_unenrol_users */

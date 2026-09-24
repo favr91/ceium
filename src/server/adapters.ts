@@ -17,8 +17,8 @@ export function moodlePort(source: ClientSource<MoodleClient>): MoodlePort {
   const get = lazy(source);
   const client = new Proxy({} as MoodleClient, { get: (_t, prop) => { const c = get(); const v = Reflect.get(c, prop, c); return typeof v === "function" ? v.bind(c) : v; } });
   return {
-    async findOrCreateUser(email, names) {
-      const r = await client.findOrCreateUser({ email, firstname: names.firstname, lastname: names.lastname });
+    async findOrCreateUser(email, names, hooks) {
+      const r = await client.findOrCreateUser({ email, firstname: names.firstname, lastname: names.lastname }, hooks);
       return { id: r.user.id, created: r.created, tempPassword: r.tempPassword, username: r.user.username };
     },
     enrol: (userId, courseIds) => client.enrol(userId, courseIds),
@@ -28,6 +28,9 @@ export function moodlePort(source: ClientSource<MoodleClient>): MoodlePort {
       return { completed: c.completed === true };
     },
     resetTempPassword: (userId) => client.resetTempPassword(userId),
+    get sendsOwnCredentials() {
+      return client.passwordMode === "moodle-email";
+    },
   };
 }
 

@@ -20,7 +20,13 @@ const env = {
   MOODLE_URL: `http://localhost:${port + 1000}`,
   PAYPAL_BASE_URL: `http://localhost:${port + 2000}`,
   MOCK_PAYPAL_WEBHOOK_TARGET: `http://localhost:${port}/api/webhooks/paypal`,
+  MOODLE_LOGIN_URL: `http://localhost:${port + 1000}/login/index.php`,
+  // Estado propio del mock de Moodle, correos, comprobantes y certificados por carril (antes todos los
+  // carriles compartían var/mock-moodle/state.json y se pisaban los usuarios/matrículas).
+  MOCK_MOODLE_STATE: path.resolve(`var/lanes/${lane}/mock-moodle-state.json`),
   MAIL_DIR: `var/lanes/${lane}/mail`,
+  PRIVATE_FILES_DIR: `var/lanes/${lane}/files`,
+  CERTIFICATES_DIR: `var/lanes/${lane}/certificates`,
 };
 if (process.argv.includes("--reset") || !fs.existsSync(db)) {
   execSync(`node scripts/db-reset.mjs var/lanes/${lane}.db`, { stdio: "inherit", env: { ...env, DB_RESET_SKIP_GENERATE: "1" } });

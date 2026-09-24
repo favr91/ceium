@@ -12,7 +12,12 @@ export class FakeMoodle implements MoodlePort {
   failFindOrCreate = 0;
   private nextId = 1000;
 
-  async findOrCreateUser(email: string, names: { firstname: string; lastname: string }) {
+  /** Número de próximas altas que Moodle ejecuta pero cuya respuesta se pierde (timeout/5xx tras crear). */
+  loseCreateResponse = 0;
+  /** Modo "moodle-email": Moodle envía él mismo las credenciales. */
+  sendsOwnCredentials = false;
+
+  async findOrCreateUser(email: string, names: { firstname: string; lastname: string }, hooks?: { beforeCreate?: () => Promise<void> }) {
     this.calls.push({ fn: "findOrCreateUser", args: [email, names] });
     if (this.failFindOrCreate > 0) {
       this.failFindOrCreate--;
@@ -21,8 +26,13 @@ export class FakeMoodle implements MoodlePort {
     const key = email.toLowerCase();
     const u = this.users.get(key);
     if (u) return { id: u.id, created: false, username: key };
+    await hooks?.beforeCreate?.();
     const id = this.nextId++;
     this.users.set(key, { id, email: key, ...names });
+    if (this.loseCreateResponse > 0) {
+      this.loseCreateResponse--;
+      throw new Error("Moodle core_user_create_users: sin respuesta en 15000 ms");
+    }
     return { id, created: true, tempPassword: "Tmp#" + crypto.randomBytes(4).toString("hex"), username: key };
   }
   async enrol(userId: number, courseIds: number[]) {

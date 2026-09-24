@@ -269,7 +269,10 @@ export function createPaypalMock(options = {}) {
       'paypal-auth-version': 'v2',
       'correlation-id': debugId(),
     };
-    const record = { eventId: event.id, eventType: event.event_type, target: config.webhookTarget, headers, status: null, error: null, at: nowIso() };
+    // resourceId / orderId: para que los tests sepan a qué orden o captura corresponde cada entrega.
+    const res = event.resource ?? {};
+    const orderId = res.supplementary_data?.related_ids?.order_id ?? (event.resource_type === 'checkout-order' ? res.id : null);
+    const record = { eventId: event.id, eventType: event.event_type, resourceId: res.id ?? null, orderId: orderId ?? null, target: config.webhookTarget, headers, status: null, error: null, at: nowIso() };
     state.sentWebhooks.push(record);
     try {
       const r = await fetch(config.webhookTarget, { method: 'POST', headers, body: sentBody, signal: AbortSignal.timeout(15000) });
