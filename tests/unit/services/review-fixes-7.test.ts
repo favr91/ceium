@@ -62,7 +62,7 @@ describe("lista de cursos congelada por compra", () => {
     expect(fs.existsSync(cert.pdfPath!)).toBe(true);
 
     // Una compra NUEVA sí lleva los 10 cursos.
-    const { order: o2 } = await buyDiplomaFull(2);
+    const { order: o2 } = await buyDiplomaFull(9_002); // otro cliente: el mismo comprando dos veces el diploma ya no se cobra (x2 critic 24)
     const item2 = await ctx.db.orderItem.findFirstOrThrow({ where: { orderId: o2.id }, include: { courses: true } });
     expect(item2.courses).toHaveLength(10);
     const c2 = await ctx.db.customer.findUniqueOrThrow({ where: { id: o2.customerId } });

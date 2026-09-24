@@ -8,7 +8,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Currency, PaymentMethod, Prisma, Refund } from "@/generated/prisma/client";
+import type { Currency, Modality, PaymentMethod, Prisma, Refund } from "@/generated/prisma/client";
 import type { Deps, Tx } from "@/server/deps";
 import { readSetting, withTx } from "@/server/deps";
 import { DomainError, isDomainError, isUniqueViolation } from "@/server/errors";
@@ -972,7 +972,7 @@ export type ReturnCaptureStatus = "COMPLETED" | "PENDING" | "FAILED";
  * (no se le cobró). MANUAL_AWAITING = el pedido ya tiene un pago manual en verificación; NOT_CAPTURED = el pago
  * ya había quedado sin capturar (pedido cerrado, cohorte llena, o un retorno/webhook repetido tras bloquearlo).
  */
-export type NotCapturedReason = "MANUAL_AWAITING" | "NOT_CAPTURED";
+export type NotCapturedReason = "MANUAL_AWAITING" | "NOT_CAPTURED" | "DUPLICATE";
 
 /** Return URL de PayPal (?token=<paypalOrderId>): captura la orden. Si el webhook llegó antes, no duplica nada. */
 export async function capturePaypalReturn(
@@ -997,7 +997,7 @@ export async function capturePaypalReturn(
   // o su reserva venció y la cohorte se llenó), no se captura en vez de cobrar y reembolsar después.
   if (p.status !== "PENDING" || p.providerStatus !== "CAPTURE_PENDING") {
     const blocked = await secureSeatBeforeCapture(d, p.id);
-    if (blocked) return done("FAILED", "NOT_CAPTURED");
+    if (blocked) return done("FAILED", blocked.duplicate ? "DUPLICATE" : "NOT_CAPTURED");
   }
 
   let res;
@@ -1039,10 +1039,11 @@ class SeatGone extends Error {}
  * Si no se puede, el pago queda CANCELLED/NOT_CAPTURED con un evento, y devuelve el motivo (la orden de PayPal
  * aprobada sin capturar caduca sola: al comprador no se le cobra). Devuelve null si se puede capturar.
  */
-async function secureSeatBeforeCapture(d: Deps, paymentId: string): Promise<string | null> {
+async function secureSeatBeforeCapture(d: Deps, paymentId: string): Promise<{ reason: string; duplicate: boolean } | null> {
   const now = d.now();
   const ttl = await reservationTtlMs(d, "PAYPAL");
   let reason: string | null = null;
+  let duplicate: { id: string; number: number } | null = null;
   try {
     await withTx(d, async (tx) => {
       const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { orderId: true, amountUsdCents: true } });
@@ -1067,6 +1068,14 @@ async function secureSeatBeforeCapture(d: Deps, paymentId: string): Promise<stri
         return;
       }
       if (order.amountPaidCents > 0 || !PREPAID_STATES.includes(order.status)) return;
+      // Compra duplicada: el mismo cliente ya pagó (o tiene un pago en verificación / retenido por PayPal) el mismo
+      // programa en OTRO pedido. Capturar le cobraría dos veces y tomaría otro cupo de la cohorte: no se captura.
+      const dup = await alreadyPaidElsewhere(tx, order);
+      if (dup) {
+        duplicate = { id: dup.id, number: dup.number };
+        reason = `el cliente ya ${dup.how} ${dup.where} en el pedido #${dup.number} (compra duplicada)`;
+        throw new SeatGone();
+      }
       for (const it of order.items) {
         const r = it.reservation;
         if (it.modality !== "SEMIPRESENCIAL" || !r || r.status !== "RELEASED") continue;
@@ -1089,10 +1098,67 @@ async function secureSeatBeforeCapture(d: Deps, paymentId: string): Promise<stri
     });
     if (n.count === 1) {
       const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { orderId: true, paypalOrderId: true } });
-      await addOrderEvent(tx, p.orderId, "PAYMENT_NOT_CAPTURED", SYSTEM, `No se capturó el pago de PayPal ${p.paypalOrderId}: ${reason}. No se cobró al comprador.`, { paymentId, paypalOrderId: p.paypalOrderId });
+      await addOrderEvent(tx, p.orderId, "PAYMENT_NOT_CAPTURED", SYSTEM, `No se capturó el pago de PayPal ${p.paypalOrderId}: ${reason}. No se cobró al comprador.`, {
+        paymentId,
+        paypalOrderId: p.paypalOrderId,
+        ...(duplicate ? { duplicateOf: duplicate.id, duplicateNumber: duplicate.number } : {}),
+      });
+      if (duplicate) {
+        const o = await tx.order.findUniqueOrThrow({ where: { id: p.orderId }, select: { number: true } });
+        await addOrderEvent(
+          tx,
+          duplicate.id,
+          "ATTENTION",
+          SYSTEM,
+          `El cliente aprobó en PayPal otra compra del mismo programa (pedido #${o.number}); no se capturó ni se le cobró. Si escribe, confírmale que su compra es este pedido.`,
+          { duplicateOf: p.orderId, duplicateNumber: o.number, paymentId },
+        );
+      }
     }
   });
-  return reason;
+  return { reason: reason ?? "no se puede recibir este pago", duplicate: duplicate != null };
+}
+
+/**
+ * ¿El cliente de este pedido (sin pagos aún) ya pagó el mismo programa en OTRO pedido? Cuenta como pagado: cupo
+ * CONFIRMED en la misma cohorte (semipresencial) o pedido en PAID_STATES con el mismo producto (online), y también
+ * el otro pedido con un pago manual en verificación o una captura de PayPal retenida (el dinero ya salió).
+ */
+async function alreadyPaidElsewhere(
+  tx: Tx,
+  order: { id: string; customerId: string; items: { productId: string; productTitle: string; modality: Modality; cohortId: string | null }[] },
+): Promise<{ id: string; number: number; how: string; where: string } | null> {
+  const inFlight = { some: { OR: [{ status: "AWAITING_VERIFICATION" as const }, { status: "PENDING" as const, providerStatus: "CAPTURE_PENDING" }] } };
+  for (const it of order.items) {
+    if (it.modality === "SEMIPRESENCIAL" && it.cohortId) {
+      const rs = await tx.seatReservation.findMany({
+        where: {
+          cohortId: it.cohortId,
+          orderId: { not: order.id },
+          order: { customerId: order.customerId, status: { notIn: ["CANCELLED", "REFUNDED"] } },
+          OR: [{ status: "CONFIRMED" }, { status: "HELD", order: { payments: inFlight } }],
+        },
+        select: { status: true, cohort: { select: { name: true } }, order: { select: { id: true, number: true } } },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      });
+      const r = rs[0];
+      if (r) return { id: r.order.id, number: r.order.number, how: r.status === "CONFIRMED" ? "tiene cupo pagado en" : "tiene un pago en verificación por su cupo en", where: `la cohorte ${r.cohort.name}` };
+    } else if (it.modality !== "SEMIPRESENCIAL") {
+      const o = await tx.order.findFirst({
+        where: {
+          id: { not: order.id },
+          customerId: order.customerId,
+          items: { some: { productId: it.productId, modality: it.modality } },
+          OR: [{ status: { in: [...PAID_STATES] } }, { status: { notIn: ["CANCELLED", "REFUNDED"] }, payments: inFlight }],
+        },
+        select: { id: true, number: true, status: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (o) return { id: o.id, number: o.number, how: PAID_STATES.includes(o.status) ? "pagó" : "tiene un pago en verificación de", where: `«${it.productTitle}» (online)` };
+    }
+  }
+  return null;
 }
 
 /**

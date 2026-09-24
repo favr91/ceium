@@ -53,7 +53,7 @@ describe("checkout sin autenticación no renombra al cliente", () => {
     const b = buyer();
     const { o } = await paidCourse(b);
     const before = await ctx.db.customer.findUniqueOrThrow({ where: { id: o.customerId } });
-    const other = await createCheckout(ctx.d, { customer: { ...b, firstName: "Intruso", lastName: "Malicioso" }, items: [{ productId: ctx.fx.course, modality: "ONLINE", planKind: "HALF" }], paymentMethod: "PAYPAL" });
+    const other = await createCheckout(ctx.d, { customer: { ...b, firstName: "Intruso", lastName: "Malicioso" }, items: [{ productId: ctx.fx.diploma, modality: "ONLINE", planKind: "FULL" }], paymentMethod: "PAYPAL" }); // otro programa: repetir el mismo curso ya pagado no se cobra (x2 critic 24)
     const after = await ctx.db.customer.findUniqueOrThrow({ where: { id: o.customerId } });
     expect([after.firstName, after.lastName]).toEqual([before.firstName, before.lastName]);
     expect([other.buyerFirstName, other.buyerLastName]).toEqual(["Intruso", "Malicioso"]);

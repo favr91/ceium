@@ -7,9 +7,11 @@
 //      avisan de nada (ningún ATTENTION). El staff solo lo descubre si el médico reclama.
 //   2. Igual con PayPal las dos veces (sin nadie en medio): la segunda orden se captura sin mirar que el mismo
 //      cliente ya tiene cupo pagado en esa cohorte → cobro doble automático, dos cupos, sin aviso.
-// Ahora: al confirmarse el primer pago de un pedido, si el mismo cliente tiene otro pedido vivo con cupo en la misma
-// cohorte (o el mismo producto online ya pagado), ambos pedidos quedan con un ATTENTION que nombra al otro
-// (payments.ts: flagDuplicatePurchase). En el caso 1 el aviso ya está en A ANTES de que el admin lo apruebe.
+// critic 23: al confirmarse el primer pago de un pedido, si el mismo cliente tiene otro pedido vivo con cupo en la
+// misma cohorte (o el mismo producto online ya pagado), ambos pedidos quedan con un ATTENTION que nombra al otro
+// (payments.ts: flagDuplicatePurchase).
+// critic 24: la segunda orden PayPal ya NO se captura si el cliente ya pagó ese programa en otro pedido o tiene su
+// pago en verificación / retenido por PayPal (secureSeatBeforeCapture → alreadyPaidElsewhere): un cobro, un cupo.
 // Carril: E2E_LANE=e2e E2E_PORT=3104 npx playwright test tests/e2e/x2-critic-23.spec.ts --project=desktop
 import fs from "node:fs";
 import path from "node:path";
@@ -126,7 +128,7 @@ test.afterAll(() => {
   }
 });
 
-test("pago móvil en verificación y recompra de la MISMA cohorte con PayPal; el admin aprueba el comprobante → queda avisado del duplicado (no dos cupos y dos cobros en silencio)", async ({ browser, page }) => {
+test("pago móvil en verificación y recompra de la MISMA cohorte con PayPal → PayPal NO se cobra; el admin aprueba el comprobante → un cupo, un cobro", async ({ browser, page, request }) => {
   const C = newCohort(3);
   const email = uniqueEmail("x2c23pm");
   const a = checkout(C, email, "PAGO_MOVIL");
@@ -138,48 +140,45 @@ test("pago móvil en verificación y recompra de la MISMA cohorte con PayPal; el
   // Mientras espera la verificación, compra otra vez la misma cohorte con PayPal (otra sesión: el carrito se vació).
   const ctx = await browser.newContext({ locale: "es-VE", viewport: { width: 1440, height: 900 } });
   const b = checkout(C, email, "PAYPAL");
+  let ppB = "";
   try {
-    await payPaypal(await ctx.newPage(), b.token);
+    const bp = await ctx.newPage();
+    ppB = await payPaypal(bp, b.token);
+    // Aprobó en PayPal, pero no se le cobra: vuelve a su pedido con el aviso «no lo cobramos».
+    expect(new URL(bp.url()).searchParams.get("paypal")).toBe("no-cobrado");
+    await expect(bp.getByTestId("order-banner")).toContainText("no lo cobramos");
   } finally {
     await ctx.close();
   }
-  await waitForOrderStatus(b.orderId, "ENROLLED", 45_000);
   expect(customerOf(b.orderId).id).toBe(customerOf(a.orderId).id);
-
-  // Al cobrar B, A (aún en verificación) ya queda avisado: el admin lo ve ANTES de aprobar.
+  const st = (await (await request.get(`${PAYPAL}/__mock/state`)).json()) as { orders: { id: string; status: string }[] };
+  expect(st.orders.find((o) => o.id === ppB)?.status).not.toBe("COMPLETED");
+  expect(order(b.orderId)).toMatchObject({ status: "PENDING_PAYMENT", amountPaidCents: 0 });
+  expect(one<{ status: string; providerStatus: string }>(`SELECT status, providerStatus FROM Payment WHERE paypalOrderId = ?`, ppB)).toEqual({ status: "CANCELLED", providerStatus: "NOT_CAPTURED" });
+  expect(events(b.orderId, "PAYMENT_NOT_CAPTURED").map((e) => e.note).join("\n")).toContain(`#${a.number}`);
+  // A (aún en verificación) queda avisado ANTES de aprobar.
   expect(flagsOther(a.orderId, b.number)).toBe(true);
-  expect(flagsOther(b.orderId, a.number)).toBe(true);
 
-  // El admin abre A: el aviso está en la ficha. Aprueba igual (p. ej. el médico quiere dos cupos) → queda avisado.
   const { ctx: actx, page: admin } = await adminLogin(browser, `/admin/orders/${a.orderId}`);
   try {
-    await expect(admin.getByText(`Probable compra duplicada`).first()).toBeVisible();
     await admin.getByTestId("payment").filter({ hasText: ref }).getByRole("button", { name: "Aprobar pago" }).click();
     await expect(admin.getByRole("status").filter({ hasText: "Pago aprobado" })).toBeVisible();
   } finally {
     await actx.close();
   }
-  await waitForOrderStatus(a.orderId, ["ENROLLED", "PAID", "PENDING_PAYMENT", "AWAITING_VERIFICATION"]);
+  await waitForOrderStatus(a.orderId, "ENROLLED", 45_000);
 
   const custId = customerOf(a.orderId).id;
-  const paidTwice = q<{ n: number }>(`SELECT COUNT(*) AS n FROM Payment p JOIN "Order" o ON o.id = p.orderId WHERE o.customerId = ? AND p.status = 'COMPLETED'`, custId)[0].n;
-  const snapshot = {
-    a: order(a.orderId).status,
-    b: order(b.orderId).status,
-    seatsOfCustomer: seatsOfCustomer(custId, C.cohortId),
-    cohort: cohort(C.cohortId),
-    paymentsCompleted: paidTwice,
-    approvedMails: emails(a.orderId).filter((m) => m.template === "payment_approved").length,
-  };
+  const completed = q<{ n: number }>(`SELECT COUNT(*) AS n FROM Payment p JOIN "Order" o ON o.id = p.orderId WHERE o.customerId = ? AND p.status = 'COMPLETED'`, custId)[0].n;
+  const snapshot = { a: order(a.orderId).status, b: order(b.orderId).status, seatsOfCustomer: seatsOfCustomer(custId, C.cohortId), cohort: cohort(C.cohortId), completed };
   console.log(JSON.stringify(snapshot));
-  // Dos cupos y dos cobros para UN médico en UNA cohorte: el staff DEBE quedar avisado (en A, nombrando a B).
-  expect(snapshot.seatsOfCustomer).toBe(2);
-  const attA = events(a.orderId, "ATTENTION").filter((e) => (e.note ?? "").includes(`#${b.number}`));
-  expect(attA.map((e) => JSON.parse(e.data!).duplicateNumber)).toEqual([b.number, b.number]); // al cobrar B y al aprobar A
-  expect(attA.at(-1)!.note).toContain("Cobró dos veces y ocupa dos cupos");
+  expect(snapshot.seatsOfCustomer).toBe(1);
+  expect(snapshot.completed).toBe(1);
+  expect(emails(a.orderId).filter((m) => m.template === "payment_approved")).toHaveLength(1);
+  expect(emails(b.orderId).filter((m) => ["order_confirmation", "payment_approved"].includes(m.template))).toEqual([]);
 });
 
-test("el mismo médico paga dos veces con PayPal la MISMA cohorte → la segunda no se cobra en silencio (no se captura, o queda avisada)", async ({ browser, request }) => {
+test("el mismo médico paga dos veces con PayPal la MISMA cohorte → la segunda no se captura; un cupo; otro cliente sí se cobra", async ({ browser, request }) => {
   const C = newCohort(3);
   const email = uniqueEmail("x2c23pp");
   const placed: Placed[] = [];
@@ -196,16 +195,15 @@ test("el mismo médico paga dos veces con PayPal la MISMA cohorte → la segunda
     if (k === 0) await waitForOrderStatus(o.orderId, "ENROLLED", 45_000);
   }
   const [a, b] = placed;
-  await waitForOrderStatus(b.orderId, ["ENROLLED", "PAID", "PENDING_PAYMENT", "CANCELLED", "EXPIRED"], 45_000);
   const st = (await (await request.get(`${PAYPAL}/__mock/state`)).json()) as { orders: { id: string; status: string }[] };
-  const secondCaptured = st.orders.find((o) => o.id === ppIds[1])?.status === "COMPLETED";
+  expect(st.orders.find((o) => o.id === ppIds[0])?.status).toBe("COMPLETED");
+  expect(st.orders.find((o) => o.id === ppIds[1])?.status).not.toBe("COMPLETED");
   const custId = customerOf(a.orderId).id;
-  console.log(JSON.stringify({ secondCaptured, b: order(b.orderId).status, seatsOfCustomer: seatsOfCustomer(custId, C.cohortId), cohort: cohort(C.cohortId) }));
-  if (secondCaptured) {
-    expect(flagsOther(b.orderId, a.number)).toBe(true);
-    expect(flagsOther(a.orderId, b.number)).toBe(true);
-  } else expect(seatsOfCustomer(custId, C.cohortId)).toBe(1);
-  // Un cliente distinto en la misma cohorte NO se marca.
+  expect(seatsOfCustomer(custId, C.cohortId)).toBe(1);
+  expect(order(b.orderId).amountPaidCents).toBe(0);
+  expect(events(b.orderId, "PAYMENT_NOT_CAPTURED").map((e) => e.note).join("\n")).toContain("compra duplicada");
+  expect(flagsOther(a.orderId, b.number)).toBe(true);
+  // Un cliente distinto en la misma cohorte se cobra normal y NO se marca.
   const other = checkout(C, uniqueEmail("x2c23other"), "PAYPAL");
   const ctx = await browser.newContext({ locale: "es-VE", viewport: { width: 1440, height: 900 } });
   try {
