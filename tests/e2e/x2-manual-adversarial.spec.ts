@@ -563,11 +563,13 @@ test("reembolso con Moodle caído al desmatricular → pedido reembolsado y cupo
   expect(enrollments(b.orderId)).toEqual([{ moodleCourseId: C.moodleCourseId, status: "UNENROLLED" }]);
   expect(eventTypes(b.orderId)).toContain("UNENROLLMENT");
   // Ya resuelto: el siguiente pase no vuelve a llamar a Moodle por este pedido ni lo rematricula.
-  const before = (await moodleCalls(request)).length;
+  // Por tiempo, no por índice: el mock guarda solo las últimas 200 llamadas (un slice por índice quedaría vacío
+  // y estas comprobaciones pasarían sin mirar nada).
+  const since = Date.now();
   const res2 = await runCron(request, "enrollments");
   const uid = customerOf(b.orderId).moodleUserId!;
-  expect(enrolCallsFor((await moodleCalls(request)).slice(before), uid)).toEqual([]);
-  expect((await moodleCalls(request)).slice(before).filter((c) => c.wsfunction === "enrol_manual_unenrol_users" && JSON.stringify(c.params).includes(String(uid)))).toEqual([]);
+  expect(enrolCallsFor((await moodleCalls(request)).filter((c) => c.at >= since), uid)).toEqual([]);
+  expect((await moodleCalls(request)).filter((c) => c.at >= since).filter((c) => c.wsfunction === "enrol_manual_unenrol_users" && JSON.stringify(c.params).includes(String(uid)))).toEqual([]);
   expect(res2.results.enrollments.unenrollments.orders).toBe(0);
   expect(await enrolmentsOf(request, b.orderId)).toEqual([]);
   expect(order(b.orderId).status).toBe("REFUNDED");

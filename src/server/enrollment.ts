@@ -272,8 +272,9 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
       const attempts = r.attempts + 1;
       const failed = permanent || attempts >= policy.maxAttempts;
       if (failed) worst = "FAILED";
-      await d.db.enrollment.update({
-        where: { id: r.id },
+      // Solo si sigue PENDING: un reembolso pudo desmatricularla (UNENROLLED) mientras Moodle respondía.
+      await d.db.enrollment.updateMany({
+        where: { id: r.id, status: "PENDING" },
         data: {
           attempts,
           lastError: msg,
@@ -303,10 +304,26 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
     return { status: worst === "FAILED" ? "FAILED" : "RETRY_SCHEDULED", reason: msg, enrolledCourseIds: [], pendingCourseIds: courseIds, createdMoodleUser: created };
   }
 
-  await d.db.enrollment.updateMany({
-    where: { id: { in: claimed.map((r) => r.id) } },
+  const done = await d.db.enrollment.updateMany({
+    where: { id: { in: claimed.map((r) => r.id) }, status: "PENDING" },
     data: { status: "ENROLLED", enrolledAt: now, moodleUserId: userId!, lastError: null, nextAttemptAt: null, attempts: { increment: 1 } },
   });
+  if (done.count < claimed.length) {
+    // Un reembolso desmatriculó (UNENROLLED) alguna fila mientras Moodle matriculaba: se deshace en Moodle para
+    // que el médico reembolsado no conserve el acceso. Si Moodle falla, queda para el job de desmatrículas.
+    const undone = await d.db.enrollment.findMany({ where: { id: { in: claimed.map((r) => r.id) }, status: "UNENROLLED" }, select: { moodleCourseId: true } });
+    const ids = undone.map((r) => r.moodleCourseId);
+    if (ids.length) {
+      try {
+        await d.moodle.unenrol(userId!, ids);
+        await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "UNENROLLMENT", SYSTEM, `Matrícula concurrente con un reembolso deshecha en ${ids.length} curso(s)`, { courseIds: ids }));
+      } catch (e) {
+        const msg = String((e as Error)?.message ?? e).slice(0, 300);
+        await d.db.$transaction((tx) => addOrderEvent(tx, orderId, UNENROLLMENT_FAILED, SYSTEM, `No se pudo deshacer en Moodle una matrícula concurrente con un reembolso: ${msg}`, { courseIds: ids, error: msg }));
+      }
+      if (done.count === 0) return { status: "SKIPPED", reason: "Pedido desmatriculado durante la matrícula", enrolledCourseIds: [], pendingCourseIds: [] };
+    }
+  }
   await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "ENROLLMENT", actor, `Matriculado en ${courseIds.length} curso(s) de Moodle`, { courseIds, moodleUserId: userId }));
   return finalize(d, orderId, order.customerId, desired, actor, { userId: userId!, tempPassword, newlyEnrolled: courseIds });
 }
@@ -487,9 +504,12 @@ export async function unenrollOrder(d: Deps, orderId: string, actor: Actor = SYS
     for (const it of o.items) for (const c of itemMoodleCourses(it)) if (c.moodleCourseId != null) keep.add(c.moodleCourseId);
   const rows = await d.db.enrollment.findMany({ where: { customerId: order.customerId, moodleCourseId: { in: courses }, status: { in: ["ENROLLED", "PENDING", "FAILED"] } } });
   const toRemove = rows.filter((r) => !keep.has(r.moodleCourseId));
-  const enrolledIds = toRemove.filter((r) => r.status === "ENROLLED").map((r) => r.moodleCourseId);
+  // No solo las ENROLLED: una fila PENDING/FAILED puede estar matriculada en Moodle aunque la app no lo sepa
+  // (Moodle ejecutó enrol_manual_enrol_users y la respuesta se perdió, o un intento sigue en curso). Desmatricular
+  // a quien no está matriculado es inocuo en Moodle, así que se piden también las que ya se intentaron.
+  const unenrolIds = toRemove.filter((r) => r.status === "ENROLLED" || r.attempts > 0 || r.nextAttemptAt != null).map((r) => r.moodleCourseId);
   const userId = order.customer.moodleUserId;
-  if (enrolledIds.length && userId != null) await d.moodle.unenrol(userId, enrolledIds);
+  if (unenrolIds.length && userId != null) await d.moodle.unenrol(userId, unenrolIds);
   if (toRemove.length) await d.db.enrollment.updateMany({ where: { id: { in: toRemove.map((r) => r.id) } }, data: { status: "UNENROLLED", nextAttemptAt: null, completedAt: null, completionCheckedAt: null } });
   const kept = rows.filter((r) => keep.has(r.moodleCourseId)).map((r) => r.moodleCourseId);
   await d.db.$transaction((tx) => addOrderEvent(tx, orderId, "UNENROLLMENT", actor, `Desmatriculado de ${toRemove.length} curso(s)`, { courseIds: toRemove.map((r) => r.moodleCourseId), kept }));

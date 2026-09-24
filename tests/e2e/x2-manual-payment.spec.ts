@@ -449,7 +449,8 @@ for (const unenroll of [true, false]) {
     const [pp] = payments(o.id).filter((p) => p.status === "COMPLETED");
     expect(pp.paypalCaptureId).toBeTruthy();
     const refundsBefore = (await paypalRefunds(request)).length;
-    const callsBefore = (await moodleCalls(request)).length;
+    // Por tiempo, no por índice: el mock guarda solo las últimas 200 llamadas (un slice por índice queda vacío).
+    const callsSince = Date.now();
 
     const reason = unenroll ? "El médico no podrá asistir a la cohorte." : "Reembolso de cortesía; conserva el acceso al aula virtual.";
     const { ctx, admin, adminId } = await refundInAdmin(browser, o.number, { unenroll, reason });
@@ -476,7 +477,7 @@ for (const unenroll of [true, false]) {
       expect(cohort(C.cohortId)).toEqual(before);
 
       // Moodle según la opción del reembolso.
-      const after = (await moodleCalls(request)).slice(callsBefore);
+      const after = (await moodleCalls(request)).filter((c) => c.at >= callsSince);
       const unenrolCalls = after.filter((c) => c.wsfunction === "enrol_manual_unenrol_users" && JSON.stringify(c.params).includes(String(cust.moodleUserId)));
       const stillEnrolled = (await moodleState(request)).enrolments.filter((e) => e.userid === cust.moodleUserId).map((e) => e.courseid);
       if (unenroll) {
