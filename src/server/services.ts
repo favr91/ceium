@@ -60,7 +60,7 @@ export function createServices(d: Deps) {
     deps: d,
     pricing: { quote: (input: quoteSvc.QuoteInput) => quoteSvc.quote(d.db, input, d.now()) },
     seats: {
-      ...bind(d, seats, ["expireStaleReservations", "getCohortAvailability"]),
+      ...bind(d, seats, ["expireStaleReservations", "getCohortAvailability", "liveHeldCounts"]),
     },
     orders: {
       ...bind(d, orders, ["createCheckout", "getOrder", "getOrderByToken", "expireStaleOrders", "cancelOrder", "addNote", "notifyOrderReceived", "listUnderpaidOrders", "listPaymentOptions"]),

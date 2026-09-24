@@ -181,6 +181,20 @@ export async function getCohortAvailability(d: Pick<Deps, "db" | "now">, cohortI
   return { capacity: c.capacity, confirmed: c.seatsConfirmed, held, available, purchasable: c.status === "OPEN" && deadlineOk && available > 0 };
 }
 
+/**
+ * Reservas HELD vivas por cohorte (misma regla que getCohortAvailability: una vencida de un pedido sin dinero
+ * en camino ya no cuenta), en una sola consulta para los listados del panel. Sin `cohortIds` → todas.
+ */
+export async function liveHeldCounts(d: Pick<Deps, "db" | "now">, cohortIds?: string[]): Promise<Map<string, number>> {
+  const now = d.now();
+  const rows = await d.db.seatReservation.groupBy({
+    by: ["cohortId"],
+    where: { status: "HELD", ...(cohortIds ? { cohortId: { in: cohortIds } } : {}), NOT: { expiresAt: { lt: now }, order: unprotectedOrderWhere() } },
+    _count: { _all: true },
+  });
+  return new Map(rows.map((r) => [r.cohortId, r._count._all]));
+}
+
 export interface ReassignOptions {
   /** Vigencia de una reserva HELD nueva (pedidos aún sin pagar). */
   ttlMs: number;
