@@ -12,7 +12,7 @@ import { Prisma } from "@/generated/prisma/client";
 import type { Deps } from "@/server/deps";
 import { MINUTE, readSetting, withTx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
-import { addOrderEvent, PAID_STATES, SYSTEM, transitionOrder, type Actor } from "@/server/orders";
+import { addOrderEvent, CLOSED_STATES, PAID_STATES, SYSTEM, transitionOrder, type Actor } from "@/server/orders";
 import { SETTING_KEYS } from "@/server/settings";
 import { safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
@@ -194,6 +194,18 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
         // Ciclo de matrícula nuevo: la finalización registrada en el ciclo anterior deja de valer.
         data: { status: "PENDING", attempts: 0, nextAttemptAt: null, lastError: null, orderId, orderItemId: c.orderItemId, enrolledAt: null, completedAt: null, completionCheckedAt: null },
       });
+    } else if (existing.status === "ENROLLED" && existing.orderId && existing.orderId !== orderId) {
+      // La fila «ENROLLED» la otorgó OTRO pedido que ya se cerró (reembolsado/cancelado): su desmatrícula pudo
+      // ejecutarse en Moodle sin que la app lo supiera (respuesta perdida → UNENROLLMENT_FAILED, la fila sigue
+      // ENROLLED) o está en curso. Fiarse de ella daba este pedido por matriculado sin llamar a Moodle («ya tienes
+      // acceso» y el médico sin aula para siempre). Se vuelve a matricular para ESTE pedido (enrol es idempotente).
+      const owner = await d.db.order.findUnique({ where: { id: existing.orderId }, select: { status: true } });
+      if (!owner || CLOSED_STATES.includes(owner.status)) {
+        await d.db.enrollment.updateMany({
+          where: { id: existing.id, status: "ENROLLED", orderId: existing.orderId },
+          data: { status: "PENDING", attempts: 0, nextAttemptAt: null, lastError: null, orderId, orderItemId: c.orderItemId, enrolledAt: null, completedAt: null, completionCheckedAt: null },
+        });
+      }
     }
   }
 
