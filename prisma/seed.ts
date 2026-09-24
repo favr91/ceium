@@ -128,7 +128,11 @@ async function main() {
     const iMod = optIdx("Modalidad"), iSede = optIdx("Sede"), iPay = optIdx("Forma de pago"), iChoice = optIdx("Cursos disponibles");
     const val = (v: ShopifyVariant, i: number) => (i < 0 ? null : (v[`option${i + 1}` as "option1"] as string | null));
     const modalities = new Set(p.variants.map((v) => val(v, iMod)));
-    const deadline = det.enrollmentDeadlineText?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    // La fecha de cierre sale del texto de la descripción y puede estar vencida mientras la tienda real
+    // sigue vendiendo el producto (variantes available:true). La disponibilidad real manda: si alguna
+    // variante está a la venta no se impone el cierre (el admin puede fijarlo en el panel).
+    const sellable = p.variants.some((v) => v.available);
+    const deadline = sellable ? null : det.enrollmentDeadlineText?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
 
     const product = await prisma.product.create({
       data: {
@@ -180,9 +184,11 @@ async function main() {
     // Matriz de precios: agrupa variantes por (modalidad, sede, choice) y deriva el precio de lista.
     const groups = new Map<string, { modality: Modality; sedeId: string | null; choiceId: string | null; vs: ShopifyVariant[] }>();
     for (const v of p.variants) {
-      const mod = val(v, iMod) === "Online" ? "ONLINE" : "SEMIPRESENCIAL";
       const sedeName = val(v, iSede);
-      if (mod === "SEMIPRESENCIAL" && (!sedeName || sedeName === "Online")) { warnings.push(`${p.handle}: variante Semipresencial/${sedeName} ignorada`); continue; }
+      // "Semipresencial / Online" (sede Online) es la modalidad online con otra etiqueta: se agrupa con
+      // ONLINE y la verificación de abajo comprueba que su precio coincide con el online.
+      const mod = val(v, iMod) === "Online" || sedeName === "Online" ? "ONLINE" : "SEMIPRESENCIAL";
+      if (mod === "SEMIPRESENCIAL" && !sedeName) { warnings.push(`${p.handle}: variante Semipresencial sin sede ignorada`); continue; }
       const sedeId = mod === "ONLINE" ? null : sedeIdByName(sedeName!);
       const ch = iChoice >= 0 ? choiceId[val(v, iChoice)!] : null;
       const key = `${mod}|${sedeId}|${ch}`;
@@ -206,6 +212,7 @@ async function main() {
       await prisma.priceEntry.create({ data: { productId: product.id, scopeKey, modality: g.modality, sedeId: g.sedeId, choiceId: g.choiceId, priceCents: list, installmentCents: installment } });
       priceCount++;
       // Verificación: los montos calculados deben reproducir el precio real de cada variante.
+      if (iPay < 0) for (const v of g.vs) if (cents(v.price) !== list) warnings.push(`${p.handle} ${g.modality}/${g.sedeId ? "sede" : "-"}: precio ${list} ≠ real ${cents(v.price)} (${val(v, iMod)}/${val(v, iSede)})`);
       for (const v of iPay >= 0 ? g.vs : []) {
         const pl = plans.find((x) => x.label === val(v, iPay))!;
         const amounts = computePlanAmounts({ priceCents: list, installmentCents: installment }, { ...pl, installments: pl.kind === "HALF" ? 2 : pl.kind === "MONTHLY" ? MONTHLY_INSTALLMENTS : 1 });

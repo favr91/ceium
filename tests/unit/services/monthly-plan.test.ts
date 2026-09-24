@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DAY } from "@/server/deps";
 import { createCheckout, getOrder } from "@/server/orders";
 import { adminVerifyPayment, capturePaypalReturn, recordManualPayment, refundPayment, startPaypalPayment } from "@/server/payments";
-import { runInstallmentReminders } from "@/server/installments";
+import { runInstallmentReminders, sendInstallmentReminder } from "@/server/installments";
+import { SETTING_KEYS } from "@/server/settings";
 import { runJobs } from "@/server/jobs";
 import { checkDiplomaCompletion } from "@/server/certificates";
 import { buyer, setupContext, type TestContext } from "./helpers/setup";
@@ -112,6 +113,55 @@ describe("diplomado mes a mes", () => {
     expect(await enrolledIds(o.customerId)).toEqual([301, 302]);
     const i2 = await ctx.db.installment.findUniqueOrThrow({ where: { id: ins[1].id } });
     expect([i2.status, i2.paidCents]).toEqual(["PAID", 18000]);
+  });
+
+  it("el recordatorio solo ofrece los métodos de pago habilitados (listPaymentOptions)", async () => {
+    const o = await monthlyOrder();
+    await payPaypal(o.id);
+    const ins = (await getOrder(ctx.d, o.id)).installments;
+    const paypalLink = `https://ceium.test/pedido/${o.token}/cuota/${ins[1].id}/paypal`;
+    const manualLink = `https://ceium.test/pedido/${o.token}?cuota=${ins[1].id}#pagar`;
+    const last = () => ctx.db.emailOutbox.findFirstOrThrow({ where: { orderId: o.id, template: "installment_reminder" }, orderBy: { createdAt: "desc" } });
+    const setSetting = (key: string, value: unknown) => ctx.db.setting.update({ where: { key }, data: { value: value as never } });
+    const methods = (await ctx.db.setting.findUniqueOrThrow({ where: { key: SETTING_KEYS.manualMethods } })).value as { enabled: boolean }[];
+
+    // Con pago móvil y transferencia habilitados se nombran los dos.
+    await sendInstallmentReminder(ctx.d, ins[1].id);
+    let r = await last();
+    expect(r.html).toContain(paypalLink);
+    expect(r.html).toContain(manualLink);
+    expect(r.text).toContain("Pagar con Pago móvil o Transferencia bancaria:");
+
+    // Todos los métodos manuales deshabilitados (valores por defecto del seed): solo PayPal.
+    await setSetting(SETTING_KEYS.manualMethods, methods.map((m) => ({ ...m, enabled: false })));
+    ctx.clock.t = new Date(ctx.clock.t.getTime() + 1000);
+    await sendInstallmentReminder(ctx.d, ins[1].id);
+    r = await last();
+    expect(r.html).toContain(paypalLink);
+    expect(r.html).not.toContain(manualLink);
+    expect((r.text ?? "").toLowerCase()).not.toContain("pago móvil");
+    expect((r.text ?? "").toLowerCase()).not.toContain("transferencia");
+
+    // PayPal deshabilitado y un método manual activo: sin enlace de PayPal.
+    await setSetting(SETTING_KEYS.paypal, { enabled: false });
+    await setSetting(SETTING_KEYS.manualMethods, methods.map((m, i) => ({ ...m, enabled: i === 0 })));
+    ctx.clock.t = new Date(ctx.clock.t.getTime() + 1000);
+    await sendInstallmentReminder(ctx.d, ins[1].id);
+    r = await last();
+    expect(r.html).not.toContain(paypalLink);
+    expect(r.text).not.toContain("PayPal");
+    expect(r.html).toContain(manualLink);
+    expect(r.text).toContain("Pagar con Pago móvil:");
+    expect(r.text).not.toContain("Transferencia");
+
+    // Ningún método habilitado: sin enlaces de pago, se remite al pedido.
+    await setSetting(SETTING_KEYS.manualMethods, methods.map((m) => ({ ...m, enabled: false })));
+    ctx.clock.t = new Date(ctx.clock.t.getTime() + 1000);
+    await sendInstallmentReminder(ctx.d, ins[1].id);
+    r = await last();
+    expect(r.html).not.toContain(paypalLink);
+    expect(r.html).not.toContain(manualLink);
+    expect(r.text).toContain("no hay métodos de pago en línea disponibles");
   });
 
   it("certificado: nunca con cursos sin pagar; solo con los 9 pagados, matriculados y completados", async () => {

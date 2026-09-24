@@ -12,7 +12,7 @@
 import type { InstallmentStatus } from "@/generated/prisma/client";
 import type { Deps, Tx } from "@/server/deps";
 import { DAY, readSetting, withTx } from "@/server/deps";
-import { addOrderEvent, getManualMethod, PAID_STATES, SYSTEM } from "@/server/orders";
+import { addOrderEvent, listPaymentOptions, PAID_STATES, SYSTEM } from "@/server/orders";
 import { DEFAULT_INSTALLMENT_REMINDERS, SETTING_KEYS, type InstallmentReminderPolicy } from "@/server/settings";
 import { safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
@@ -63,6 +63,10 @@ export async function nextUnpaidInstallment(db: Deps["db"] | Tx, orderId: string
 }
 
 /** Enlaces directos de pago de una cuota (los usa el correo de recordatorio y la página del pedido). */
+function joinLabels(labels: string[]): string {
+  return labels.length <= 1 ? (labels[0] ?? "") : `${labels.slice(0, -1).join(", ")} o ${labels[labels.length - 1]}`;
+}
+
 export function installmentPaymentLinks(d: Pick<Deps, "config">, token: string, installmentId: string) {
   const base = `${d.config.appUrl}/pedido/${encodeURIComponent(token)}`;
   return { paypalUrl: `${base}/cuota/${encodeURIComponent(installmentId)}/paypal`, manualUrl: `${base}?cuota=${encodeURIComponent(installmentId)}#pagar` };
@@ -139,7 +143,12 @@ export async function sendInstallmentReminder(d: Deps, installmentId: string, st
     const o = ins.order;
     const total = await d.db.installment.count({ where: { orderId: o.id } });
     const links = installmentPaymentLinks(d, o.token, ins.id);
-    const manual = o.paymentMethod && o.paymentMethod !== "PAYPAL" ? await getManualMethod(d, o.paymentMethod) : null;
+    // Solo se ofrecen los métodos que la página del pedido puede cobrar hoy (misma fuente: listPaymentOptions).
+    const options = await listPaymentOptions(d);
+    const paypalOffered = options.some((m) => m.method === "PAYPAL");
+    const manualOptions = options.filter((m) => m.method !== "PAYPAL");
+    const chosen = manualOptions.find((m) => m.method === o.paymentMethod);
+    const manualLabel = chosen ? chosen.label : manualOptions.length ? joinLabels(manualOptions.map((m) => m.label)) : null;
     const rendered = T.installmentReminder({
       firstName: o.customer.firstName,
       orderNumber: o.number,
@@ -152,9 +161,9 @@ export async function sendInstallmentReminder(d: Deps, installmentId: string, st
       dueDate: ins.dueDate,
       overdue: stage.overdue || ins.status === "OVERDUE",
       balanceCents: o.balanceCents,
-      paypalUrl: links.paypalUrl,
-      manualUrl: links.manualUrl,
-      manualLabel: manual?.enabled ? manual.label : null,
+      paypalUrl: paypalOffered ? links.paypalUrl : null,
+      manualUrl: manualOptions.length ? links.manualUrl : null,
+      manualLabel,
       statusUrl: `${d.config.appUrl}/pedido/${o.token}`,
     });
     const r = await sendEmail(d, { template: "installment_reminder", to: o.customer.email, rendered, dedupeKey: `installment_reminder:${ins.id}:${stage.key}`, orderId: o.id, customerId: o.customerId });

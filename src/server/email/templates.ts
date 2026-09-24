@@ -312,9 +312,11 @@ export interface InstallmentReminderView {
   dueDate?: Date | null;
   overdue: boolean;
   balanceCents: number;
-  paypalUrl: string;
-  manualUrl: string;
-  /** Método manual elegido en el pedido (p.ej. "Pago móvil"); null → texto genérico. */
+  /** Enlace de PayPal; null cuando PayPal no está habilitado (no se ofrece). */
+  paypalUrl: string | null;
+  /** Enlace para registrar un pago manual; null cuando no hay ningún método manual habilitado. */
+  manualUrl: string | null;
+  /** Métodos manuales realmente ofrecidos (p.ej. "Pago móvil o Zelle"); solo se usa con manualUrl. */
   manualLabel?: string | null;
   statusUrl: string;
 }
@@ -338,11 +340,24 @@ export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
   rows.push(["Monto", formatUSD(r.amountCents)]);
   if (r.dueDate) rows.push([r.overdue ? "Venció" : "Vence", formatDate(r.dueDate)]);
   rows.push(["Saldo total pendiente", formatUSD(r.balanceCents)]);
-  const manualLabel = r.manualLabel ?? "pago móvil o transferencia";
-  const buttons =
-    button(r.paypalUrl, `Pagar ${formatUSD(r.amountCents)} con PayPal`) +
-    p(`¿Prefieres pagar con ${esc(manualLabel)}? <a href="${esc(r.manualUrl)}" style="color:${TEAL};font-weight:600;">Registra tu pago aquí</a> y nuestro equipo lo verificará.`);
+  const manualLabel = r.manualLabel || "otro método de pago";
+  let buttons = "";
+  const textPay: string[] = [];
+  if (r.paypalUrl) {
+    buttons += button(r.paypalUrl, `Pagar ${formatUSD(r.amountCents)} con PayPal`);
+    textPay.push(`Pagar con PayPal: ${r.paypalUrl}`);
+  }
+  if (r.manualUrl) {
+    buttons += r.paypalUrl
+      ? p(`¿Prefieres pagar con ${esc(manualLabel)}? <a href="${esc(r.manualUrl)}" style="color:${TEAL};font-weight:600;">Registra tu pago aquí</a> y nuestro equipo lo verificará.`)
+      : button(r.manualUrl, `Pagar ${formatUSD(r.amountCents)} con ${manualLabel}`) + p("Registra tu pago y nuestro equipo lo verificará.");
+    textPay.push(`Pagar con ${manualLabel}: ${r.manualUrl}`);
+  }
+  if (!r.paypalUrl && !r.manualUrl) {
+    buttons += p(`En este momento no hay métodos de pago en línea disponibles. Responde a este correo o revisa <a href="${esc(r.statusUrl)}" style="color:${TEAL};font-weight:600;">tu pedido</a> y te indicaremos cómo pagar.`);
+    textPay.push("En este momento no hay métodos de pago en línea disponibles. Responde a este correo y te indicaremos cómo pagar.");
+  }
   const html = layout(subject, stripTags(`Cuota ${r.sequence} de ${r.totalInstallments}: ${formatUSD(r.amountCents)}`), p(intro) + kv(rows) + unlock + buttons);
-  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n${r.courseTitle ? `\nAl confirmarse el pago te matricularemos en ${r.courseTitle}.\n` : ""}\nPagar con PayPal: ${r.paypalUrl}\nPagar con ${manualLabel}: ${r.manualUrl}\n\nPedido: ${r.statusUrl}`;
+  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n${r.courseTitle ? `\nAl confirmarse el pago te matricularemos en ${r.courseTitle}.\n` : ""}\n${textPay.join("\n")}\n\nPedido: ${r.statusUrl}`;
   return { subject, html, text };
 }
