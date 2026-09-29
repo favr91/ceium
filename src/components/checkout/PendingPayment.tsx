@@ -10,7 +10,7 @@ import type { MethodView, PendingOrderView } from "@/app/(checkout)/checkout/dat
 import type { PlaceOrderState } from "@/app/(checkout)/checkout/actions";
 import { COUNTRIES } from "./checkout-fields";
 import { HoldCountdown } from "./HoldCountdown";
-import { CheckIcon, ClockIcon, FieldErrorIcon, LockIcon, PayPalWordmark } from "./icons";
+import { CheckIcon, ClockIcon, FieldErrorIcon, LockIcon } from "./icons";
 import { ManualAmount, ManualFields, methodAmountCents, methodAmountLabel, PayeeDetails } from "./ManualPayment";
 import { formatAmount, MANUAL_FIELD_ORDER, validateManualPayment, type ManualErrors, type ManualField, type ManualValues } from "./manual-payment-fields";
 import { PaypalButton, PaypalRedirectNotice } from "./paypal";
@@ -133,10 +133,54 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
     window.setTimeout(() => focusFirst(res.fieldErrors ?? {}), 0);
   };
 
+  const firstName = c.firstName?.trim();
+  const steps = !selected
+    ? ["Pedido creado", "Pago", "Acceso al aula virtual"]
+    : selected.method === "PAYPAL"
+      ? ["Pedido creado", "Pago con PayPal", "Acceso al aula virtual"]
+      : selected.method === "EFECTIVO"
+        ? ["Pedido creado", "Pago en la sede", "Registro del pago", "Acceso al aula virtual"]
+        : ["Pedido creado", "Pago y comprobante", "Verificación de CEIUM", "Acceso al aula virtual"];
+  const nextStep = !selected
+    ? "elige cómo pagar para confirmar tu inscripción."
+    : selected.method === "PAYPAL"
+      ? `paga ${usd(pending.dueNowCents)} USD con PayPal y tu inscripción se confirma al instante.`
+      : selected.method === "EFECTIVO"
+        ? `paga ${methodAmountLabel(selected, pending.dueNowCents)} en efectivo en la sede; el personal registra tu pago y confirma tu inscripción.`
+        : `paga ${methodAmountLabel(selected, pending.dueNowCents)} por ${selected.label} y registra tu comprobante aquí abajo. Confirmamos tu inscripción al verificarlo.`;
+
   return (
-    <div className="co-form">
+    <div className="co-form co-pending">
+      <header className="co-status" role={justCreated ? "status" : undefined} data-testid="order-status">
+        <span className="co-status-icon" aria-hidden="true">
+          <CheckIcon />
+        </span>
+        <div className="co-status-body">
+          <p className="co-status-eyebrow">Pedido #{pending.number}</p>
+          <h1 className="co-status-title">{justCreated ? `Creamos tu pedido${firstName ? `, ${firstName}` : ""}` : `Tu pedido espera tu pago${firstName ? `, ${firstName}` : ""}`}</h1>
+          <p className="co-status-text">
+            <strong>Falta un paso:</strong> {nextStep}
+            {justCreated ? <> También te enviamos estos datos a {c.email}.</> : null}
+          </p>
+        </div>
+      </header>
+
+      <ol className="co-progress" aria-label="Tu inscripción">
+        {steps.map((label, i) => (
+          <li key={label} data-state={i === 0 ? "done" : i === 1 ? "current" : undefined} aria-current={i === 1 ? "step" : undefined}>
+            <span className="co-step-dot" aria-hidden="true">
+              {i === 0 ? <CheckIcon /> : i + 1}
+            </span>
+            <span className="co-step-label">
+              {label}
+              {i === 0 ? <span className="co-visually-hidden"> (listo)</span> : i === 1 ? <span className="co-visually-hidden"> (paso actual)</span> : null}
+            </span>
+          </li>
+        ))}
+      </ol>
+
       {pending.holdExpiresAt ? (
-        <section className="co-hold co-hold-live" aria-labelledby="co-hold-title" data-testid="hold-card">
+        <section className="co-hold co-hold-live co-hold-compact" aria-labelledby="co-hold-title" data-testid="hold-card">
           <ClockIcon className="co-hold-icon" />
           <div className="co-hold-body">
             <h2 id="co-hold-title" className="co-hold-title">
@@ -149,20 +193,12 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
                 </li>
               ))}
             </ul>
-            <p className="co-hold-text">Completa el pago antes del {holdUntil(pending.holdExpiresAt)} para confirmarlo. Si no, el cupo se libera para otro médico.</p>
+            <p className="co-hold-text">Paga antes del {holdUntil(pending.holdExpiresAt).replace(/\.$/, "")}. Si no, el cupo se libera para otro médico.</p>
           </div>
           <HoldCountdown expiresAt={pending.holdExpiresAt} serverNow={serverNow} />
         </section>
       ) : null}
 
-      {justCreated ? (
-        <div className="co-banner co-banner-ok" role="status">
-          <CheckIcon />
-          <p>
-            Creamos tu pedido <strong>#{pending.number}</strong>. También te enviamos por correo los datos para pagar.
-          </p>
-        </div>
-      ) : null}
       {paypalCancelled && !state?.formError ? (
         <div className="co-banner co-banner-info" role="status" data-testid="paypal-cancelled">
           <ClockIcon />
@@ -178,68 +214,40 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
         </div>
       ) : null}
 
-      <section className="co-section" aria-labelledby="co-review">
-        <div className="co-section-head">
-          <h2 id="co-review" className="co-h2">
-            Pedido #{pending.number}
-          </h2>
-        </div>
-        <dl className="co-review" data-testid="order-review">
-          <div>
-            <dt>Contacto</dt>
-            <dd>
-              {c.email}
-              {c.phone ? <span> · {c.phone}</span> : null}
-            </dd>
-          </div>
-          <div>
-            <dt>Médico</dt>
-            <dd>
-              {c.firstName} {c.lastName}
-              {c.cedula ? <span> · {c.cedula}</span> : null}
-            </dd>
-          </div>
-          {c.specialty ? (
-            <div>
-              <dt>Especialidad</dt>
-              <dd>
-                {c.specialty}
-                {c.city || country ? <span> · {[c.city, country].filter(Boolean).join(", ")}</span> : null}
-              </dd>
-            </div>
-          ) : null}
-        </dl>
-      </section>
-
       <form ref={formRef} action="/api/checkout/comprobante" method="post" encType="multipart/form-data" noValidate onSubmit={onSubmit} aria-label="Registrar el pago" className="co-pay-manual">
-        <section className="co-section" aria-labelledby="co-payment">
+        <section className="co-section co-paynow" aria-labelledby="co-payment">
           <h2 id="co-payment" className="co-h2">
-            Pago
+            {reportable ? "Paga y registra tu pago" : selected?.method === "EFECTIVO" ? "Cómo hacer tu pago" : "Haz tu pago"}
           </h2>
-          <p className="co-sub">Todas las transacciones son seguras y están encriptadas.</p>
-          <fieldset className="co-methods" disabled={sending}>
-            <legend className="co-visually-hidden">Método de pago</legend>
+          <fieldset className="co-switch" disabled={sending}>
+            <legend className="co-switch-legend">{methods.length > 1 ? "Método de pago (puedes cambiarlo)" : "Método de pago"}</legend>
             {methods.map((m) => {
               const on = m.method === method;
               return (
-                <div key={m.method} className="co-method" data-selected={on || undefined} data-testid={`method-${m.method}`}>
-                  <label className="co-method-head">
+                <div key={m.method} className="co-switch-item" data-selected={on || undefined} data-testid={`method-${m.method}`}>
+                  <label className="co-chip">
                     <input
                       type="radio"
                       name="method"
                       value={m.method}
                       checked={on}
+                      className="co-visually-hidden"
                       onChange={() => {
                         setMethod(m.method);
                         setErrors({});
                         setSendError(null);
                       }}
                     />
-                    <span className="co-method-label">{m.label}</span>
-                    <span className="co-method-tag">{m.method === "PAYPAL" ? <PayPalWordmark /> : <span className="co-pill">{m.currency === "VES" ? "Bs." : "USD"}</span>}</span>
+                    <span className="co-chip-check" aria-hidden="true">
+                      {on ? <CheckIcon /> : null}
+                    </span>
+                    <span className="co-chip-label">{m.label}</span>
+                    <span className="co-chip-tag" aria-hidden="true">
+                      {m.method === "PAYPAL" ? null : m.currency === "VES" ? "Bs." : "USD"}
+                    </span>
                   </label>
                   {on ? (
-                    <div className="co-method-body" data-testid="method-body">
+                    <div className="co-paycard" data-testid="method-body">
                       {m.method === "PAYPAL" ? (
                         <PaypalRedirectNotice />
                       ) : (
@@ -249,7 +257,7 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
                               <>Paga en la sede el monto indicado. El personal registra tu pago y te entrega el recibo; al confirmarlo recibirás tu acceso al aula virtual (Moodle).</>
                             ) : (
                               <>
-                                Haz {m.method === "PAGO_MOVIL" ? "el pago móvil" : m.method === "TRANSFERENCIA" ? "la transferencia" : "el pago"} a CEIUM con estos datos y registra tu pago aquí mismo. Al verificarlo te enviaremos tu acceso al aula virtual (Moodle).
+                                Haz {m.method === "PAGO_MOVIL" ? "el pago móvil" : m.method === "TRANSFERENCIA" ? "la transferencia" : "el pago"} a CEIUM con estos datos y luego registra tu pago abajo con el comprobante. Al verificarlo te enviamos tu acceso al aula virtual (Moodle).
                               </>
                             )}
                           </p>
@@ -312,6 +320,37 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
           {selected.method === "EFECTIVO" ? "." : " (también te enviamos el enlace por correo)."}
         </p>
       ) : null}
+
+      <section className="co-section co-orderdata" aria-labelledby="co-review">
+        <h2 id="co-review" className="co-h3">
+          Datos del pedido
+        </h2>
+        <dl className="co-review" data-testid="order-review">
+          <div>
+            <dt>Contacto</dt>
+            <dd>
+              {c.email}
+              {c.phone ? <span> · {c.phone}</span> : null}
+            </dd>
+          </div>
+          <div>
+            <dt>Médico</dt>
+            <dd>
+              {c.firstName} {c.lastName}
+              {c.cedula ? <span> · {c.cedula}</span> : null}
+            </dd>
+          </div>
+          {c.specialty ? (
+            <div>
+              <dt>Especialidad</dt>
+              <dd>
+                {c.specialty}
+                {c.city || country ? <span> · {[c.city, country].filter(Boolean).join(", ")}</span> : null}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      </section>
     </div>
   );
 }

@@ -535,3 +535,64 @@
 .co-update-icon { flex: 0 0 18px; width: 18px; height: 18px; margin-top: 1px; color: var(--co-teal); }
 .co-update-subject { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--co-ink); overflow-wrap: anywhere; }
 .co-update-meta { font-size: 12px; line-height: 17px; color: var(--co-muted-2); }
+
+/* ───────────── pedido creado, falta el pago (PendingPayment) ─────────────
+   Pantalla distinta del formulario del checkout: encabezado de estado + pasos, la reserva compacta, y el pago
+   (método en pestañas + datos y registro) arriba; los datos del pedido al final. */
+.co-status { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; align-items: start; }
+.co-status-icon { width: 44px; height: 44px; border-radius: 50%; background: var(--co-teal); color: #fff; display: grid; place-items: center; }
+.co-status-icon svg { width: 22px; height: 22px; }
+.co-status-eyebrow { font-size: 13px; line-height: 18px; color: var(--co-muted); font-weight: 500; }
+.co-status-title { margin-top: 2px; font-size: 26px; line-height: 31px; font-weight: 700; color: var(--co-ink); letter-spacing: -0.01em; text-wrap: balance; }
+.co-status-text { margin-top: 8px; font-size: 15px; line-height: 22px; color: #33454d; max-width: 62ch; }
+.co-status-text strong { color: var(--co-ink); font-weight: 700; }
+
+.co-progress { margin: 22px 0 0; padding: 0; list-style: none; display: flex; gap: 0; counter-reset: none; }
+.co-progress li { flex: 1 1 0; min-width: 0; position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-right: 8px; font-size: 12.5px; line-height: 16px; color: var(--co-muted); }
+.co-progress li::after { content: ""; position: absolute; top: 12px; left: 30px; right: 6px; height: 2px; background: var(--co-border); border-radius: 1px; }
+.co-progress li:last-child::after { display: none; }
+.co-progress li[data-state="done"]::after { background: var(--co-teal); }
+.co-step-dot { position: relative; z-index: 1; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: #fff; border: 2px solid var(--co-border); color: var(--co-muted); }
+.co-step-dot svg { width: 13px; height: 13px; }
+.co-progress li[data-state="done"] .co-step-dot { background: var(--co-teal); border-color: var(--co-teal); color: #fff; }
+.co-progress li[data-state="current"] .co-step-dot { border-color: var(--co-teal); color: var(--co-teal-ink); box-shadow: 0 0 0 4px rgba(9, 176, 176, 0.15); }
+.co-progress li[data-state="done"] .co-step-label { color: var(--co-ink); }
+.co-progress li[data-state="current"] .co-step-label { color: var(--co-ink); font-weight: 700; }
+
+.co-pending .co-hold-compact { margin-top: 22px; padding: 12px 14px; }
+.co-pending .co-hold-compact .co-hold-title { font-size: 14px; line-height: 20px; }
+.co-pending .co-hold-compact .co-hold-text { margin-top: 2px; }
+.co-pending .co-progress + .co-banner, .co-pending .co-hold + .co-banner { margin-top: 16px; }
+
+.co-pending .co-paynow { margin-top: 26px; }
+.co-switch { margin: 12px 0 0; padding: 0; border: 0; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.co-switch-legend { float: left; width: 100%; margin-bottom: 8px; padding: 0; font-size: 13px; line-height: 18px; color: var(--co-muted); }
+.co-switch-item { display: contents; }
+.co-chip { order: 0; flex: 1 1 calc(50% - 4px); min-width: 0; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 10px 14px; border: 1px solid var(--co-border); border-radius: 999px; background: #fff; cursor: pointer; font-weight: 600; color: var(--co-ink); transition: border-color 0.15s, background-color 0.15s; }
+.co-chip:hover { border-color: #b9c4c7; }
+.co-chip:has(input:focus-visible) { outline: 2px solid var(--co-teal); outline-offset: 2px; }
+.co-switch-item[data-selected] .co-chip { border-color: var(--co-teal); background: var(--co-teal-bg); box-shadow: inset 0 0 0 1px var(--co-teal); }
+.co-chip-check { flex: 0 0 18px; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #b9c4c7; display: grid; place-items: center; }
+.co-switch-item[data-selected] .co-chip-check { border-color: var(--co-teal); background: var(--co-teal); color: #fff; }
+.co-chip-check svg { width: 11px; height: 11px; }
+.co-chip-label { min-width: 0; overflow-wrap: anywhere; }
+.co-chip-tag { font-size: 11px; font-weight: 600; color: var(--co-muted); }
+.co-chip-tag:empty { display: none; }
+.co-switch:disabled .co-chip { cursor: default; opacity: 0.7; }
+
+.co-paycard { order: 1; flex: 1 0 100%; margin-top: 8px; padding: 18px 18px 20px; border: 1px solid var(--co-border); border-top: 3px solid var(--co-teal); border-radius: var(--co-radius); background: #fff; font-size: 14px; line-height: 19px; color: var(--co-ink); box-shadow: 0 1px 2px rgba(0, 30, 43, 0.05); }
+.co-paycard > .co-manual-panel > .co-method-intro { font-size: 14px; line-height: 20px; }
+.co-paycard > p:only-child { text-align: center; padding: 4px 12px; }
+
+.co-pending .co-orderdata { margin-top: 36px; padding-top: 22px; border-top: 1px solid var(--co-border); }
+.co-pending .co-orderdata .co-review { margin-top: 10px; }
+
+@media (max-width: 749px) {
+  .co-status { grid-template-columns: 36px minmax(0, 1fr); gap: 12px; }
+  .co-status-icon { width: 36px; height: 36px; }
+  .co-status-icon svg { width: 18px; height: 18px; }
+  .co-status-title { font-size: 22px; line-height: 27px; }
+  .co-status-text { font-size: 14px; line-height: 20px; }
+  .co-progress li { font-size: 11.5px; line-height: 15px; }
+  .co-paycard { padding: 14px 14px 16px; }
+}
