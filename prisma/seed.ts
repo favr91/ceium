@@ -305,6 +305,7 @@ async function main() {
     [SETTING_KEYS.manualMethods, manual, "Métodos de pago manual y datos mostrados al comprador (deshabilitados hasta cargar los datos bancarios reales)"],
     [SETTING_KEYS.paypal, { enabled: true }, "Pago con PayPal habilitado"],
     [SETTING_KEYS.exchangeRate, { vesPerUsd: 100, source: "TODO: actualizar con la tasa oficial BCV", updatedAt: new Date().toISOString() }, "Tasa de cambio Bs/USD para pagos en bolívares (de ejemplo: los métodos en Bs. no se ofrecen hasta actualizarla)"],
+    [SETTING_KEYS.exchangeRateAuto, { enabled: true }, "Actualizar la tasa automáticamente con la oficial del BCV (job «rates»: DolarApi, respaldo DolarVZLA)"],
     [SETTING_KEYS.orderNextNumber, { next: 1001 }, "Siguiente número visible de orden"],
     [SETTING_KEYS.enrollmentRetry, { maxAttempts: 8, baseDelaySeconds: 60 }, "Reintentos con backoff exponencial de la matrícula en Moodle"],
     [SETTING_KEYS.installmentReminders, { daysBefore: 3, overdueGraceDays: 0, overdueEveryDays: 7, maxOverdueReminders: 3 }, "Recordatorios por correo de la siguiente cuota (días antes del vencimiento, gracia y frecuencia de recordatorios vencidos)"],

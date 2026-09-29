@@ -3,6 +3,7 @@
 // valor con el esquema de su clave (p. ej. no deja habilitar un método de pago con datos de ejemplo) y deja
 // AuditLog (quién, cuándo, antes/después) en la misma transacción.
 import { revalidatePath } from "next/cache";
+import { can } from "@/server/auth";
 import { isDomainError } from "@/server/errors";
 import { services } from "@/server/services";
 import { requireAdminAction } from "../../_lib/session";
@@ -13,6 +14,7 @@ const MESSAGES: Record<string, string> = {
   "payments.manualMethods": "Métodos de pago manuales guardados.",
   "payments.paypal": "PayPal guardado.",
   "exchangeRate.vesPerUsd": "Tasa de cambio actualizada.",
+  "exchangeRate.auto": "Actualización automática de la tasa guardada.",
   "reservation.ttl.paypal": "Reserva de PayPal guardada.",
   "reservation.ttl.manual": "Reserva de pagos manuales guardada.",
   "installments.reminders": "Recordatorios de cuotas guardados.",
@@ -33,4 +35,22 @@ export async function saveSettingsAction(entries: { key: string; value: unknown 
     revalidatePath("/", "layout");
   }
   return { ok: true, message: entries.length === 1 ? (MESSAGES[entries[0].key] ?? "Configuración guardada.") : "Configuración guardada." };
+}
+
+/** «Consultar ahora»: busca la tasa oficial BCV de hoy (DolarApi, respaldo DolarVZLA) aunque no tocara. */
+export async function syncRateNowAction(): Promise<SettingsResult> {
+  const user = await requireAdminAction();
+  if (!can(user, "settings.manage")) return { ok: false, error: "Solo un administrador puede actualizar la tasa." };
+  try {
+    const r = await services().rates.sync({ force: true });
+    if ("skipped" in r) return { ok: false, error: `No se consultó: ${r.skipped}.` };
+    if (!r.ok) return { ok: false, error: r.message };
+    return { ok: true, message: r.changed ? r.message : "La tasa ya estaba al día." };
+  } catch (e) {
+    console.error("[admin/settings] tasa BCV", e);
+    return { ok: false, error: "No pudimos consultar la tasa. Intenta de nuevo en unos minutos." };
+  } finally {
+    revalidatePath("/admin/settings");
+    revalidatePath("/", "layout");
+  }
 }

@@ -44,6 +44,7 @@ export const EDITABLE_SETTINGS = {
       updatedAt: z.string().optional(),
     })
     .strict(),
+  [SETTING_KEYS.exchangeRateAuto]: z.object({ enabled: z.boolean() }).strict(),
   [SETTING_KEYS.enrollmentRetry]: z.object({ maxAttempts: z.number().int().min(1).max(30), baseDelaySeconds: z.number().int().min(5).max(86_400) }).strict(),
   [SETTING_KEYS.installmentReminders]: z
     .object({ daysBefore: z.number().int().min(0).max(60), overdueGraceDays: z.number().int().min(0).max(60), overdueEveryDays: z.number().int().min(1).max(60), maxOverdueReminders: z.number().int().min(0).max(20) })
@@ -98,6 +99,9 @@ export async function getSettingsWarnings(d: Deps, actor: SessionUser): Promise<
     const st = exchangeRateStatus(await readSetting<ExchangeRateSetting | null>(d.db, SETTING_KEYS.exchangeRate, null), d.now());
     for (const message of st.blockers) out.push({ key: SETTING_KEYS.exchangeRate, severity: "error", message: `${message} Los métodos en bolívares no se ofrecen en la tienda hasta corregirla.` });
     for (const message of st.notices) out.push({ key: SETTING_KEYS.exchangeRate, severity: "warning", message: `${message} Se sigue usando, pero conviene actualizarla.` });
+    const auto = await readSetting<{ enabled: boolean }>(d.db, SETTING_KEYS.exchangeRateAuto, { enabled: true });
+    const sync = await readSetting<{ ok: boolean; message: string } | null>(d.db, SETTING_KEYS.exchangeRateSync, null);
+    if (auto.enabled && sync && !sync.ok) out.push({ key: SETTING_KEYS.exchangeRateSync, severity: "warning", message: `No se pudo actualizar la tasa automáticamente: ${sync.message}` });
   }
   return out;
 }

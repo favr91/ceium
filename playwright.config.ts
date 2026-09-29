@@ -38,6 +38,7 @@ function laneCronSecret(): string {
 /** Entorno común de la app y los mocks bajo prueba. */
 export const e2eEnv: Record<string, string> = {
   NODE_ENV: "production",
+  EXCHANGE_RATE_SYNC: "off",
   DATABASE_URL: `file:${E2E_DB}`,
   APP_URL: baseURL,
   MOODLE_URL: moodleURL,

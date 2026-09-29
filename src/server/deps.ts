@@ -20,6 +20,8 @@ export interface ServiceConfig {
   /** Reintentos de matrícula dentro de la misma llamada antes de dejarla al job (con backoff). */
   enrollInlineRetries: number;
   enrollInlineDelayMs: number;
+  /** Tasa BCV automática (src/server/exchange-rate.ts). EXCHANGE_RATE_SYNC=off la apaga (carriles de prueba sin internet). */
+  rateSync?: { enabled: boolean; dolarApiUrl: string; dolarVzlaUrl: string; timeoutMs: number };
 }
 
 export interface Deps {
@@ -44,6 +46,12 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServiceConf
     publicUploadsDir: env.PUBLIC_UPLOADS_DIR ?? "public/uploads",
     enrollInlineRetries: 2,
     enrollInlineDelayMs: 750,
+    rateSync: {
+      enabled: env.EXCHANGE_RATE_SYNC !== "off",
+      dolarApiUrl: env.EXCHANGE_RATE_DOLARAPI_URL ?? "https://ve.dolarapi.com",
+      dolarVzlaUrl: env.EXCHANGE_RATE_DOLARVZLA_URL ?? "https://rates.dolarvzla.com",
+      timeoutMs: 8000,
+    },
   };
 }
 

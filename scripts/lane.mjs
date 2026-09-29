@@ -27,6 +27,8 @@ const env = {
   MAIL_DIR: `var/lanes/${lane}/mail`,
   PRIVATE_FILES_DIR: `var/lanes/${lane}/files`,
   CERTIFICATES_DIR: `var/lanes/${lane}/certificates`,
+  // Sin internet ni tasas reales en los carriles de prueba (fijan su propia tasa); la vista previa sí la consulta.
+  EXCHANGE_RATE_SYNC: lane === "preview" ? (process.env.EXCHANGE_RATE_SYNC ?? "on") : "off",
 };
 if (process.argv.includes("--reset") || !fs.existsSync(db)) {
   execSync(`node scripts/db-reset.mjs var/lanes/${lane}.db`, { stdio: "inherit", env: { ...env, DB_RESET_SKIP_GENERATE: "1" } });
@@ -35,5 +37,8 @@ const kids = [
   spawn("node", ["mocks/run-mocks.mjs"], { stdio: "inherit", env }),
   spawn("npx", ["next", "dev", "-p", String(port)], { stdio: "inherit", env }),
 ];
+// La vista previa corre los jobs como en producción (cada 5 min: tasa BCV, reservas vencidas, correos…).
+// Los carriles de prueba no: sus tests disparan los jobs cuando los necesitan.
+if (lane === "preview") kids.push(spawn("npx", ["tsx", "scripts/cron.ts", "--loop", "300"], { stdio: "inherit", env }));
 const stop = () => { kids.forEach((k) => k.kill("SIGTERM")); process.exit(0); };
 process.on("SIGINT", stop); process.on("SIGTERM", stop);

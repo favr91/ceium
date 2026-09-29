@@ -4,7 +4,7 @@
 // Cada sección se guarda por separado con saveSettingsAction (valida y audita en el servidor).
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { saveSettingsAction } from "@/app/admin/(panel)/settings/actions";
+import { saveSettingsAction, syncRateNowAction } from "@/app/admin/(panel)/settings/actions";
 import { Icon } from "../Icon";
 import { useToast } from "../ui";
 import "./settings.css";
@@ -23,7 +23,11 @@ export interface SettingsData {
   /** Métodos activos que la tienda NO ofrece ahora, con el motivo (null = se ofrece). Refleja lo guardado. */
   hiddenReasons: Partial<Record<ManualMethod["method"], string | null>>;
   paypalEnabled: boolean;
-  rate: { vesPerUsd: number | null; source: string; updatedAt: string | null; placeholder: boolean; stale: boolean };
+  rate: { vesPerUsd: number | null; source: string; updatedAt: string | null; placeholder: boolean; stale: boolean; valueDate: string | null; auto: boolean };
+  /** Actualización automática de la tasa desde el BCV (DolarApi, respaldo DolarVZLA). */
+  rateAuto: boolean;
+  /** Última consulta automática (null: nunca se consultó). */
+  rateSync: { checkedAt: string; ok: boolean; message: string } | null;
   ttlPaypalMinutes: number;
   ttlManualHours: number;
   reminders: { daysBefore: number; overdueGraceDays: number; overdueEveryDays: number; maxOverdueReminders: number };
@@ -62,6 +66,10 @@ const fmtRate = (n: number | null) => (n == null ? "" : n.toLocaleString("es-VE"
 const fmtWhen = (iso: string | null) =>
   iso ? new Intl.DateTimeFormat("es-VE", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Caracas" }).format(new Date(iso)) : null;
 
+/** «2026-09-29» → «martes, 29 de septiembre» (fecha valor BCV). */
+const fmtValueDate = (d: string | null) =>
+  d ? new Intl.DateTimeFormat("es-VE", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`)) : null;
+
 type MethodForm = ManualMethod & { hints: Record<string, string> };
 
 export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: boolean }) {
@@ -85,7 +93,16 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
     });
   const [methods, setMethods] = useState<MethodForm[]>(initialMethods);
   const [paypal, setPaypal] = useState(data.paypalEnabled);
-  const [rate, setRate] = useState({ vesPerUsd: fmtRate(data.rate.vesPerUsd), source: data.rate.source || "BCV" });
+  // Carga manual: arranca con la tasa en uso (vacía si es la de ejemplo) y se reinicia cuando la tasa guardada
+  // cambia (p. ej. tras «Consultar ahora»); la fuente de una tasa automática se muestra como «BCV».
+  const manualRate = () => ({ vesPerUsd: data.rate.placeholder ? "" : fmtRate(data.rate.vesPerUsd), source: data.rate.auto ? "BCV" : data.rate.source || "BCV" });
+  const [rate, setRate] = useState(manualRate);
+  const [rateSeen, setRateSeen] = useState(data.rate.updatedAt);
+  if (rateSeen !== data.rate.updatedAt) {
+    setRateSeen(data.rate.updatedAt);
+    setRate(manualRate());
+  }
+  const [rateAuto, setRateAuto] = useState(data.rateAuto);
   const [ttl, setTtl] = useState({ paypal: String(data.ttlPaypalMinutes), manual: String(data.ttlManualHours) });
   const [rem, setRem] = useState({
     daysBefore: String(data.reminders.daysBefore),
@@ -135,6 +152,29 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
     if (!(n > 0)) return setErrors((e) => ({ ...e, rate: "Escribe la tasa en bolívares por dólar, p. ej. 187,25." }));
     if (!rate.source.trim()) return setErrors((e) => ({ ...e, rate: "Indica la fuente de la tasa (p. ej. BCV)." }));
     save("rate", [{ key: "exchangeRate.vesPerUsd", value: { vesPerUsd: n, source: rate.source.trim() } }]);
+  };
+  const toggleRateAuto = (enabled: boolean) => {
+    setRateAuto(enabled);
+    save("rateAuto", [{ key: "exchangeRate.auto", value: { enabled } }]);
+  };
+  const syncRateNow = () => {
+    setBusy("rateSync");
+    setErrors((e) => ({ ...e, rate: null }));
+    start(async () => {
+      try {
+        const r = await syncRateNowAction();
+        if (r.ok) toast.show(r.message);
+        else {
+          setErrors((e) => ({ ...e, rate: r.error }));
+          toast.show("No se actualizó la tasa: revisa el aviso de la sección.", true);
+        }
+        router.refresh();
+      } catch {
+        setErrors((e) => ({ ...e, rate: "No pudimos consultar la tasa. Revisa tu conexión e intenta de nuevo." }));
+      } finally {
+        setBusy(null);
+      }
+    });
   };
   const saveTtl = () => {
     const p = int(ttl.paypal);
@@ -289,33 +329,70 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
       <section className="set-sec" aria-labelledby="h-rate">
         <div className="set-ann">
           <h2 id="h-rate">Tasa de cambio</h2>
-          <p>Bolívares por dólar para cobrar en Bs. los pagos manuales. Actualízala a diario con la tasa oficial.</p>
+          <p>Bolívares por dólar para cobrar en Bs. los pagos manuales. Se usa la tasa oficial del BCV con fecha valor de hoy.</p>
         </div>
         <div className="card set-card">
+          {sectionError("rateAuto")}
           {sectionError("rate")}
           {data.rate.placeholder ? (
             <div className="banner attention" role="note">
               <Icon name="alert" />
-              <span>La tasa actual es de ejemplo: los métodos en bolívares no se ofrecen hasta que la actualices.</span>
+              <span>La tasa actual es de ejemplo: los métodos en bolívares no se ofrecen hasta que la actualices{rateAuto ? " (pulsa «Consultar ahora»)" : ""}.</span>
             </div>
           ) : null}
-          <div className="grid2">
-            <label className="field">
-              <span>Bs. por USD</span>
-              <span className="inp-affix">
-                <span className="pre">Bs.</span>
-                <input className="inp num has-pre set-bs" inputMode="decimal" aria-label="Bolívares por dólar" value={rate.vesPerUsd} disabled={ro} onChange={(e) => setRate((r) => ({ ...r, vesPerUsd: e.target.value }))} />
+          <label className="set-switch">
+            <input type="checkbox" className="toggle" role="switch" aria-label="Actualizar la tasa automáticamente desde el BCV" checked={rateAuto} disabled={ro || (pending && busy === "rateAuto")} onChange={(e) => toggleRateAuto(e.target.checked)} />
+            <span className="t">
+              Actualizar automáticamente con la tasa oficial del BCV
+              <span className="d">Se consulta cada hora en DolarApi y, si no responde, en DolarVZLA. Si las fuentes no coinciden o el valor parece erróneo, se mantiene la tasa anterior y verás un aviso aquí.</span>
+            </span>
+          </label>
+
+          <div className="set-rate-now" data-testid="rate-current">
+            <div className="set-rate-val">
+              <span className="small muted">Tasa en uso</span>
+              <strong className="mono">{data.rate.vesPerUsd && !data.rate.placeholder ? `Bs. ${fmtRate(data.rate.vesPerUsd)} por USD` : "Sin tasa válida"}</strong>
+              <span className="small muted">
+                {data.rate.placeholder
+                  ? "Tasa de ejemplo de la instalación."
+                  : data.rate.auto && data.rate.valueDate
+                    ? `Oficial del BCV, fecha valor ${fmtValueDate(data.rate.valueDate)} · ${data.rate.source.replace(/^BCV · /, "")}`
+                    : `Escrita a mano${data.rate.source ? ` · ${data.rate.source}` : ""}`}
+                {updated ? ` · ${data.rate.auto ? "verificada" : "guardada"} ${updated}` : ""}
               </span>
-            </label>
-            <label className="field">
-              <span>Fuente</span>
-              <input className="inp" aria-label="Fuente de la tasa" value={rate.source} placeholder="BCV" disabled={ro} onChange={(e) => setRate((r) => ({ ...r, source: e.target.value }))} />
-            </label>
+            </div>
+            {canEdit ? (
+              <button type="button" className="btn" onClick={syncRateNow} disabled={pending && busy === "rateSync"}>
+                {pending && busy === "rateSync" ? "Consultando…" : "Consultar ahora"}
+              </button>
+            ) : null}
           </div>
-          <p className="small muted" data-testid="rate-updated">
-            {updated ? `Última actualización: ${updated}${data.rate.stale ? " · desactualizada" : ""}` : "Sin fecha de actualización."}
-          </p>
-          {saveButton("rate", "Actualizar tasa", saveRate)}
+          {data.rateSync ? (
+            <p className={`small ${data.rateSync.ok ? "muted" : "set-sync-err"}`} data-testid="rate-sync">
+              {data.rateSync.ok ? `Última consulta automática: ${fmtWhen(data.rateSync.checkedAt)?.replace(/\.$/, "")}. Se vuelve a consultar cada hora.` : `La última consulta automática falló (${fmtWhen(data.rateSync.checkedAt)}): ${data.rateSync.message}`}
+            </p>
+          ) : (
+            <p className="small muted" data-testid="rate-sync">Aún no se ha consultado la tasa automáticamente.</p>
+          )}
+
+          <div className="set-manual">
+            <h3 className="set-h3">Escribir la tasa a mano</h3>
+            <p className="small muted">{rateAuto ? "Útil si las fuentes fallan. La próxima consulta automática la reemplaza con la del BCV; apaga la actualización automática para fijarla." : "La actualización automática está apagada: esta tasa se usa hasta que la cambies."}</p>
+            <div className="grid2">
+              <label className="field">
+                <span>Bs. por USD</span>
+                <span className="inp-affix">
+                  <span className="pre">Bs.</span>
+                  <input className="inp num has-pre set-bs" inputMode="decimal" aria-label="Bolívares por dólar" value={rate.vesPerUsd} disabled={ro} onChange={(e) => setRate((r) => ({ ...r, vesPerUsd: e.target.value }))} />
+                </span>
+              </label>
+              <label className="field">
+                <span>Fuente</span>
+                <input className="inp" aria-label="Fuente de la tasa" value={rate.source} placeholder="BCV" disabled={ro} onChange={(e) => setRate((r) => ({ ...r, source: e.target.value }))} />
+              </label>
+            </div>
+            {saveButton("rate", "Actualizar tasa", saveRate)}
+          </div>
         </div>
       </section>
 

@@ -22,6 +22,7 @@ import * as corrections from "@/server/corrections";
 import * as cohorts from "@/server/cohorts";
 import * as catalog from "@/server/catalog";
 import * as adminSettings from "@/server/admin-settings";
+import * as exchangeRate from "@/server/exchange-rate";
 import * as adminUsers from "@/server/admin-users";
 import * as audit from "@/server/audit";
 
@@ -113,6 +114,7 @@ export function createServices(d: Deps) {
       "deleteProductChoice",
     ]),
     settings: bind(d, adminSettings, ["updateSetting", "getSettingsWarnings"]),
+    rates: { sync: (opts?: exchangeRate.SyncOptions) => exchangeRate.syncExchangeRate(d, opts) },
     adminUsers: bind(d, adminUsers, ["createAdminUser", "updateAdminUser", "resetAdminPassword"]),
     audit: { list: (q: audit.AuditQuery = {}) => audit.listAuditLog(d, q) },
   };

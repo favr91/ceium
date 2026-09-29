@@ -3,6 +3,7 @@
 import type { Metadata } from "next";
 import { can } from "@/server/auth";
 import { readSetting } from "@/server/deps";
+import type { ExchangeRateAutoSetting, RateSyncStatus } from "@/server/exchange-rate";
 import { manualMethodUnavailableReason } from "@/server/orders";
 import { services } from "@/server/services";
 import { DEFAULT_INSTALLMENT_REMINDERS, SETTING_KEYS, exchangeRateStatus, type ExchangeRateSetting, type InstallmentReminderPolicy, type ManualMethodConfig } from "@/server/settings";
@@ -16,7 +17,7 @@ export default async function SettingsPage() {
   const user = await requireAdminPage("orders.view", "/admin/settings");
   const s = services();
   const db = s.deps.db;
-  const [methods, paypal, rate, ttlPaypal, ttlManual, reminders, warnings] = await Promise.all([
+  const [methods, paypal, rate, ttlPaypal, ttlManual, reminders, warnings, rateAuto, rateSync] = await Promise.all([
     readSetting<ManualMethodConfig[]>(db, SETTING_KEYS.manualMethods, []),
     readSetting<{ enabled: boolean }>(db, SETTING_KEYS.paypal, { enabled: true }),
     readSetting<ExchangeRateSetting | null>(db, SETTING_KEYS.exchangeRate, null),
@@ -24,6 +25,8 @@ export default async function SettingsPage() {
     readSetting<{ hours: number }>(db, SETTING_KEYS.reservationTtlManual, { hours: 72 }),
     readSetting<InstallmentReminderPolicy>(db, SETTING_KEYS.installmentReminders, DEFAULT_INSTALLMENT_REMINDERS),
     s.settings.getSettingsWarnings(user),
+    readSetting<ExchangeRateAutoSetting>(db, SETTING_KEYS.exchangeRateAuto, { enabled: true }),
+    readSetting<RateSyncStatus | null>(db, SETTING_KEYS.exchangeRateSync, null),
   ]);
   const st = exchangeRateStatus(rate, s.deps.now());
   const list = Array.isArray(methods) ? methods : [];
@@ -35,7 +38,9 @@ export default async function SettingsPage() {
     methods: list,
     hiddenReasons,
     paypalEnabled: paypal.enabled !== false,
-    rate: { vesPerUsd: rate?.vesPerUsd ?? null, source: st.placeholder ? "" : (rate?.source ?? ""), updatedAt: rate?.updatedAt ?? null, placeholder: st.placeholder, stale: st.stale },
+    rate: { vesPerUsd: rate?.vesPerUsd ?? null, source: st.placeholder ? "" : (rate?.source ?? ""), updatedAt: rate?.updatedAt ?? null, placeholder: st.placeholder, stale: st.stale, valueDate: rate?.valueDate ?? null, auto: !!rate?.auto },
+    rateAuto: rateAuto.enabled !== false,
+    rateSync: rateSync ? { checkedAt: rateSync.checkedAt, ok: rateSync.ok, message: rateSync.message } : null,
     ttlPaypalMinutes: ttlPaypal.minutes,
     ttlManualHours: ttlManual.hours,
     reminders,

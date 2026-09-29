@@ -10,8 +10,12 @@ export const SETTING_KEYS = {
   manualMethods: "payments.manualMethods",
   /** { enabled: true } */
   paypal: "payments.paypal",
-  /** { vesPerUsd: number, source: string, updatedAt: string } */
+  /** { vesPerUsd: number, source: string, updatedAt: string, valueDate?: string, auto?: boolean } */
   exchangeRate: "exchangeRate.vesPerUsd",
+  /** { enabled: true } — actualizar la tasa automáticamente desde el BCV (src/server/exchange-rate.ts) */
+  exchangeRateAuto: "exchangeRate.auto",
+  /** RateSyncStatus — resultado de la última consulta automática (lo escribe el sistema) */
+  exchangeRateSync: "exchangeRate.sync",
   /** { next: 1001 } — siguiente número visible de orden */
   orderNextNumber: "order.nextNumber",
   /** { maxAttempts, baseDelaySeconds } — reintentos de matrícula Moodle */
@@ -81,6 +85,10 @@ export interface ExchangeRateSetting {
   vesPerUsd: number;
   source?: string;
   updatedAt?: string;
+  /** Fecha valor BCV (YYYY-MM-DD) cuando la tasa vino de la actualización automática. */
+  valueDate?: string;
+  /** true si la escribió la actualización automática; ausente si la escribió el personal. */
+  auto?: boolean;
 }
 
 /** Horas tras las cuales la tasa Bs/USD se considera desactualizada (la tasa BCV cambia a diario). */

@@ -14,8 +14,14 @@ npm run dev                 # http://localhost:3000   · panel: /admin (admin@ce
 Otros: `build`, `start`, `test` (vitest, `tests/unit`), `test:e2e` (playwright, `tests/e2e`: entorno aislado — BD `var/e2e/e2e.db` recreada y sembrada, app en :3100 con
 `APP_URL` = :3100, mocks Moodle :4110 / PayPal :4120 con webhooks → :3100; no reutiliza servidores salvo `E2E_REUSE=1`),
 `typecheck`, `lint`, `db:reset`, `db:studio`, `catalog:extract` (re-extrae fichas de ceium.net → `prisma/seed-data/product-details.json`).
-`jobs` (`scripts/cron.ts`): pagos PayPal sin retorno, vencimientos, reintentos de matrícula, **cuotas** (vencidas + recordatorio
-de la siguiente cuota con enlace de pago), certificados y reintento de correos.
+`jobs` (`scripts/cron.ts`): **tasa BCV** del día, pagos PayPal sin retorno, vencimientos, reintentos de matrícula, **cuotas**
+(vencidas + recordatorio de la siguiente cuota con enlace de pago), certificados y reintento de correos. En producción hay que
+ejecutarlos cada pocos minutos: `npm run jobs -- --loop 300`, o un cron del hosting contra `/api/cron` con `CRON_SECRET`.
+
+**Tasa BCV automática** (`src/server/exchange-rate.ts`, job `rates`): DolarApi (principal) y DolarVZLA (respaldo), sin clave.
+Se cobra con la tasa de **fecha valor de hoy** (el BCV publica en la tarde la del día hábil siguiente). Si las fuentes no
+coinciden (> 0,5 %) o el valor salta > 30 %, se mantiene la anterior y el panel avisa. Consulta cada hora (y cada 10 min tras un
+fallo o al cambiar el día). Se apaga en Configuración (queda la carga manual) o con `EXCHANGE_RATE_SYNC=off` (carriles de prueba).
 
 ### Base de datos limpia (verificación / agentes)
 **No usar `npx prisma db push --force-reset`**: Prisma 7 lo bloquea cuando lo ejecuta un agente de IA sin

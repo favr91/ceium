@@ -29,3 +29,13 @@
   .set-ann { padding: 0 16px; }
   .set-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Tasa de cambio: tasa en uso + «Consultar ahora», estado de la consulta automática y carga manual. */
+.set-rate-now { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 12px; border-radius: 10px; background: var(--p-surface-2, #f7f7f7); flex-wrap: wrap; }
+.set-rate-val { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.set-rate-val strong { font-size: 18px; line-height: 24px; }
+.set-sync-err { color: var(--p-critical, #8e0b21); }
+[data-testid="rate-sync"] { margin-top: 8px; }
+.set-manual { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--p-border-2, #ebebeb); }
+.set-h3 { margin: 0 0 4px; font-size: 13px; line-height: 20px; font-weight: 650; }
+.set-manual .grid2 { margin-top: 10px; }

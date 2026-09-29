@@ -69,7 +69,7 @@ describe("/api/cron", () => {
   it("ejecuta todos los jobs o los pedidos en ?jobs=", async () => {
     const all = await cron.POST(req("/api/cron", { authorization: "Bearer s3cret" }));
     expect(all.status).toBe(200);
-    expect(runJobs.mock.calls[0][0]).toEqual(["paypal", "expire", "enrollments", "installments", "certificates", "emails"]);
+    expect(runJobs.mock.calls[0][0]).toEqual(["rates", "paypal", "expire", "enrollments", "installments", "certificates", "emails"]);
     const some = await cron.GET(req("/api/cron?jobs=paypal,expire", { "x-cron-secret": "s3cret" }));
     expect(some.status).toBe(200);
     expect(runJobs.mock.calls[1][0]).toEqual(["paypal", "expire"]);
