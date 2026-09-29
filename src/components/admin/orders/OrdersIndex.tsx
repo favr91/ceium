@@ -4,8 +4,10 @@
 // paginación. El estado vive en la URL: todo se puede compartir y volver atrás.
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Icon } from "../Icon";
+import { ExportButton } from "../ExportButton";
+import { exportOptions } from "../export-options";
 import { Badge, useDismiss } from "./bits";
 import { METHOD_SHORT, ORDER_STATUS, enrollmentBadge, listDate, paymentBadge, usd } from "./format";
 import type { OrderRow } from "@/server/admin-order-views";
@@ -227,7 +229,6 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
     else n.add(id);
     return n;
   });
-  const exportHref = useMemo(() => `/admin/orders/export${sel.size ? `?ids=${[...sel].join(",")}` : toQuery(state)}`, [sel, state]);
   const filtersOn = state.status.length + state.method.length + state.modality.length > 0;
   const from = total === 0 ? 0 : (page - 1) * perPage + 1;
   const to = Math.min(total, page * perPage);
@@ -340,9 +341,9 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
         <div className="oi-bulk" role="region" aria-label="Acciones masivas">
           <input ref={hdrCb} type="checkbox" className="cb" checked={allSel} onChange={() => setSel(allSel ? new Set() : new Set(rows.map((r) => r.id)))} aria-label="Seleccionar todos los pedidos de la página" />
           <span className="n">{sel.size} {sel.size === 1 ? "seleccionado" : "seleccionados"}</span>
-          <a className="btn" href={exportHref} download>
+          <ExportButton title="Exportar pedidos" endpoint="/admin/orders/export" className="btn" {...exportOptions({ noun: ["pedidos", "pedido"], filters: "", filtered: false, total: 0, selected: [...sel] })}>
             Exportar selección
-          </a>
+          </ExportButton>
           <button type="button" className="btn btn-tertiary" onClick={() => setSel(new Set())}>Deseleccionar</button>
         </div>
       ) : null}

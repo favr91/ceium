@@ -7,6 +7,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { saveCapacities, setCohortsStatus } from "@/app/admin/(panel)/cohorts/actions";
 import { Icon } from "../Icon";
+import { ExportButton } from "../ExportButton";
+import { exportOptions } from "../export-options";
 import { useOutside, useToast } from "../ui";
 import { occupancyPct, SeatBar } from "./SeatBar";
 import "./cohorts.css";
@@ -315,6 +317,9 @@ export function CohortsIndex({
             <button className="btn" disabled={pending} onClick={() => bulk("OPEN", "inscripciones abiertas")}>Abrir inscripciones</button>
             <button className="btn" disabled={pending} onClick={() => bulk("CLOSED", "inscripciones cerradas")}>Cerrar inscripciones</button>
             <button className="btn hide-sm" disabled={pending} onClick={() => bulk("IN_PROGRESS", "en curso")}>Marcar en curso</button>
+            <ExportButton title="Exportar cohortes" endpoint="/admin/cohorts/export" className="btn" {...exportOptions({ noun: ["cohortes", "cohorte"], filters: "", filtered: false, total: 0, selected: [...sel] })}>
+              Exportar selección
+            </ExportButton>
           </div>
         ) : null}
 

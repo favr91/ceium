@@ -7,6 +7,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { setProductsPublished } from "@/app/admin/(panel)/products/actions";
 import { Icon } from "../Icon";
+import { ExportButton } from "../ExportButton";
+import { exportOptions } from "../export-options";
 import { StatusBadge, useOutside, useToast } from "../ui";
 import { usd } from "./money";
 import { CATEGORY_LABEL, CATEGORY_ORDER, type Category, type ProductRow, type Status } from "./types";
@@ -161,6 +163,9 @@ export function ProductsIndex({ rows, counts, total, query, canEdit }: { rows: P
             <span className="n">{sel.size} {sel.size === 1 ? "seleccionado" : "seleccionados"}</span>
             <button className="btn" disabled={pending || selRows.every((r) => r.status === "ACTIVE")} onClick={() => bulk(true)}>Publicar</button>
             <button className="btn" disabled={pending || selRows.every((r) => r.status !== "ACTIVE")} onClick={() => bulk(false)}>Archivar</button>
+            <ExportButton title="Exportar programas" endpoint="/admin/products/export" className="btn" {...exportOptions({ noun: ["programas", "programa"], filters: "", filtered: false, total: 0, selected: [...sel] })}>
+              Exportar selección
+            </ExportButton>
           </div>
         ) : null}
 

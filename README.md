@@ -23,6 +23,12 @@ Se cobra con la tasa de **fecha valor de hoy** (el BCV publica en la tarde la de
 coinciden (> 0,5 %) o el valor salta > 30 %, se mantiene la anterior y el panel avisa. Consulta cada hora (y cada 10 min tras un
 fallo o al cambiar el día). Se apaga en Configuración (queda la carga manual) o con `EXCHANGE_RATE_SYNC=off` (carriles de prueba).
 
+**Exportar CSV** (`src/server/csv.ts`, rutas `/admin/<sección>/export`, diálogo `ExportButton`): pedidos, clientes,
+matrículas, certificados, cohortes (y la lista de alumnos de cada cohorte) y programas con su lista de precios. Alcance:
+todo, lo filtrado, la selección o la página actual. Formatos: **para Excel** (`;`, coma decimal, fechas de Caracas,
+UTF-8 con BOM; teléfonos y referencias conservan el 0 inicial) o **sin formato** (`,`, punto decimal, ISO 8601). Las
+celdas que parecen fórmulas se escapan con `'`.
+
 **Imágenes subidas** (`src/server/images.ts`, con `sharp`): se orientan según la cámara, pierden EXIF/GPS y se guardan en
 WebP a 320/640/960/1280/1600 px (sin agrandar) + un JPG de 1200 px para `og:image`, con el slug del programa en el nombre.
 `sizedImage` (`src/components/store/image-url.ts`) pide el ancho justo. El panel reduce en el navegador los JPG de más de

@@ -1,6 +1,9 @@
 // Lecturas de las páginas de Programas (solo lectura: las escrituras pasan por services().catalog).
 import { prisma } from "@/server/db";
+import { at, money, type CsvCell } from "@/server/csv";
 import {
+  CATEGORY_LABEL,
+  STATUS_LABEL,
   statusOf,
   type Category,
   type EditorContext,
@@ -75,6 +78,54 @@ export async function listProductRows(query: ListQuery = {}) {
   };
   if (by[s]) rows = [...rows].sort(by[s]);
   return { rows, counts, total: all.length };
+}
+
+export const PRODUCT_STATUSES = ["ALL", "ACTIVE", "DRAFT", "ARCHIVED"] as const;
+export const PRODUCT_CATEGORIES = ["ALL", "DIPLOMA", "UNIVERSITY_COURSE", "ADVANCED_COURSE", "WORKSHOP"] as const;
+
+/**
+ * Tabla de exportación de Programas con su lista de precios: precio (y cuota mensual de los diplomados) online y
+ * por sede semipresencial, formas de pago activas y colecciones. Solo precios activos (los que se venden).
+ */
+export async function productsTable(rows: ProductRow[]) {
+  const ids = rows.map((r) => r.id);
+  const [prices, plans, sedes] = await Promise.all([
+    prisma.priceEntry.findMany({ where: { productId: { in: ids }, choiceId: null, active: true }, select: { productId: true, modality: true, sedeId: true, priceCents: true, installmentCents: true } }),
+    prisma.paymentPlan.findMany({ where: { productId: { in: ids }, active: true }, orderBy: { position: "asc" }, select: { productId: true, label: true } }),
+    prisma.sede.findMany({ orderBy: [{ position: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
+  ]);
+  const price = (pid: string, modality: "ONLINE" | "SEMIPRESENCIAL", sedeId: string | null) => prices.find((x) => x.productId === pid && x.modality === modality && x.sedeId === sedeId);
+  const head = [
+    "Programa", "Categoría", "Estado", "Modalidades", "Cursos del diplomado", "Curso en Moodle", "Identificador (URL)", "Colecciones", "Cohortes abiertas",
+    "Precio online USD", "Cuota mensual online USD",
+    ...sedes.flatMap((s) => [`Precio ${s.name} USD`, `Cuota mensual ${s.name} USD`]),
+    "Formas de pago", "Actualizado el",
+  ];
+  return {
+    head,
+    rows: rows.map((r): CsvCell[] => {
+      const on = r.online ? price(r.id, "ONLINE", null) : undefined;
+      return [
+        r.title,
+        CATEGORY_LABEL[r.category],
+        STATUS_LABEL[r.status],
+        [r.online ? "Online" : "", r.semi ? "Semipresencial" : ""].filter(Boolean).join(" y "),
+        r.type === "DIPLOMA" ? r.courseCount : null,
+        r.moodleCourseId,
+        r.slug,
+        r.collections.join(" | "),
+        r.cohortsOpen,
+        money(on?.priceCents),
+        money(on?.installmentCents),
+        ...sedes.flatMap((s) => {
+          const x = r.semi ? price(r.id, "SEMIPRESENCIAL", s.id) : undefined;
+          return [money(x?.priceCents), money(x?.installmentCents)];
+        }),
+        plans.filter((p) => p.productId === r.id).map((p) => p.label).join(" | "),
+        at(r.updatedAt),
+      ];
+    }),
+  };
 }
 
 const DEFAULT_PLANS: Record<ProductType, { kind: PlanKind; label: string; discountPct: number }[]> = {

@@ -2,7 +2,8 @@
 import { prisma } from "@/server/db";
 import { services } from "@/server/services";
 import { liveHeldCounts } from "@/server/seats";
-import type { CohortContext, CohortForm, CohortRow, CohortStatus, ProgramOption, ReservationRow, Seats, SessionItem } from "@/components/admin/cohorts/types";
+import { at, code, day, money, type CsvCell } from "@/server/csv";
+import { inView, ORDER_STATUS_LABEL, RELEASE_LABEL, STATUS_LABEL, VIEWS, type CohortContext, type CohortForm, type CohortRow, type CohortStatus, type ProgramOption, type ReservationRow, type Seats, type SessionItem, type View } from "@/components/admin/cohorts/types";
 
 /** Día de Venezuela (UTC−4) de una fecha guardada → AAAA-MM-DD. */
 export const vzDay = (d: Date) => new Date(d.getTime() - 4 * 3600_000).toISOString().slice(0, 10);
@@ -46,6 +47,50 @@ export async function listCohortRows(): Promise<CohortRow[]> {
     sessions: sessionList(c.sessions).length,
     seats: seatsOf(c, held.get(c.id) ?? 0),
   }));
+}
+
+const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+export const COHORT_SORTS = ["start-asc", "start-desc", "free-asc", "occ-desc", "program", "sede"] as const;
+
+/**
+ * Filtros del índice de Cohortes (vista, sede, programa, periodo, búsqueda y orden) a partir de los parámetros de
+ * la URL. Lo usan la página y la exportación CSV, así el archivo trae exactamente lo que se ve.
+ */
+export function queryCohorts(all: CohortRow[], sedes: { id: string; slug: string }[], get: (k: string) => string) {
+  const view = (VIEWS.some((v) => v.key === get("view")) ? get("view") : "ALL") as View;
+  const sede = sedes.find((s) => s.slug === get("sede")) ?? null;
+  const productId = all.some((r) => r.productId === get("product")) ? get("product") : "";
+  const q = get("q").trim();
+  const sort = (COHORT_SORTS as readonly string[]).includes(get("sort")) ? get("sort") : "start-asc";
+  const period = get("period") === "upcoming" || get("period") === "past" ? get("period") : "";
+  const today = todayVz();
+
+  // Filtros que no son la vista: sede, programa, periodo y búsqueda. Las pestañas cuentan sobre este conjunto.
+  let base: CohortRow[] = all;
+  if (sede) base = base.filter((r) => r.sedeId === sede.id);
+  if (productId) base = base.filter((r) => r.productId === productId);
+  if (period === "upcoming") base = base.filter((r) => r.startDate >= today);
+  if (period === "past") base = base.filter((r) => r.endDate < today);
+  if (q) {
+    const terms = norm(q).split(/\s+/).filter(Boolean);
+    base = base.filter((r) => {
+      const hay = norm(`${r.name} ${r.productTitle} ${r.sedeName}`);
+      return terms.every((t) => hay.includes(t));
+    });
+  }
+  const counts = Object.fromEntries(VIEWS.map((v) => [v.key, base.filter((r) => inView(r, v.key)).length])) as Record<View, number>;
+  let rows = base.filter((r) => inView(r, view));
+  const occ = (r: CohortRow) => (r.seats.capacity ? (r.seats.confirmed + r.seats.held) / r.seats.capacity : 0);
+  const by: Record<string, (a: CohortRow, b: CohortRow) => number> = {
+    "start-asc": (a, b) => a.startDate.localeCompare(b.startDate) || a.productTitle.localeCompare(b.productTitle, "es"),
+    "start-desc": (a, b) => b.startDate.localeCompare(a.startDate) || a.productTitle.localeCompare(b.productTitle, "es"),
+    "free-asc": (a, b) => a.seats.free - b.seats.free || a.startDate.localeCompare(b.startDate),
+    "occ-desc": (a, b) => occ(b) - occ(a) || a.startDate.localeCompare(b.startDate),
+    program: (a, b) => a.productTitle.localeCompare(b.productTitle, "es") || a.startDate.localeCompare(b.startDate),
+    sede: (a, b) => a.sedeName.localeCompare(b.sedeName, "es") || a.startDate.localeCompare(b.startDate),
+  };
+  rows = [...rows].sort(by[sort]);
+  return { view, sede, productId, q, sort, period, base, rows, counts };
 }
 
 export async function sedeOptions() {
@@ -137,6 +182,79 @@ function purchasableReason(c: { status: string; enrollmentDeadline: Date | null 
   return { ok: true, reason: `Se puede comprar en la tienda: ${seats.free} ${seats.free === 1 ? "cupo libre" : "cupos libres"}.` };
 }
 
+// Mismo criterio que liveHeldCounts: una HELD vencida sigue ocupando cupo si el pedido tiene dinero en camino.
+const PROTECTED = new Set(["AWAITING_VERIFICATION", "PAID", "PARTIALLY_PAID", "ENROLLED"]);
+function occupiesSeat(r: { status: string; expiresAt: Date; order: { status: string; amountPaidCents: number } }, now: number): boolean {
+  return r.status === "CONFIRMED" || (r.status === "HELD" && (r.expiresAt.getTime() >= now || PROTECTED.has(r.order.status) || r.order.amountPaidCents > 0));
+}
+
+/** Tabla de exportación del índice de Cohortes (filas ya filtradas y ordenadas por queryCohorts). */
+export function cohortsTable(rows: CohortRow[]) {
+  return {
+    head: ["Cohorte", "Programa", "Sede", "Inicio", "Fin", "Cierre de inscripciones", "Estado", "Cupo total", "Confirmados", "Reservados", "Libres", "Ocupación %", "Sesiones", "Datos de ejemplo"],
+    rows: rows.map((r): CsvCell[] => [
+      r.name,
+      r.productTitle,
+      r.sedeName,
+      day(r.startDate),
+      day(r.endDate),
+      day(r.enrollmentDeadline),
+      STATUS_LABEL[r.status],
+      r.seats.capacity,
+      r.seats.confirmed,
+      r.seats.held,
+      r.seats.free,
+      r.seats.capacity ? Math.round(((r.seats.confirmed + r.seats.held) / r.seats.capacity) * 100) : 0,
+      r.sessions,
+      r.isSample,
+    ]),
+  };
+}
+
+/**
+ * Lista de alumnos de una cohorte (para la sede: asistencia, contacto): quienes ocupan cupo o, con `all`, también
+ * las reservas liberadas y vencidas. Null si la cohorte no existe.
+ */
+export async function cohortRosterTable(id: string, all: boolean) {
+  const c = await prisma.cohort.findUnique({ where: { id }, select: { name: true, product: { select: { slug: true } }, sede: { select: { slug: true } } } });
+  if (!c) return null;
+  const now = Date.now();
+  const res = (
+    await prisma.seatReservation.findMany({
+      where: { cohortId: id },
+      orderBy: [{ createdAt: "asc" }],
+      include: {
+        order: { select: { number: true, status: true, totalCents: true, amountPaidCents: true, balanceCents: true, buyerFirstName: true, buyerLastName: true, customer: { select: { firstName: true, lastName: true, email: true, cedula: true, phone: true, specialty: true, city: true } } } },
+        orderItem: { select: { planLabel: true } },
+      },
+    })
+  ).filter((r) => all || occupiesSeat(r, now));
+  const seat = (r: (typeof res)[number]) => (r.status === "CONFIRMED" ? "Confirmado" : occupiesSeat(r, now) ? "Reservado" : "Liberado");
+  return {
+    name: `alumnos-${c.product.slug.slice(0, 40)}-${c.sede.slug}-${c.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
+    head: ["Médico", "Cédula", "Correo", "Teléfono", "Especialidad", "Ciudad", "Pedido", "Estado del pedido", "Cupo", "Forma de pago", "Total USD", "Pagado USD", "Saldo USD", "Reservado el", "Confirmado el", "Liberado el", "Motivo"],
+    rows: res.map((r): CsvCell[] => [
+      [r.order.buyerFirstName ?? r.order.customer.firstName, r.order.buyerLastName ?? r.order.customer.lastName].filter(Boolean).join(" "),
+      code(r.order.customer.cedula),
+      r.order.customer.email,
+      code(r.order.customer.phone),
+      r.order.customer.specialty,
+      r.order.customer.city,
+      `#${r.order.number}`,
+      ORDER_STATUS_LABEL[r.order.status] ?? r.order.status,
+      seat(r),
+      r.orderItem?.planLabel,
+      money(r.order.totalCents),
+      money(r.order.amountPaidCents),
+      money(Math.max(0, r.order.balanceCents)),
+      at(r.createdAt),
+      at(r.confirmedAt),
+      r.status === "RELEASED" ? at(r.releasedAt) : null,
+      r.releasedReason ? (RELEASE_LABEL[r.releasedReason] ?? r.releasedReason).replace(/^./, (x) => x.toUpperCase()) : null,
+    ]),
+  };
+}
+
 export async function cohortEditor(id: string): Promise<{ form: CohortForm; ctx: CohortContext } | null> {
   const c = await prisma.cohort.findUnique({ where: { id }, include: { product: { select: { published: true } }, sede: { select: { active: true } } } });
   if (!c) return null;
@@ -158,14 +276,10 @@ export async function cohortEditor(id: string): Promise<{ form: CohortForm; ctx:
   ]);
   const seats = seatsOf(c, held.get(id) ?? 0);
   const now = Date.now();
-  const liveIds = new Set<string>();
-  // Mismo criterio que liveHeldCounts: una HELD vencida sigue viva si el pedido tiene dinero en camino.
-  const PROTECTED = new Set(["AWAITING_VERIFICATION", "PAID", "PARTIALLY_PAID", "ENROLLED"]);
-  for (const r of reservations) if (r.status === "HELD" && (r.expiresAt.getTime() >= now || PROTECTED.has(r.order.status) || r.order.amountPaidCents > 0)) liveIds.add(r.id);
   const rows: ReservationRow[] = reservations.map((r) => ({
     id: r.id,
     status: r.status as ReservationRow["status"],
-    live: r.status === "CONFIRMED" || liveIds.has(r.id),
+    live: occupiesSeat(r, now),
     orderId: r.order.id,
     orderNumber: r.order.number,
     orderStatus: r.order.status,

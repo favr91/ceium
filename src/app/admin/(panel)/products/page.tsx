@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdminPage } from "../../_lib/session";
-import { listProductRows } from "./data";
+import { listProductRows, PRODUCT_CATEGORIES as CATS, PRODUCT_STATUSES as STATUSES } from "./data";
 import { ProductsIndex } from "@/components/admin/products/ProductsIndex";
+import { ExportButton } from "@/components/admin/ExportButton";
+import { exportOptions, exportQuery } from "@/components/admin/export-options";
 import { can } from "@/server/auth";
 import type { Category, Status } from "@/components/admin/products/types";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Programas" };
 
-const STATUSES = ["ALL", "ACTIVE", "DRAFT", "ARCHIVED"] as const;
-const CATS = ["ALL", "DIPLOMA", "UNIVERSITY_COURSE", "ADVANCED_COURSE", "WORKSHOP"] as const;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
 export default async function ProductsPage({ searchParams }: PageProps<"/admin/products">) {
@@ -30,6 +30,17 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
         </div>
         <div className="adm-ph-actions">
           <Link className="btn btn-gray hide-sm" href="/admin/collections">Colecciones</Link>
+          <ExportButton
+            title="Exportar programas"
+            endpoint="/admin/products/export"
+            note="Una fila por programa con su lista de precios (online y por sede) y las formas de pago."
+            {...exportOptions({
+              noun: ["programas", "programa"],
+              filters: exportQuery({ status: status !== "ALL" && status, category: category !== "ALL" && category, q, sort: sort !== "position" && sort }),
+              filtered: status !== "ALL" || category !== "ALL" || !!q.trim(),
+              total: rows.length,
+            })}
+          />
           {canEdit ? (
             <Link className="btn btn-primary" href="/admin/products/new">Agregar programa</Link>
           ) : null}

@@ -6,6 +6,7 @@ import type { Deps } from "./deps";
 import type { OrderStatus, PaymentMethod, Prisma } from "./db";
 import { requireAdmin, type SessionUser } from "./auth";
 import { DomainError } from "./errors";
+import { at, code, CSV_MAX_ROWS, money, type CsvCell } from "./csv";
 import { canonicalReference, sameBankMovement } from "./payments";
 
 export const ORDER_STATUSES: readonly OrderStatus[] = ["PENDING_PAYMENT", "AWAITING_VERIFICATION", "PARTIALLY_PAID", "PAID", "ENROLLED", "REJECTED", "CANCELLED", "EXPIRED", "REFUNDED"];
@@ -213,44 +214,52 @@ const STATUS_LABEL: Record<string, string> = {
   REFUNDED: "Reembolsado",
 };
 
-/** CSV (separado por comas, UTF-8 con BOM para Excel) de los pedidos de la consulta o de los ids dados. */
-export async function exportOrdersCsv(d: Pick<Deps, "db" | "now">, user: SessionUser, query: OrderIndexQuery & { ids?: string[] }) {
+/**
+ * Tabla de exportación (CSV) de pedidos: los ids dados, una página del índice (`page`) o todo lo que coincide con
+ * la consulta. Mismos filtros y orden que el índice.
+ */
+export async function exportOrdersTable(d: Pick<Deps, "db" | "now">, user: SessionUser, query: Omit<OrderIndexQuery, "page"> & { ids?: string[] | null; page?: number | null }) {
   await requireAdmin(d.db, user, "orders.view");
-  const where = query.ids?.length ? { id: { in: query.ids.slice(0, 1000) } } : whereOf(query);
-  const rows = (await d.db.order.findMany({ where, orderBy: orderByOf(query.sort, query.dir), take: 5000, include: { ...rowInclude, customer: { select: { id: true, email: true, firstName: true, lastName: true, phone: true, cedula: true } } } })).map((o) => ({
-    row: toRow(o),
-    cedula: o.customer.cedula,
-  }));
-  const usd = (c: number) => (c / 100).toFixed(2);
-  const cell = (v: unknown) => {
-    const s = v == null ? "" : String(v);
-    return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const head = ["Pedido", "Fecha", "Estado", "Cliente", "Correo", "Cédula", "Teléfono", "Programa", "Modalidad", "Sede", "Cohorte", "Plan", "Método", "Total USD", "Pagado USD", "Reembolsado USD", "Saldo USD"];
-  const lines = rows.map(({ row: r, cedula }) =>
-    [
+  const where = query.ids?.length ? { id: { in: query.ids } } : whereOf({ ...query, page: undefined });
+  const perPage = Math.min(Math.max(query.perPage ?? 50, 1), 250);
+  const orders = await d.db.order.findMany({
+    where,
+    orderBy: orderByOf(query.sort, query.dir),
+    ...(query.page && !query.ids?.length ? { skip: (query.page - 1) * perPage, take: perPage } : { skip: 0, take: CSV_MAX_ROWS }),
+    include: {
+      ...rowInclude,
+      customer: { select: { id: true, email: true, firstName: true, lastName: true, phone: true, cedula: true } },
+      payments: { select: { status: true, refundedCents: true, method: true, reference: true } },
+    },
+  });
+  const head = ["Pedido", "Fecha", "Estado", "Cliente", "Correo", "Cédula", "Teléfono", "Programa", "Modalidad", "Sede", "Cohorte", "Forma de pago", "Método", "Referencias", "Total USD", "Pagado USD", "Reembolsado USD", "Saldo USD", "Cuotas pagadas", "Cursos matriculados"];
+  const rows: CsvCell[][] = orders.map((o) => {
+    const r = toRow(o);
+    const join = (xs: (string | null)[]) => xs.map((x) => x ?? "").join(" | ");
+    return [
       `#${r.number}`,
-      new Date(r.placedAt).toISOString(),
+      at(o.placedAt),
       STATUS_LABEL[r.status] ?? r.status,
       r.customer.name,
       r.customer.email,
-      cedula ?? "",
-      r.customer.phone ?? "",
-      r.items.map((i) => i.title).join(" | "),
-      r.items.map((i) => (i.modality === "ONLINE" ? "Online" : "Semipresencial")).join(" | "),
-      r.items.map((i) => i.sede ?? "").join(" | "),
-      r.items.map((i) => i.cohort ?? "").join(" | "),
-      r.items.map((i) => i.plan ?? "").join(" | "),
+      code(o.customer.cedula),
+      code(r.customer.phone),
+      join(r.items.map((i) => i.title)),
+      join(r.items.map((i) => (i.modality === "ONLINE" ? "Online" : "Semipresencial"))),
+      join(r.items.map((i) => i.sede)),
+      join(r.items.map((i) => i.cohort)),
+      join(r.items.map((i) => i.plan)),
       r.paymentMethod ? METHOD_LABEL[r.paymentMethod] : "",
-      usd(r.totalCents),
-      usd(r.amountPaidCents),
-      usd(r.refundedCents),
-      usd(Math.max(0, r.balanceCents)),
-    ]
-      .map(cell)
-      .join(","),
-  );
-  return "﻿" + [head.join(","), ...lines].join("\r\n") + "\r\n";
+      code(o.payments.map((p) => p.reference).filter(Boolean).join(" | ")),
+      money(r.totalCents),
+      money(r.amountPaidCents),
+      money(r.refundedCents),
+      money(Math.max(0, r.balanceCents)),
+      r.installments.total ? `${r.installments.settled} de ${r.installments.total}` : "",
+      r.enrollment.total ? `${r.enrollment.enrolled} de ${r.enrollment.total}` : "",
+    ];
+  });
+  return { head, rows };
 }
 
 // ───────────── Ficha ─────────────

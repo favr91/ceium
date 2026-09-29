@@ -6,6 +6,8 @@ import { can } from "@/server/auth";
 import { CERTIFICATE_VIEWS, listCertificatesIndex, type CertificateView } from "@/server/admin-learning";
 import { services } from "@/server/services";
 import { Icon } from "@/components/admin/Icon";
+import { ExportButton } from "@/components/admin/ExportButton";
+import { exportQuery } from "@/components/admin/export-options";
 import { CertificatesIndex, type CertState } from "@/components/admin/learning/CertificatesIndex";
 import { SweepButton } from "@/components/admin/learning/SweepButton";
 import "@/components/admin/orders/orders.css";
@@ -14,6 +16,14 @@ import { requireAdminPage } from "../../_lib/session";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Certificados" };
+
+// La exportación sigue la pestaña: certificados (emitidos/revocados) o diplomados en curso / bloqueados por saldo.
+const EXPORT_NOUN: Record<CertificateView, [string, string]> = {
+  ISSUED: ["certificados emitidos", "certificado emitido"],
+  REVOKED: ["certificados revocados", "certificado revocado"],
+  IN_PROGRESS: ["diplomados en curso", "diplomado en curso"],
+  BLOCKED: ["certificados bloqueados por saldo", "certificado bloqueado por saldo"],
+};
 
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
@@ -28,12 +38,24 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
   };
   const data = await listCertificatesIndex(services().deps, user, { view: state.view as CertificateView, q: state.q, diploma: state.diploma || undefined });
   const perms = { manage: can(user, "enrollments.manage"), resend: can(user, "emails.resend"), revoke: can(user, "certificates.revoke") };
+  const shown = state.view === "ISSUED" || state.view === "REVOKED" ? data.certificates.length : data.purchases.length;
   return (
     <div className="adm-page wide">
       <div className="op-head">
         <h1>
           <Icon name="certificate" /> Certificados
         </h1>
+        <ExportButton
+          title={`Exportar ${EXPORT_NOUN[state.view as CertificateView][0]}`}
+          endpoint="/admin/certificates/export"
+          initial={state.q || state.diploma ? "filtered" : "all"}
+          options={[
+            { key: "all", label: `Todos los ${EXPORT_NOUN[state.view as CertificateView][0]}`, query: exportQuery({ view: state.view }) },
+            ...(state.q || state.diploma
+              ? [{ key: "filtered", label: `${shown} ${shown === 1 ? EXPORT_NOUN[state.view as CertificateView][1] : EXPORT_NOUN[state.view as CertificateView][0]} que coinciden con los filtros actuales`, query: exportQuery({ view: state.view, q: state.q, diploma: state.diploma }) }]
+              : []),
+          ]}
+        />
         {perms.manage ? <SweepButton /> : null}
       </div>
 

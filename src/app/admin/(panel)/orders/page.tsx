@@ -7,6 +7,8 @@ import type { OrderStatus, PaymentMethod } from "@/server/db";
 import { ORDER_SORTS, ORDER_STATUSES, ORDER_VIEWS, PAYMENT_METHODS, listOrdersIndex, orderMetrics, type OrderSort, type OrderView } from "@/server/admin-order-views";
 import { services } from "@/server/services";
 import { Icon } from "@/components/admin/Icon";
+import { ExportButton } from "@/components/admin/ExportButton";
+import { exportOptions } from "@/components/admin/export-options";
 import { OrdersIndex } from "@/components/admin/orders/OrdersIndex";
 import { toQuery, type IndexState } from "@/components/admin/orders/query";
 import { Sparkline } from "@/components/admin/orders/bits";
@@ -68,9 +70,18 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
         <h1>
           <Icon name="order" /> Pedidos
         </h1>
-        <a className="btn btn-gray" href={`/admin/orders/export${toQuery(state, { page: 1 })}`} download>
-          Exportar
-        </a>
+        <ExportButton
+          title="Exportar pedidos"
+          endpoint="/admin/orders/export"
+          {...exportOptions({
+            noun: ["pedidos", "pedido"],
+            filters: toQuery(state, { page: 1 }).slice(1),
+            filtered: state.view !== "ALL" || !!state.q || state.status.length + state.method.length + state.modality.length > 0,
+            total: idx.total,
+            page: idx.page,
+            pages: idx.pages,
+          })}
+        />
         {awaiting ? (
           <Link className="btn btn-primary" href="/admin/orders?view=AWAITING_VERIFICATION">
             Verificar pagos

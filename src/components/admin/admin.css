@@ -450,6 +450,16 @@
   .modal { border-radius: 16px 16px 0 0; }
 }
 
+/* ───────── Diálogo «Exportar» (ExportButton) ───────── */
+.xp-group { display: grid; gap: 10px; }
+.xp-group + .xp-group { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--p-border-2); }
+.xp-h { font-weight: 650; font-size: 13px; line-height: 20px; }
+.xp-radio { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; line-height: 20px; }
+.xp-radio input { appearance: none; flex: none; width: 16px; height: 16px; margin: 2px 0 0; border-radius: 50%; border: 0.66px solid var(--p-input-border); background: #fdfdfd; cursor: pointer; display: grid; place-items: center; }
+.xp-radio input:checked { border: 5px solid #303030; background: #fff; }
+.xp-radio input:focus-visible { outline: 2px solid var(--p-focus); outline-offset: 1px; }
+.xp-radio .help { margin-top: 0; }
+
 /* ───────── Teléfono: controles a la medida del dedo y campos sin zoom ─────────
    En escritorio los controles miden 28 px, como en Shopify; en el teléfono pasan a 40 px (tabs 36) para tocarlos con
    el dedo. Los campos usan letra de 16 px: con menos, Safari en iPhone agranda la página cada vez que se toca uno. */
@@ -468,6 +478,9 @@
   .toggle::after { width: 20px; height: 20px; }
   .toggle:checked::after { transform: translateX(16px); }
   .check input[type="checkbox"], .adm input[type="checkbox"].cb { width: 20px; height: 20px; }
+  .xp-radio input { width: 20px; height: 20px; margin-top: 0; }
+  .xp-radio input:checked { border-width: 6px; }
+  .xp-radio { gap: 10px; }
   /* Formas de pago de la matriz: la etiqueta arriba y los montos debajo (en una línea se cortaban). */
   .pm td.plans { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; row-gap: 2px; }
   .pm td.plans::before { flex-basis: 100%; }

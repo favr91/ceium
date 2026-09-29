@@ -7,6 +7,8 @@ import { can } from "@/server/auth";
 import { ENROLLMENT_SORTS, ENROLLMENT_VIEWS, enrollmentMetrics, listEnrollmentsIndex, type EnrollmentSort, type EnrollmentView } from "@/server/admin-learning";
 import { services } from "@/server/services";
 import { Icon } from "@/components/admin/Icon";
+import { ExportButton } from "@/components/admin/ExportButton";
+import { exportOptions, exportQuery } from "@/components/admin/export-options";
 import { EnrollmentsIndex, type EnrollState } from "@/components/admin/learning/EnrollmentsIndex";
 import { RefreshAllButton } from "@/components/admin/learning/RefreshAllButton";
 import "@/components/admin/orders/orders.css";
@@ -43,6 +45,18 @@ export default async function EnrollmentsPage({ searchParams }: { searchParams: 
         <h1>
           <Icon name="enroll" /> Matrículas
         </h1>
+        <ExportButton
+          title="Exportar matrículas"
+          endpoint="/admin/enrollments/export"
+          {...exportOptions({
+            noun: ["matrículas", "matrícula"],
+            filters: exportQuery({ view: state.view !== "ALL" && state.view, q: state.q, program: state.program, sort: state.sort !== "recent" && state.sort, dir: state.dir !== "desc" && state.dir }),
+            filtered: state.view !== "ALL" || !!state.q || !!state.program,
+            total: idx.total,
+            page: idx.page,
+            pages: idx.pages,
+          })}
+        />
         {canManage ? <RefreshAllButton ids={idx.rows.filter((r) => r.state === "IN_PROGRESS").map((r) => r.id)} /> : null}
       </div>
 

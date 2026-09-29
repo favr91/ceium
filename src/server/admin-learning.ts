@@ -14,6 +14,7 @@ import { recordAudit } from "@/server/audit";
 import { purchasedDiplomaCourses, reenrollOrder } from "@/server/enrollment";
 import { checkDiplomaCompletion, deliverCertificate, runCertificateSweep } from "@/server/certificates";
 import { resendEmail } from "@/server/email";
+import { at, code, CSV_MAX_ROWS, money, type CsvCell } from "@/server/csv";
 
 type ReadDeps = Pick<Deps, "db" | "now">;
 const DAY = 86_400_000;
@@ -82,25 +83,30 @@ function searchFilter(q?: string): Prisma.EnrollmentWhereInput {
   };
 }
 
+function enrollmentOrderBy(query: Pick<EnrollmentIndexQuery, "sort" | "dir">): Prisma.EnrollmentOrderByWithRelationInput[] {
+  const dir = query.dir === "asc" ? "asc" : "desc";
+  const by: Prisma.EnrollmentOrderByWithRelationInput[] =
+    query.sort === "student" ? [{ customer: { firstName: dir } }, { customer: { lastName: dir } }]
+    : query.sort === "course" ? [{ product: { title: dir } }]
+    : query.sort === "checked" ? [{ completionCheckedAt: dir }]
+    : [{ createdAt: dir }];
+  return [...by, { id: "asc" }];
+}
+
 export async function listEnrollmentsIndex(d: ReadDeps, user: SessionUser, query: EnrollmentIndexQuery = {}) {
   await requireAdmin(d.db, user, "orders.view");
   const view: EnrollmentView = query.view && query.view in ENROLLMENT_VIEWS ? query.view : "ALL";
   const base: Prisma.EnrollmentWhereInput = { AND: [searchFilter(query.q), await programFilter(d, query.program)] };
   const where: Prisma.EnrollmentWhereInput = { AND: [base, ENROLLMENT_VIEWS[view].where] };
   const perPage = Math.min(Math.max(query.perPage ?? 50, 5), 200);
-  const dir = query.dir === "asc" ? "asc" : "desc";
-  const orderBy: Prisma.EnrollmentOrderByWithRelationInput[] =
-    query.sort === "student" ? [{ customer: { firstName: dir } }, { customer: { lastName: dir } }]
-    : query.sort === "course" ? [{ product: { title: dir } }]
-    : query.sort === "checked" ? [{ completionCheckedAt: dir }]
-    : [{ createdAt: dir }];
+  const orderBy = enrollmentOrderBy(query);
   const total = await d.db.enrollment.count({ where });
   const pages = Math.max(1, Math.ceil(total / perPage));
   const page = Math.min(Math.max(1, query.page ?? 1), pages);
   const [rows, counts, programs] = await Promise.all([
     d.db.enrollment.findMany({
       where,
-      orderBy: [...orderBy, { id: "asc" }],
+      orderBy,
       skip: (page - 1) * perPage,
       take: perPage,
       include: {
@@ -675,3 +681,128 @@ export async function homeDashboard(d: ReadDeps, user: SessionUser, days = 30) {
   };
 }
 export type HomeDashboard = Awaited<ReturnType<typeof homeDashboard>>;
+
+// ───────────── Exportaciones CSV (mismos filtros que cada índice) ─────────────
+
+const ENROLLMENT_STATE_LABEL: Record<EnrollmentState, string> = { COMPLETED: "Completado", IN_PROGRESS: "En curso", PENDING: "Pendiente", FAILED: "Con error", UNENROLLED: "Desmatriculado" };
+const fullName = (c: { firstName: string; lastName: string }) => `${c.firstName} ${c.lastName}`.trim();
+interface ExportScope { ids?: string[] | null; page?: number | null; perPage?: number }
+const pageOf = (scope: ExportScope) => (scope.page && !scope.ids?.length ? { skip: (scope.page - 1) * (scope.perPage ?? 50), take: scope.perPage ?? 50 } : { skip: 0, take: CSV_MAX_ROWS });
+
+/** Búsqueda de Clientes por nombre, correo, cédula o teléfono (índice y exportación). */
+export function customerSearchWhere(q: string): Prisma.CustomerWhereInput {
+  const s = q.trim();
+  return s ? { OR: [{ email: { contains: s.toLowerCase() } }, { firstName: { contains: s } }, { lastName: { contains: s } }, { cedula: { contains: s } }, { phone: { contains: s } }] } : {};
+}
+
+export async function exportCustomersTable(d: ReadDeps, user: SessionUser, query: ExportScope & { q?: string }) {
+  await requireAdmin(d.db, user, "orders.view");
+  const rows = await d.db.customer.findMany({
+    where: query.ids?.length ? { id: { in: query.ids } } : customerSearchWhere(query.q ?? ""),
+    orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+    ...pageOf(query),
+    include: { orders: { select: { amountPaidCents: true, balanceCents: true, status: true } }, _count: { select: { certificates: { where: { status: "ISSUED" } } } } },
+  });
+  const head = ["Nombre", "Apellido", "Correo", "Cédula", "Teléfono", "Especialidad", "Ciudad", "País", "Pedidos", "Pagado USD", "Saldo pendiente USD", "Certificados", "Cuenta de Moodle", "Usuario de Moodle", "Cliente desde", "Nota interna"];
+  return {
+    head,
+    rows: rows.map((c): CsvCell[] => [
+      c.firstName,
+      c.lastName,
+      c.email,
+      code(c.cedula),
+      code(c.phone),
+      c.specialty,
+      c.city,
+      c.country === "VE" ? "Venezuela" : c.country,
+      c.orders.length,
+      money(c.orders.reduce((a, o) => a + Math.max(0, o.amountPaidCents), 0)),
+      money(c.orders.filter((o) => (LIVE as readonly string[]).includes(o.status)).reduce((a, o) => a + Math.max(0, o.balanceCents), 0)),
+      c._count.certificates,
+      !!c.moodleUserId,
+      c.moodleUsername,
+      at(c.createdAt),
+      c.notes,
+    ]),
+  };
+}
+
+export async function exportEnrollmentsTable(d: ReadDeps, user: SessionUser, query: Omit<EnrollmentIndexQuery, "page"> & ExportScope) {
+  await requireAdmin(d.db, user, "orders.view");
+  const view: EnrollmentView = query.view && query.view in ENROLLMENT_VIEWS ? query.view : "ALL";
+  const where: Prisma.EnrollmentWhereInput = query.ids?.length
+    ? { id: { in: query.ids } }
+    : { AND: [searchFilter(query.q), await programFilter(d, query.program), ENROLLMENT_VIEWS[view].where] };
+  const rows = await d.db.enrollment.findMany({
+    where,
+    orderBy: enrollmentOrderBy(query),
+    ...pageOf(query),
+    include: {
+      customer: { select: { firstName: true, lastName: true, email: true, cedula: true } },
+      product: { select: { title: true } },
+      order: { select: { number: true } },
+      orderItem: { select: { productTitle: true, productType: true } },
+    },
+  });
+  const head = ["Médico", "Correo", "Cédula", "Curso", "Curso en Moodle", "Diplomado", "Pedido", "Estado", "Matriculado el", "Completado el", "Última consulta a Moodle", "Intentos", "Último error"];
+  return {
+    head,
+    rows: rows.map((e): CsvCell[] => [
+      fullName(e.customer),
+      e.customer.email,
+      code(e.customer.cedula),
+      e.product.title,
+      e.moodleCourseId,
+      e.orderItem?.productType === "DIPLOMA" ? e.orderItem.productTitle : "",
+      e.order ? `#${e.order.number}` : "",
+      ENROLLMENT_STATE_LABEL[enrollmentState(e)],
+      at(e.enrolledAt),
+      at(e.completedAt),
+      at(e.completionCheckedAt),
+      e.attempts,
+      e.lastError,
+    ]),
+  };
+}
+
+/** Certificados de la vista: emitidos/revocados (uno por certificado) o compras en curso/bloqueadas por saldo. */
+export async function exportCertificatesTable(d: ReadDeps, user: SessionUser, query: { view?: CertificateView; q?: string; diploma?: string }) {
+  const idx = await listCertificatesIndex(d, user, query);
+  if (idx.view === "ISSUED" || idx.view === "REVOKED") {
+    const cedulas = new Map(
+      (await d.db.customer.findMany({ where: { id: { in: idx.certificates.map((c) => c.customer.id) } }, select: { id: true, cedula: true } })).map((c) => [c.id, c.cedula]),
+    );
+    return {
+      head: ["Código", "Médico", "Correo", "Cédula", "Diplomado", "Pedido", "Estado", "Emitido el", "PDF generado", "Enviado por correo el", "Revocado el", "Motivo de la revocación"],
+      rows: idx.certificates.map((c): CsvCell[] => [
+        c.code,
+        c.customer.name,
+        c.customer.email,
+        code(cedulas.get(c.customer.id) ?? null),
+        c.diploma.title,
+        c.order ? `#${c.order.number}` : "",
+        c.status === "REVOKED" ? "Revocado" : "Emitido",
+        at(c.issuedAt),
+        c.hasPdf,
+        at(c.emailedAt),
+        at(c.revokedAt),
+        c.revokeReason,
+      ]),
+    };
+  }
+  return {
+    head: ["Médico", "Correo", "Diplomado", "Pedido", "Cursos completados", "Cursos del diplomado", "Faltan", "Saldo pendiente USD", "Paga mes a mes", "Última consulta a Moodle"],
+    rows: idx.purchases.map((p): CsvCell[] => [
+      p.customer.name,
+      p.customer.email,
+      p.diploma.title,
+      `#${p.orderNumber}`,
+      p.completed,
+      p.total,
+      p.courses.filter((c) => c.state !== "COMPLETED").map((c) => c.title).join(" | "),
+      money(Math.max(0, p.balanceCents)),
+      p.monthly,
+      at(p.lastCheckedAt),
+    ]),
+  };
+}

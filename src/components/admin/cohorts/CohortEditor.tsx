@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { deleteCohortAction, saveCohort } from "@/app/admin/(panel)/cohorts/actions";
 import { Icon } from "../Icon";
+import { ExportButton } from "../ExportButton";
 import { Modal, useToast } from "../ui";
 import { SeatBar, occupancyPct } from "./SeatBar";
 import { StatusPill } from "./CohortsIndex";
@@ -349,7 +350,25 @@ export function CohortEditor({ initial, ctx, canEdit }: { initial: CohortForm; c
             {/* Reservas */}
             {!isNew ? (
               <section className="card card-flush" aria-labelledby="h-res">
-                <div className="card-h"><h2 id="h-res">Alumnos y reservas</h2><span className="small muted">{live.length} {live.length === 1 ? "ocupa cupo" : "ocupan cupo"}</span></div>
+                <div className="card-h">
+                  <h2 id="h-res">Alumnos y reservas</h2>
+                  <span className="small muted" style={{ marginLeft: "auto" }}>{live.length} {live.length === 1 ? "ocupa cupo" : "ocupan cupo"}</span>
+                  {ctx.reservations.length ? (
+                    <ExportButton
+                      title="Exportar lista de alumnos"
+                      endpoint={`/admin/cohorts/${form.id}/export`}
+                      className="btn btn-plain"
+                      initial={resTab === "released" ? "all" : "live"}
+                      options={[
+                        { key: "live", label: `Quienes ocupan cupo (${live.length})`, query: "" },
+                        { key: "all", label: `Todas las reservas, también las liberadas y vencidas (${ctx.reservations.length})`, query: "all=1" },
+                      ]}
+                      note="Incluye cédula, correo, teléfono, pedido, cupo y saldo de cada médico: sirve como lista de asistencia de la sede."
+                    >
+                      Exportar
+                    </ExportButton>
+                  ) : null}
+                </div>
                 <div className="res-tabs" role="tablist" aria-label="Reservas">
                   <button type="button" role="tab" aria-selected={resTab === "live"} className={`ix-tab${resTab === "live" ? " active" : ""}`} onClick={() => setResTab("live")}>Ocupan cupo <span className="n">{live.length}</span></button>
                   <button type="button" role="tab" aria-selected={resTab === "released"} className={`ix-tab${resTab === "released" ? " active" : ""}`} onClick={() => setResTab("released")}>Liberadas y vencidas <span className="n">{released.length}</span></button>

@@ -2,9 +2,11 @@
 // cuenta de Moodle y certificados de cada médico. Cada fila abre su ficha (/admin/customers/[id]).
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { Prisma } from "@/generated/prisma/client";
+import { customerSearchWhere } from "@/server/admin-learning";
 import { services } from "@/server/services";
 import { Icon } from "@/components/admin/Icon";
+import { ExportButton } from "@/components/admin/ExportButton";
+import { exportOptions, exportQuery } from "@/components/admin/export-options";
 import { requireAdminPage } from "../../_lib/session";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +23,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const q = (Array.isArray(sp.q) ? sp.q[0] : sp.q)?.trim() ?? "";
   const page = Math.max(1, Number(Array.isArray(sp.page) ? sp.page[0] : sp.page) || 1);
   const db = services().deps.db;
-  const where: Prisma.CustomerWhereInput = q
-    ? { OR: [{ email: { contains: q.toLowerCase() } }, { firstName: { contains: q } }, { lastName: { contains: q } }, { cedula: { contains: q } }, { phone: { contains: q } }] }
-    : {};
+  const where = customerSearchWhere(q);
   const [total, rows] = await Promise.all([
     db.customer.count({ where }),
     db.customer.findMany({
@@ -55,6 +55,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         <div className="grow">
           <h1>Clientes</h1>
           <div className="meta">{total === 1 ? "1 médico" : `${total} médicos`} con pedidos en la tienda</div>
+        </div>
+        <div className="adm-ph-actions">
+          <ExportButton
+            title="Exportar clientes"
+            endpoint="/admin/customers/export"
+            {...exportOptions({ noun: ["clientes", "cliente"], filters: exportQuery({ q }), filtered: !!q, total, page, pages })}
+          />
         </div>
       </div>
       <div className="card card-flush">

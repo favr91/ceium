@@ -8,6 +8,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import type { EnrollmentRow } from "@/server/admin-learning";
 import { refreshProgressAction, retryEnrollmentsAction } from "@/app/admin/(panel)/enrollments/actions";
 import { Icon } from "../Icon";
+import { ExportButton } from "../ExportButton";
+import { exportOptions } from "../export-options";
 import { Spinner, useDismiss } from "../orders/bits";
 import { listDate } from "../orders/format";
 import { Avatar, StateBadge, ago, dm, useRun } from "./shared";
@@ -229,6 +231,9 @@ export function EnrollmentsIndex({ rows, counts, views, sorts, programs, total, 
               </button>
             </>
           ) : null}
+          <ExportButton title="Exportar matrículas" endpoint="/admin/enrollments/export" className="btn" {...exportOptions({ noun: ["matrículas", "matrícula"], filters: "", filtered: false, total: 0, selected: [...sel] })}>
+            Exportar selección
+          </ExportButton>
           <button type="button" className="btn btn-tertiary" onClick={() => setSel(new Set())}>Deseleccionar</button>
         </div>
       ) : null}

@@ -118,8 +118,10 @@ test.describe("panel · pedidos", () => {
     expect(csv.status()).toBe(200);
     expect(csv.headers()["content-type"]).toContain("text/csv");
     const body = await csv.text();
-    expect(body).toContain(`#${O.paypalFull.number},`);
-    expect(body).not.toContain(`#${O.awaiting.number},`);
+    expect(body).toContain(`#${O.paypalFull.number};`); // formato para Excel (por defecto): «;»
+    expect(body).not.toContain(`#${O.awaiting.number};`);
+    const plainCsv = await (await page.request.get(`/admin/orders/export?method=PAYPAL&format=plain`)).text();
+    expect(plainCsv).toContain(`#${O.paypalFull.number},`);
     const anon = await page.context().browser()!.newContext();
     expect((await anon.request.get(`${e2eEnv.APP_URL}/admin/orders/export`)).status()).toBe(401);
     await anon.close();
