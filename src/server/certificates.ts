@@ -208,7 +208,8 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
  * Genera el PDF (si falta) y envía el correo con el PDF adjunto (si no se envió). Idempotente y
  * reintentable: el barrido de certificados la vuelve a llamar mientras falte algo.
  */
-export async function deliverCertificate(d: Deps, certificateId: string): Promise<{ pdf: boolean; emailed: boolean; error?: string }> {
+/** Genera el PDF si falta y, salvo `pdfOnly` (ver el PDF desde el panel: un GET no debe enviar correos), lo envía. */
+export async function deliverCertificate(d: Deps, certificateId: string, opts: { pdfOnly?: boolean } = {}): Promise<{ pdf: boolean; emailed: boolean; error?: string }> {
   const cert = await d.db.certificate.findUniqueOrThrow({
     where: { id: certificateId },
     include: {
@@ -244,6 +245,7 @@ export async function deliverCertificate(d: Deps, certificateId: string): Promis
   }
 
   if (cert.emailedAt) return { pdf: true, emailed: true };
+  if (opts.pdfOnly) return { pdf: true, emailed: false };
   // Un reembolso total pudo revocarlo mientras se generaba el PDF: no se envía un certificado ya revocado.
   const current = await d.db.certificate.findUnique({ where: { id: cert.id }, select: { status: true } });
   if (current?.status !== "ISSUED") return { pdf: true, emailed: false };

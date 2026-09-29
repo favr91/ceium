@@ -28,12 +28,16 @@ export const ADMIN_CHALLENGE_TTL_MS = 10 * 60 * 1000;
 /** Cookie de «Recordar este equipo». */
 export const ADMIN_DEVICE_COOKIE = "ceium_admin_device";
 export const ADMIN_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** Se entró con una contraseña de ejemplo del seed: aviso fijo en el panel hasta cambiarla. */
+export const ADMIN_WEAK_PASSWORD_COOKIE = "ceium_admin_weakpw";
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MS = 15 * 60 * 1000;
 const CHALLENGE_MAX_ATTEMPTS = 5;
 /** Setting { enabled: boolean }: todo el equipo debe tener activada la verificación en dos pasos. */
 export const REQUIRE_2FA_SETTING = "security.require2fa";
-const BCRYPT_ROUNDS = 10;
+const BCRYPT_ROUNDS = 12;
+/** bcrypt ignora lo que pasa de 72 bytes: más largo daría una falsa sensación de seguridad. */
+const MAX_PASSWORD_BYTES = 72;
 const MIN_PASSWORD = 10;
 // Hash de relleno: con un correo inexistente se compara igual (mismo tiempo de respuesta).
 const DUMMY_HASH = bcrypt.hashSync("ceium-dummy-password", BCRYPT_ROUNDS);
@@ -99,6 +103,7 @@ export async function twoFactorRequired(db: Db | Tx): Promise<boolean> {
 
 export async function hashPassword(password: string): Promise<string> {
   if (!password || password.length < MIN_PASSWORD) throw new DomainError("VALIDATION", `La contraseña debe tener al menos ${MIN_PASSWORD} caracteres.`, { field: "password" });
+  if (Buffer.byteLength(password, "utf8") > MAX_PASSWORD_BYTES) throw new DomainError("VALIDATION", "La contraseña puede tener hasta 72 caracteres.", { field: "password" });
   return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 

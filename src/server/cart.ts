@@ -15,7 +15,7 @@ import { quote } from "@/server/quote";
 import { getCohortAvailability } from "@/server/seats";
 
 export const CART_COOKIE = "ceium_cart";
-export const CART_COOKIE_OPTIONS = { path: "/", httpOnly: true, sameSite: "lax" as const, maxAge: 60 * 60 * 24 * 30 };
+export const CART_COOKIE_OPTIONS = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production" && !(process.env.APP_URL ?? "").startsWith("http://"), maxAge: 60 * 60 * 24 * 30 };
 /** Una inscripción es personal: un mismo programa no puede estar dos veces ni con cantidad > 1. */
 export const MAX_QUANTITY = 1;
 const MAX_LINES = 20;

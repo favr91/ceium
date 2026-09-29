@@ -1,5 +1,6 @@
 // Lecturas de las páginas de Programas (solo lectura: las escrituras pasan por services().catalog).
 import { prisma } from "@/server/db";
+import { sanitizeRichText } from "@/server/rich-text";
 import { at, money, type CsvCell } from "@/server/csv";
 import {
   CATEGORY_LABEL,
@@ -247,7 +248,8 @@ export async function productEditor(id: string): Promise<{ form: ProductForm; ct
     category: p.category as Category,
     title: p.title,
     slug: p.slug,
-    descriptionHtml: p.descriptionHtml,
+    // Lo guardado antes de sanear (o importado de ceium.net) también se limpia antes de llegar al editor (innerHTML).
+    descriptionHtml: sanitizeRichText(p.descriptionHtml),
     excerpt: p.excerpt ?? "",
     offersOnline: p.offersOnline,
     offersSemipresencial: p.offersSemipresencial,

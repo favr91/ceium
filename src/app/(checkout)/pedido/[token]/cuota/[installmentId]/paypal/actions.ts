@@ -6,6 +6,7 @@
 import { redirect } from "next/navigation";
 import { services } from "@/server/services";
 import { isDomainError } from "@/server/errors";
+import { errorParams } from "@/server/flash";
 
 export async function payInstallmentWithPaypal(token: string, installmentId: string): Promise<never> {
   const s = services();
@@ -17,7 +18,7 @@ export async function payInstallmentWithPaypal(token: string, installmentId: str
     target = r.approveUrl;
   } catch (e) {
     if (!isDomainError(e) && (e as { code?: string })?.code !== "NOT_FOUND") console.error("[cuota/paypal]", e);
-    const back = new URLSearchParams({ pago: "error", motivo: isDomainError(e) ? e.message : "No pudimos iniciar el pago con PayPal. Intenta de nuevo." });
+    const back = new URLSearchParams({ pago: "error", ...errorParams(isDomainError(e) ? e.message : "No pudimos iniciar el pago con PayPal. Intenta de nuevo.") });
     target = `/pedido/${encodeURIComponent(token)}?${back}`;
   }
   redirect(target);

@@ -15,6 +15,7 @@ import { PendingPayment } from "@/components/checkout/PendingPayment";
 import { todayCaracas } from "@/components/checkout/manual-payment-fields";
 import { payPendingWithPaypal, placeOrder } from "./actions";
 import { getCheckoutView } from "./data";
+import { verifiedMessage } from "@/server/flash";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Pantalla de pago" };
@@ -32,7 +33,8 @@ export default async function CheckoutPage({ searchParams }: PageProps<"/checkou
   const metodo = one("metodo")?.toUpperCase() ?? null;
   // Registro del pago sin JavaScript: /api/checkout/comprobante vuelve aquí con el motivo.
   const pago = one("pago");
-  const payError = pago === "error" ? one("motivo")?.slice(0, 300) || "No pudimos registrar tu pago. Intenta de nuevo." : null;
+  // Solo mensajes firmados por el servidor (un enlace armado por otro muestra el texto genérico).
+  const payError = pago === "error" ? verifiedMessage(one("motivo"), one("firma")) || "No pudimos registrar tu pago. Intenta de nuevo." : null;
   const expiredNotice = pago === "vencido" && !view.pending;
 
   return (

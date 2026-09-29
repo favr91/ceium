@@ -159,7 +159,9 @@ async function deliver(d: Deps, id: string, opts: { secretValue?: string; actor?
       from: d.config.mailFrom,
       to: row.to,
       cc: row.cc ?? undefined,
-      bcc: d.config.mailBcc,
+      // Sin copia oculta al equipo si lleva la contraseña temporal de Moodle (ni los avisos de seguridad del panel):
+      // quien lea ese buzón podría entrar al aula del médico antes que él.
+      bcc: ref || row.template === "admin_security" ? undefined : d.config.mailBcc,
       subject: row.subject,
       html: fill(row.html, true),
       text: fill(row.text ?? "", false),

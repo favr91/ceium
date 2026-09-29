@@ -6,7 +6,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { Deps, Tx } from "@/server/deps";
 import type { SessionUser } from "@/server/auth";
 
-export type AuditEntity = "Customer" | "Product" | "PriceEntry" | "PaymentPlan" | "Collection" | "Sede" | "Cohort" | "Setting" | "AdminUser" | "DiplomaCourse" | "ProductImage" | "ProductChoice";
+export type AuditEntity = "Customer" | "Product" | "PriceEntry" | "PaymentPlan" | "Collection" | "Sede" | "Cohort" | "Setting" | "AdminUser" | "DiplomaCourse" | "ProductImage" | "ProductChoice" | "Export";
 
 /** Campos que nunca se guardan en la auditoría. */
 const SECRET_FIELDS = new Set(["passwordHash", "password", "tokenHash", "totpSecret", "totpPendingSecret", "recoveryCodes"]);

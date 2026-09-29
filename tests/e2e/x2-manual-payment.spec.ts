@@ -24,6 +24,7 @@ import { parse as parseDotenv } from "dotenv";
 import { expect, test, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 import { MOODLE, PAYPAL, cohort, customerOf, emails, enrolCallsFor, enrollments, fixture, moodleCalls, moodleState, one, order, payments, q, reservationOf, uniqueEmail, waitForOrderStatus } from "./support/purchase";
 import { todayCaracas } from "./support/dates";
+import sharp from "sharp";
 
 test.describe.configure({ mode: "serial" });
 test.beforeEach(({}, info) => {
@@ -285,7 +286,9 @@ test("pago móvil con comprobante → en verificación → el admin ve el compro
     const served = await admin.request.get(`/admin/orders/${o.id}/comprobante/${pay.id}`);
     expect(served.status()).toBe(200);
     expect(served.headers()["content-type"]).toBe("image/png");
-    expect(Buffer.from(await served.body()).equals(proofPng())).toBe(true);
+    // Se guarda re-codificado (sin metadatos): la misma imagen, no los mismos bytes.
+    const meta = await sharp(Buffer.from(await served.body())).metadata();
+    expect([meta.format, meta.width]).toEqual(["png", 240]);
 
     // Aprobar.
     await card.getByRole("button", { name: "Aprobar pago" }).click();

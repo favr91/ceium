@@ -366,6 +366,9 @@ export class PayPalClient {
       transmission_time: header(h, "paypal-transmission-time"),
     };
     if (Object.values(fields).some((v) => !v)) return { verified: false, status: "FAILURE", event };
+    // Un certificado que no es de PayPal no es un webhook suyo: se descarta sin llamar a su API (una ráfaga de
+    // webhooks falsos no gasta llamadas ni cuota de PayPal).
+    if (!/^https:\/\/api(-m)?(\.sandbox)?\.paypal\.com\//.test(fields.cert_url!)) return { verified: false, status: "FAILURE", event };
     const res = await this.request<{ verification_status: "SUCCESS" | "FAILURE" }>("POST", "/v1/notifications/verify-webhook-signature", {
       body: { ...fields, webhook_id: webhookId, webhook_event: event },
     });

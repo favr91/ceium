@@ -8,6 +8,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import sharp from "sharp";
 import type { Currency, Modality, PaymentMethod, Prisma, Refund } from "@/generated/prisma/client";
 import type { Deps, Tx } from "@/server/deps";
 import { readSetting, withTx } from "@/server/deps";
@@ -33,7 +34,7 @@ import { closePendingEnrollments, enrollOrder, unenrollOrder, UNENROLLMENT_FAILE
 import { reallocateInstallments } from "@/server/installments";
 import { buildOrderView, buildPaymentView, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
-import { requireAdmin, type SessionUser } from "@/server/auth";
+import { can, requireAdmin, type SessionUser } from "@/server/auth";
 
 // ───────────── Aplicar un pago confirmado al pedido ─────────────
 
@@ -279,7 +280,23 @@ const MANUAL_METHODS: PaymentMethod[] = ["PAGO_MOVIL", "TRANSFERENCIA", "ZELLE",
 /** Clave única de una referencia de pago manual (sin espacios ni guiones, en mayúsculas). */
 export function manualReferenceKey(method: PaymentMethod, reference: string | null): string | null {
   const norm = canonicalReference(reference);
-  return norm ? `${method}:${norm}` : null;
+  return norm ? `${referenceGroup(method)}:${norm}` : null;
+}
+
+/**
+ * Pago móvil y transferencia son movimientos en bolívares de las mismas cuentas: una referencia es única entre
+ * ambos (antes la clave llevaba el método y el mismo pago móvil se podía registrar otra vez «como transferencia»).
+ */
+function referenceGroup(method: PaymentMethod): string {
+  return method === "PAGO_MOVIL" || method === "TRANSFERENCIA" ? "BS" : method;
+}
+
+/** Claves con las que pudo guardarse la misma referencia (incluye el formato anterior, con el método). */
+function referenceKeyVariants(method: PaymentMethod, reference: string | null): string[] {
+  const norm = canonicalReference(reference);
+  if (!norm) return [];
+  const legacy = referenceGroup(method) === "BS" ? ["PAGO_MOVIL", "TRANSFERENCIA"] : [method];
+  return [`${referenceGroup(method)}:${norm}`, ...legacy.map((m) => `${m}:${norm}`)];
 }
 
 /**
@@ -332,6 +349,8 @@ async function discardProofFile(d: Deps, proofFile: string | null | undefined) {
 
 /** Día (AAAA-MM-DD) en Venezuela: la fecha declarada del pago se compara en la zona del banco. */
 const caracasDay = (t: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Caracas", year: "numeric", month: "2-digit", day: "2-digit" }).format(t);
+/** Comprobantes del cliente en verificación a la vez por pedido (pago móvil con límite diario: 2–3 transferencias). */
+const MAX_AWAITING_PER_ORDER = 3;
 /** Un pago de más de este múltiplo de lo adeudado es casi seguro un error de tipeo (decimales, ceros de más). */
 const MAX_OVERPAY_FACTOR = 10;
 
@@ -345,6 +364,9 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
   if (!MANUAL_METHODS.includes(input.method)) throw new DomainError("VALIDATION", "Método de pago manual no válido.");
   const isCustomer = actor.type !== "ADMIN";
   if (isCustomer) {
+    // El efectivo lo registra el personal de la sede al recibirlo (el cliente no puede declararlo: dejaría el cupo
+    // protegido sin haber pagado nada).
+    if (input.method === "EFECTIVO") throw new DomainError("VALIDATION", "El pago en efectivo lo registra el personal de la sede al recibirlo.");
     const cfg = await getManualMethod(d, input.method);
     if (!cfg?.enabled || manualMethodProblems(cfg).length) throw new DomainError("VALIDATION", "El método de pago seleccionado no está disponible.");
     if (cfg.currency && cfg.currency !== input.currency) throw new DomainError("VALIDATION", `Este método se paga en ${cfg.currency === "VES" ? "bolívares" : "dólares"}.`, { field: "currency" });
@@ -354,6 +376,11 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
   const reference = input.reference?.trim() || null;
   if (input.method !== "EFECTIVO" && !reference) throw new DomainError("VALIDATION", "Ingresa el número de referencia del pago.", { field: "reference" });
   if (isCustomer) {
+    // Datos del pagador con largo razonable (se guardan y se muestran en el panel).
+    const tooLong = ([["bank", input.bank, 80, "El banco"], ["payerName", input.payerName, 120, "El nombre del titular"], ["payerPhone", input.payerPhone, 30, "El teléfono"], ["payerCedula", input.payerCedula, 20, "La cédula o RIF"]] as const).find(
+      ([, v, max]) => (v ?? "").length > max,
+    );
+    if (tooLong) throw new DomainError("VALIDATION", `${tooLong[3]} es demasiado largo.`, { field: tooLong[0] });
     // Mismas reglas que el checkout (manual-payment-fields.ts), aplicadas aquí para TODA entrada del cliente:
     // el formulario de /pedido/<token> también llega a este servicio.
     if (reference && !/^[A-Z0-9-]{4,30}$/.test(reference.replace(/[\s.]/g, "").toUpperCase())) {
@@ -414,6 +441,12 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
         select: { id: true },
       });
       if (capturing) throw new DomainError("INVALID_STATE", "Estamos confirmando con PayPal un pago de este pedido que aprobaste hace un momento. Espera unos minutos y revisa tu correo antes de registrar otro pago.", { paymentId: capturing.id });
+      // Tope de comprobantes en verificación por pedido: el pago móvil tiene límite diario y un pago puede ir en
+      // 2 o 3 transferencias, pero no más (cada uno guarda un archivo y avisa al equipo).
+      const awaiting = await tx.payment.count({ where: { orderId: order.id, status: "AWAITING_VERIFICATION" } });
+      if (awaiting >= MAX_AWAITING_PER_ORDER) {
+        throw new DomainError("INVALID_STATE", `Ya tienes ${awaiting} pagos de este pedido en verificación. Espera a que el equipo los revise (te avisamos por correo) antes de registrar otro.`);
+      }
     }
     if (isCustomer && input.currency === "VES" && configuredRate) {
       // La tasa pudo cambiar entre el monto que se le indicó al médico y el registro del comprobante.
@@ -428,7 +461,7 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
       }
     }
     // Lectura para un error amable; la garantía real es el índice único de referenceKey (ver catch).
-    if (referenceKey && (await tx.payment.findUnique({ where: { referenceKey }, select: { id: true } }))) throw duplicateRef();
+    if (referenceKey && (await tx.payment.findFirst({ where: { referenceKey: { in: referenceKeyVariants(input.method, reference) } }, select: { id: true } }))) throw duplicateRef();
     // Primer pago de un pedido cuyo cupo ya se liberó (venció o se rechazó el pago anterior; p.ej. la pestaña
     // del pedido quedó abierta y el médico envía el comprobante después del plazo): se vuelve a tomar el cupo
     // AHORA, en la misma transacción. Si no, el pedido quedaría «en verificación» sin cupo, otro comprador
@@ -608,13 +641,38 @@ export async function storeProofFile(d: Deps, orderId: string, filename: string,
   // Sin HEIC/HEIF: Chrome y Firefox no lo muestran en el panel y sharp no trae el códec HEVC para convertirlo. Se
   // mira también el contenido: una foto HEIC renombrada a .jpg tampoco se podría ver.
   if (/\.hei[cf]$/i.test(filename) || isHeif(bytes)) throw new DomainError("VALIDATION", "Las fotos HEIC del iPhone no se pueden revisar: envía una captura de pantalla (JPG o PNG) o un PDF.");
-  const ext = (path.extname(filename).toLowerCase().match(/^\.(jpg|jpeg|png|webp|pdf)$/)?.[0]) ?? "";
-  if (!ext) throw new DomainError("VALIDATION", "El comprobante debe ser una imagen (JPG, PNG o WEBP) o un PDF.");
+  if (!/\.(jpg|jpeg|png|webp|pdf)$/i.test(filename)) throw new DomainError("VALIDATION", "El comprobante debe ser una imagen (JPG, PNG o WEBP) o un PDF.");
   if (bytes.byteLength > 10 * 1024 * 1024) throw new DomainError("VALIDATION", "El comprobante no puede superar 10 MB.");
-  const rel = path.join(/* turbopackIgnore: true */ d.config.privateFilesDir, "proofs", orderId.replace(/[^a-z0-9]/gi, ""), `${crypto.randomBytes(8).toString("hex")}${ext}`);
-  await fs.mkdir(path.dirname(path.resolve(/* turbopackIgnore: true */ rel)), { recursive: true });
-  await fs.writeFile(path.resolve(/* turbopackIgnore: true */ rel), bytes);
+  // El tipo real sale del contenido, no del nombre: un archivo cualquiera renombrado a .jpg no entra.
+  const kind = proofKind(bytes);
+  if (!kind) throw new DomainError("VALIDATION", "El archivo no es una imagen (JPG, PNG o WEBP) ni un PDF válido.");
+  let data: Uint8Array = bytes;
+  if (kind !== "pdf") {
+    // Las fotos se vuelven a codificar: se orientan, pierden los metadatos (ubicación GPS, modelo del teléfono) y
+    // cualquier contenido extra escondido en el archivo. Hasta 2400 px de lado: la referencia se sigue leyendo.
+    try {
+      const img = sharp(bytes, { limitInputPixels: 100_000_000 }).rotate().resize({ width: 2400, height: 2400, fit: "inside", withoutEnlargement: true });
+      data = kind === "png" ? await img.png({ compressionLevel: 9 }).toBuffer() : kind === "webp" ? await img.webp({ quality: 90 }).toBuffer() : await img.jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+    } catch {
+      throw new DomainError("VALIDATION", "No pudimos leer la imagen del comprobante. Envía una captura de pantalla (JPG o PNG) o un PDF.");
+    }
+  }
+  const dir = path.join(/* turbopackIgnore: true */ d.config.privateFilesDir, "proofs", orderId.replace(/[^a-z0-9]/gi, ""));
+  const rel = path.join(/* turbopackIgnore: true */ dir, `${crypto.randomBytes(8).toString("hex")}.${kind === "jpeg" ? "jpg" : kind}`);
+  // Datos personales: solo el usuario del servidor puede leerlos.
+  await fs.mkdir(path.resolve(/* turbopackIgnore: true */ dir), { recursive: true, mode: 0o700 });
+  await fs.writeFile(path.resolve(/* turbopackIgnore: true */ rel), data, { mode: 0o600 });
   return rel;
+}
+
+/** Tipo del comprobante por su firma (bytes iniciales). */
+function proofKind(b: Uint8Array): "jpeg" | "png" | "webp" | "pdf" | null {
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpeg";
+  if (b[0] === 0x89 && ascii(1, 4) === "PNG") return "png";
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "webp";
+  if (ascii(0, 5) === "%PDF-") return "pdf";
+  return null;
 }
 
 export interface VerifyInput {
@@ -627,7 +685,8 @@ export interface VerifyInput {
 
 /** Verificación del admin. Aprobar dispara la matrícula si completa el primer pago. Rechazar libera el cupo. */
 export async function adminVerifyPayment(d: Deps, user: SessionUser, input: VerifyInput) {
-  const { id: adminId } = await requireAdmin(d.db, user, "payments.verify");
+  const admin = await requireAdmin(d.db, user, "payments.verify");
+  const adminId = admin.id;
   const now = d.now();
   const actor: Actor = { type: "ADMIN", id: adminId };
   if (input.decision === "reject" && !input.note?.trim()) throw new DomainError("VALIDATION", "Indica el motivo del rechazo.");
@@ -636,6 +695,12 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
   const out = await withTx(d, async (tx) => {
     const p = await tx.payment.findUnique({ where: { id: input.paymentId } });
     if (!p) throw new DomainError("NOT_FOUND", "El pago no existe.");
+    // Bajar el equivalente en USD es conservador; subirlo por encima de lo calculado con la tasa acredita dinero
+    // que no está en el comprobante (equivale a ajustar el saldo): solo quien puede ajustar saldos.
+    const raise = input.decision === "approve" && input.amountUsdCents != null ? input.amountUsdCents - p.amountUsdCents : 0;
+    if (raise > Math.max(100, Math.round(p.amountUsdCents * 0.02)) && !can(admin, "orders.adjustBalance")) {
+      throw new DomainError("FORBIDDEN", "Subir el equivalente en USD por encima de lo calculado con la tasa solo lo puede hacer un administrador. Apruébalo con el monto calculado o pide a un administrador que lo corrija.");
+    }
     const claimed = await tx.payment.updateMany({
       where: { id: p.id, status: "AWAITING_VERIFICATION" },
       data:
@@ -1467,6 +1532,28 @@ export async function handlePaypalWebhook(d: Deps, headers: Record<string, strin
         const r = refundEventInput(resource);
         if (!r) throw new DomainError("VALIDATION", "Reembolso sin captura asociada.");
         await onPaypalRefundCompleted(d, r);
+        break;
+      }
+      case "PAYMENT.CAPTURE.REVERSED": {
+        // Contracargo (el banco de la tarjeta devolvió el dinero al comprador) o reverso de PayPal: el dinero ya no
+        // está, igual que en un reembolso. Se descuenta del pedido (reabre el saldo; sin saldo en cero no hay
+        // certificado) y queda un aviso para el equipo.
+        const r = refundEventInput(resource);
+        if (!r) throw new DomainError("VALIDATION", "Reverso sin captura asociada.");
+        const res = await onPaypalRefundCompleted(d, { ...r, reason: `Contracargo / reverso de PayPal${r.reason ? `: ${r.reason}` : ""}` });
+        const p = await d.db.payment.findUnique({ where: { paypalCaptureId: r.captureId }, select: { orderId: true } });
+        if (p && !("duplicate" in res && res.duplicate)) {
+          await addOrderEvent(d.db, p.orderId, "ATTENTION", { type: "WEBHOOK" }, "PayPal revirtió un pago (contracargo del banco del comprador): el monto se descontó del pedido. Revisa el caso en PayPal y el acceso del médico.", { captureId: r.captureId, refundId: r.refundId });
+        }
+        break;
+      }
+      case "CUSTOMER.DISPUTE.CREATED": {
+        // El comprador abrió una disputa: todavía no se movió dinero, pero hay que responderla en PayPal a tiempo.
+        const disputed = (resource.disputed_transactions as { seller_transaction_id?: string }[] | undefined) ?? [];
+        const captureId = disputed.map((t) => t.seller_transaction_id).find(Boolean);
+        const p = captureId ? await d.db.payment.findUnique({ where: { paypalCaptureId: captureId }, select: { orderId: true } }) : null;
+        if (!p) throw new DomainError("NOT_FOUND", "Disputa de una captura desconocida.");
+        await addOrderEvent(d.db, p.orderId, "ATTENTION", { type: "WEBHOOK" }, `El comprador abrió una disputa en PayPal (${String(resource.reason ?? "sin motivo")}, caso ${String(resource.dispute_id ?? "")}). Respóndela en PayPal: si se pierde, PayPal devuelve el dinero y se descontará del pedido.`, { captureId, disputeId: resource.dispute_id ?? null });
         break;
       }
       default:

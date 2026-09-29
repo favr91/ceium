@@ -194,8 +194,8 @@ export function AccountView({ data, prompt, recoveryLeft }: { data: AccountOverv
           </label>
           <label className="field">
             <span>Contraseña nueva</span>
-            <input className="inp" type="password" autoComplete="new-password" required minLength={10} value={pwForm.next} onChange={(e) => setPwForm({ ...pwForm, next: e.target.value })} />
-            <span className="help">Al menos 10 caracteres. Mejor una frase larga que no uses en otro sitio.</span>
+            <input className="inp" type="password" autoComplete="new-password" required minLength={10} maxLength={72} value={pwForm.next} onChange={(e) => setPwForm({ ...pwForm, next: e.target.value })} />
+            <span className="help">Entre 10 y 72 caracteres. Mejor una frase larga que no uses en otro sitio.</span>
           </label>
           <label className="field">
             <span>Repite la contraseña nueva</span>

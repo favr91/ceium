@@ -10,6 +10,7 @@ import { withTx, type Deps } from "@/server/deps";
 import { DomainError } from "@/server/errors";
 import { exchangeRateStatus, isPlaceholderText, manualMethodProblems, SETTING_KEYS, type ExchangeRateSetting, type ManualMethodConfig } from "@/server/settings";
 import { readSetting } from "@/server/deps";
+import { productionConfigProblems } from "@/server/config-check";
 
 const manualMethod = z.object({
   method: z.enum(["PAGO_MOVIL", "TRANSFERENCIA", "ZELLE", "EFECTIVO"]),
@@ -96,6 +97,8 @@ export interface SettingsWarning {
 export async function getSettingsWarnings(d: Deps, actor: SessionUser): Promise<SettingsWarning[]> {
   await requireAdmin(d.db, actor, "orders.view");
   const out: SettingsWarning[] = [];
+  // Configuración del servidor (variables de entorno) que deja algo sin funcionar en producción.
+  for (const message of productionConfigProblems().warnings) out.push({ key: "env", severity: "warning", message });
   const methods = await readSetting<ManualMethodConfig[]>(d.db, SETTING_KEYS.manualMethods, []);
   for (const m of methods) {
     const problems = manualMethodProblems(m);

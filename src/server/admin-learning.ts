@@ -414,7 +414,7 @@ export async function readCertificatePdf(d: Deps, user: SessionUser, certificate
   if (!cert) throw new DomainError("NOT_FOUND", "El certificado no existe.");
   const exists = async (p: string | null) => (p ? fs.stat(path.resolve(/*turbopackIgnore: true*/ p)).then(() => true, () => false) : false);
   if (cert.status === "ISSUED" && !(await exists(cert.pdfPath))) {
-    await deliverCertificate(d, cert.id);
+    await deliverCertificate(d, cert.id, { pdfOnly: true });
     cert = await d.db.certificate.findUniqueOrThrow({ where: { id: certificateId } });
   }
   if (!cert.pdfPath || !(await exists(cert.pdfPath))) throw new DomainError("NOT_FOUND", "El PDF del certificado no está disponible.");

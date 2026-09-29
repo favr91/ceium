@@ -1,7 +1,11 @@
 "use server";
 // Acciones de la página del pedido (/pedido/[token]): iniciar el pago con PayPal y registrar un pago manual
 // (pago móvil / transferencia…) con su comprobante. El token del pedido es la única credencial del comprador.
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { clientIp, ipKey } from "@/server/client-ip";
+import { errorParams } from "@/server/flash";
+import { record, tooMany } from "@/server/rate-limit";
 import { services } from "@/server/services";
 import { isDomainError } from "@/server/errors";
 import { normalizeReference, parseAmountCents, proofError } from "@/components/checkout/manual-payment-fields";
@@ -20,7 +24,7 @@ export async function payOrderWithPaypal(token: string, installmentId: string | 
     target = (await s.payments.startPaypalPayment(order.id, ins ? { installmentId: ins.id } : undefined)).approveUrl;
   } catch (e) {
     if (!isDomainError(e)) console.error("[pedido/paypal]", e);
-    target = back(token, { pago: "error", motivo: isDomainError(e) ? e.message : "No pudimos iniciar el pago con PayPal. Intenta de nuevo." });
+    target = back(token, { pago: "error", ...errorParams(isDomainError(e) ? e.message : "No pudimos iniciar el pago con PayPal. Intenta de nuevo.") });
   }
   redirect(target);
 }
@@ -32,6 +36,10 @@ export async function reportManualPayment(token: string, cuota: string | null, f
   const keep: Record<string, string> = cuota ? { cuota } : {};
   let target: string;
   try {
+    // Comprobantes por conexión (cada uno guarda un archivo de hasta 10 MB y avisa al equipo).
+    const key = ipKey("proof", clientIp(await headers()));
+    if (tooMany(key, 10, 60 * 60_000)) throw Object.assign(new Error("Registraste demasiados pagos seguidos. Espera un rato o escríbenos por WhatsApp."), { code: "VALIDATION" });
+    record(key);
     const order = await s.orders.getOrderByToken(token);
     const method = String(formData.get("method") ?? "");
     const options = await s.orders.listPaymentOptions();
@@ -47,14 +55,15 @@ export async function reportManualPayment(token: string, cuota: string | null, f
       if (problem) throw Object.assign(new Error(problem), { code: "VALIDATION" });
     }
     const proofFile = hasFile ? await s.payments.storeProofFile(order.id, file!.name, new Uint8Array(await file!.arrayBuffer())) : null;
-    const paidAtRaw = String(formData.get("paidAt") ?? "");
+    const paidAtRaw = String(formData.get("paidAt") ?? "").trim();
+    if (paidAtRaw && !/^\d{4}-\d{2}-\d{2}$/.test(paidAtRaw)) throw Object.assign(new Error("Ingresa la fecha del pago."), { code: "VALIDATION" });
     await s.payments.recordManualPayment({
       orderId: order.id,
       method: opt.method as "PAGO_MOVIL" | "TRANSFERENCIA" | "ZELLE" | "EFECTIVO",
       reference: normalizeReference(String(formData.get("reference") ?? "")),
       bank: String(formData.get("bank") ?? "") || null,
       // Mismo intérprete que el checkout: «33.705» es Bs. 33.705,00 (punto de miles), no Bs. 33,71.
-      amountCents: parseAmountCents(String(formData.get("amount") ?? "")),
+      amountCents: parseAmountCents(String(formData.get("amount") ?? "").slice(0, 60)),
       currency: opt.currency,
       paidAt: paidAtRaw ? new Date(`${paidAtRaw}T12:00:00`) : null,
       proofFile,
@@ -66,7 +75,7 @@ export async function reportManualPayment(token: string, cuota: string | null, f
   } catch (e) {
     const known = isDomainError(e) || (e as { code?: string })?.code === "VALIDATION";
     if (!known) console.error("[pedido/pago-manual]", e);
-    target = back(token, { ...keep, pago: "error", motivo: known ? (e as Error).message : "No pudimos registrar tu pago. Intenta de nuevo." }, hash);
+    target = back(token, { ...keep, pago: "error", ...errorParams(known ? (e as Error).message : "No pudimos registrar tu pago. Intenta de nuevo.") }, hash);
   }
   redirect(target);
 }

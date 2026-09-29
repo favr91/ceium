@@ -13,6 +13,10 @@ import path from "node:path";
 import { CART_COOKIE } from "@/server/cart";
 import { isDomainError } from "@/server/errors";
 import { services } from "@/server/services";
+import { clientIp, ipKey } from "@/server/client-ip";
+import { declaredLengthOk } from "@/server/http-body";
+import { errorParams } from "@/server/flash";
+import { record, tooMany } from "@/server/rate-limit";
 import { CHECKOUT_COOKIE, findPendingOrder, readCheckoutCookies } from "@/app/(checkout)/checkout/data";
 import { MANUAL_FIELD_ORDER, normalizeReference, parseAmountCents, todayCaracas, validateManualPayment, type ManualErrors, type ManualField } from "@/components/checkout/manual-payment-fields";
 
@@ -36,7 +40,9 @@ function reply(req: Request, status: number, body: Body, clear: string[] = []): 
     to = new URL("/checkout", req.url);
     to.searchParams.set("pago", body.expired ? "vencido" : "error");
     const first = MANUAL_FIELD_ORDER.find((k) => body.fieldErrors?.[k]);
-    to.searchParams.set("motivo", first ? body.fieldErrors![first]! : body.formError);
+    const f = errorParams(first ? body.fieldErrors![first]! : body.formError);
+    to.searchParams.set("motivo", f.motivo);
+    to.searchParams.set("firma", f.firma);
   }
   headers.set("location", to.toString());
   return new Response(null, { status: 303, headers });
@@ -53,6 +59,12 @@ export async function POST(req: Request) {
   const { lines, pendingRef } = await readCheckoutCookies();
   const order = await findPendingOrder(lines, pendingRef);
   if (!order) return fail(409, "Tu reserva ya no está vigente o el pedido ya tiene un pago registrado. Revisa tu pedido y vuelve a intentarlo.", undefined, true);
+
+  // El comprobante pesa hasta 10 MB: se rechaza antes de leer (req.formData() carga todo en memoria).
+  if (!declaredLengthOk(req, 11 * 1024 * 1024)) return fail(413, "El comprobante es demasiado grande (máx. 10 MB).");
+  const key = ipKey("proof", clientIp(req.headers));
+  if (tooMany(key, 10, 60 * 60_000)) return fail(429, "Registraste demasiados pagos seguidos. Espera un rato o escríbenos por WhatsApp.");
+  record(key);
 
   let fd: FormData;
   try {

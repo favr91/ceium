@@ -66,7 +66,7 @@ function proofPng(): Buffer {
   ihdr.writeUInt32BE(8, 4);
   ihdr[8] = 8;
   ihdr[9] = 2;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(Buffer.alloc(8 * 25, 0x33))), chunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(Buffer.concat(Array.from({ length: 8 }, () => Buffer.concat([Buffer.from([0]), Buffer.alloc(24, 0x33)]))))), chunk("IEND", Buffer.alloc(0))]);
 }
 const PROOF = { name: "comprobante.png", mimeType: "image/png", buffer: proofPng() };
 const bs = (usdCents: number) => (Math.round(usdCents * RATE) / 100).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -129,6 +129,7 @@ async function payManual(page: Page, url: string, usdCents: number, reference: s
   expect(new URL(page.url()).searchParams.get("pago"), new URL(page.url()).searchParams.get("motivo") ?? "").toBe("registrado");
 }
 
+const SEDES = ["Barquisimeto", "Caracas", "Maracaibo"];
 const S = { C: null as DiplomaCohort | null, co: null as Checkout | null, uid: 0, email: uniqueEmail("x4gate"), monthlyWas: "" };
 
 test.beforeAll(async ({ request }) => {
@@ -184,7 +185,9 @@ test("G1 · precio mensual editado a mitad del plan: la tienda lo refleja y la c
   const newMonthly = bought / 100 + 19;
   try {
     const inp = admin.getByLabel(/^Cuota mensual para todas las sedes/).first();
-    S.monthlyWas = await inp.inputValue();
+    // Se guarda la cuota de CADA sede: si difieren, el campo de grupo está vacío («Varias») y restaurarlo con ese
+    // valor vaciaba las tres cuotas (y ensuciaba las pruebas siguientes: «9 cuotas de $157.78»).
+    S.monthlyWas = JSON.stringify(Object.fromEntries(await Promise.all(SEDES.map(async (sede) => [sede, await admin.getByLabel(`Cuota mensual Semipresencial ${sede}`, { exact: true }).inputValue()]))));
     await inp.fill(String(newMonthly));
     await admin.getByRole("region", { name: "Cambios sin guardar" }).getByRole("button", { name: "Guardar" }).click();
     await expect(admin.getByRole("region", { name: "Cambios sin guardar" })).toHaveCount(0, { timeout: 30_000 });
@@ -218,7 +221,9 @@ test("G1 · precio mensual editado a mitad del plan: la tienda lo refleja y la c
     // Deja el precio como estaba.
     const { page: admin2, close: close2 } = await adminPage(browser, `/admin/products/${S.C.productId}`);
     try {
-      await admin2.getByLabel(/^Cuota mensual para todas las sedes/).first().fill(S.monthlyWas);
+      for (const [sede, value] of Object.entries(JSON.parse(S.monthlyWas || "{}") as Record<string, string>)) {
+        await admin2.getByLabel(`Cuota mensual Semipresencial ${sede}`, { exact: true }).fill(value);
+      }
       await admin2.getByRole("region", { name: "Cambios sin guardar" }).getByRole("button", { name: "Guardar" }).click();
       await expect(admin2.getByRole("region", { name: "Cambios sin guardar" })).toHaveCount(0, { timeout: 30_000 });
     } finally {

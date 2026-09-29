@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { fixture, one, q, uniqueEmail } from "./support/purchase";
+import sharp from "sharp";
 
 // c4 · Pago móvil y transferencia con comprobante, en el checkout (/checkout con el pedido en curso y el cupo
 // reservado): monto en Bs. a la tasa del panel y su equivalente en USD, datos de CEIUM con «Copiar», y registro del
@@ -174,7 +175,9 @@ test.describe("c4 pago móvil y transferencia con comprobante", () => {
     expect(Math.abs(p.amountUsdCents - o.dueNowCents)).toBeLessThanOrEqual(1);
     expect(new Date(typeof p.paidAt === "number" ? p.paidAt : Date.parse(String(p.paidAt))).toISOString().slice(0, 10)).toBe(today());
     const proofPath = path.isAbsolute(p.proofFile) ? p.proofFile : path.resolve(__dirname, "../..", p.proofFile);
-    expect(fs.readFileSync(proofPath).equals(fs.readFileSync(PROOF))).toBe(true);
+    // Se guarda re-codificado (sin metadatos: ubicación, modelo del teléfono): la misma imagen, no los mismos bytes.
+    const [stored, original] = await Promise.all([sharp(fs.readFileSync(proofPath)).metadata(), sharp(fs.readFileSync(PROOF)).metadata()]);
+    expect([stored.format, stored.width, stored.height, stored.exif]).toEqual(["png", original.width, original.height, undefined]);
     expect(one<{ status: string; paymentMethod: string }>(`SELECT status, paymentMethod FROM "Order" WHERE id = ?`, o.id)).toMatchObject({ status: "AWAITING_VERIFICATION", paymentMethod: "TRANSFERENCIA" });
     expect(one<{ status: string }>(`SELECT status FROM SeatReservation WHERE orderId = ?`, o.id).status).toBe("HELD");
     await expect.poll(() => q(`SELECT id FROM EmailOutbox WHERE template = 'payment_under_verification' AND "to" = ?`, email).length).toBe(1);

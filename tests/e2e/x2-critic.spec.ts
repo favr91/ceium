@@ -19,6 +19,7 @@ import { parse as parseDotenv } from "dotenv";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { MOODLE, PAYPAL, cohort, customerOf, emails, enrollments, events, fixture, moodleCalls, moodleState, one, order, q, reservationOf, runCron, uniqueEmail, waitForOrderStatus } from "./support/purchase";
 import { todayCaracas } from "./support/dates";
+import sharp from "sharp";
 
 // Casos independientes (cada uno crea su cohorte): sin modo serial, un fallo no oculta los siguientes.
 test.beforeEach(({}, info) => {
@@ -275,14 +276,18 @@ test("/pedido acepta un comprobante de 3 MB (foto de teléfono; el límite anunc
   await page.getByLabel("Banco de origen").fill("Banesco (0134)");
   await page.getByLabel("Fecha del pago").fill(todayCaracas());
   await page.getByLabel("Cédula del titular").fill("V-14567890");
-  const big = Buffer.concat([proofPng(), Buffer.from(Array.from({ length: 3 * 1024 * 1024 }, (_, i) => (i * 2654435761) & 0xff))]);
+  // Foto real de ~3 MB (ruido: no se comprime); el servidor la re-codifica sin metadatos, así que se compara la imagen.
+  const noise = Buffer.from(Array.from({ length: 1000 * 1000 * 3 }, (_, i) => (i * 2654435761) >>> 24));
+  const big = await sharp(noise, { raw: { width: 1000, height: 1000, channels: 3 } }).png({ compressionLevel: 0 }).toBuffer();
+  expect(big.length).toBeGreaterThan(2.5 * 1024 * 1024);
   await page.getByLabel(/Comprobante/).setInputFiles({ name: "IMG_20260924_101500.png", mimeType: "image/png", buffer: big });
   await page.getByRole("button", { name: "Enviar datos del pago" }).click();
   await page.waitForURL(/[?&]pago=(registrado|error)/, { timeout: 20_000 });
   expect(new URL(page.url()).searchParams.get("pago"), new URL(page.url()).searchParams.get("motivo") ?? "").toBe("registrado");
   expect(order(o.orderId).status).toBe("AWAITING_VERIFICATION");
   const p = one<{ proofFile: string }>(`SELECT proofFile FROM Payment WHERE orderId = ?`, o.orderId);
-  expect(fs.statSync(path.resolve(__dirname, "../..", p.proofFile)).size).toBe(big.length);
+  const stored = await sharp(fs.readFileSync(path.resolve(__dirname, "../..", p.proofFile))).metadata();
+  expect([stored.format, stored.width, stored.height]).toEqual(["png", 1000, 1000]);
 });
 
 test("/pedido: monto escrito con punto de miles y sin decimales («65.537») se registra como Bs. 65.537,00, no como Bs. 65,54", async ({ page }) => {

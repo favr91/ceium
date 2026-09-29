@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCheckout } from "@/server/orders";
 import { adminVerifyPayment, capturePaypalReturn, reconcilePaypalPayments, recordManualPayment, startPaypalPayment, storeProofFile } from "@/server/payments";
-import { buyer, setupContext, type TestContext } from "./helpers/setup";
+import { buyer, setupContext, type TestContext, TINY_JPEG } from "./helpers/setup";
 
 let ctx: TestContext;
 beforeEach(async () => {
@@ -21,7 +21,7 @@ describe("PayPal aprobado con el pago móvil del mismo pedido en verificación",
   it("no captura, informa MANUAL_AWAITING y nunca captura después (retorno recargado, webhook, conciliación)", async () => {
     const o = await createCheckout(ctx.d, { customer: buyer(), items: [{ productId: ctx.fx.course, modality: "SEMIPRESENCIAL", cohortId: ctx.fx.courseCohort, planKind: "FULL" }], paymentMethod: "PAGO_MOVIL" });
     const s = await startPaypalPayment(ctx.d, o.id);
-    const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", new Uint8Array([1, 2, 3]));
+    const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", TINY_JPEG);
     const pm = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "01349876", bank: "Banesco", amountCents: 1_800_000, currency: "VES", exchangeRate: 100, proofFile: proof });
     expect(pm.status).toBe("AWAITING_VERIFICATION");
 

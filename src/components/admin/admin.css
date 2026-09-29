@@ -527,3 +527,5 @@
   .acc .card { margin-top: 12px; }
   .acc-code-list { grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 14px; }
 }
+.adm-weakpw { margin: 16px 24px 0; }
+@media (max-width: 768px) { .adm-weakpw { margin: 0; } }

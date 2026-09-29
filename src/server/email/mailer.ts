@@ -92,6 +92,9 @@ export function createSmtpMailer(opts: SmtpOptions, mailDir?: string): Mailer {
     host: opts.host,
     port: opts.port,
     secure: opts.secure,
+    // Sin TLS directo (587): exigir STARTTLS. Sin esto, alguien en medio podía quitarlo y leer el usuario/clave SMTP
+    // y los correos (con contraseñas temporales de Moodle) en claro.
+    requireTLS: !opts.secure,
     auth: opts.user ? { user: opts.user, pass: opts.pass } : undefined,
   });
   return {

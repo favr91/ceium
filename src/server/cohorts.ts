@@ -29,7 +29,8 @@ const baseFields = {
   status: z.enum(COHORT_STATUSES),
   sessions: z.array(sessionSchema).max(200).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
-  scheduleUrl: z.string().max(1000).nullable().optional(),
+  // Enlace público en la ficha: solo https:// o una ruta del propio sitio (nada de javascript:, data: ni http).
+  scheduleUrl: z.string().max(1000).regex(/^(https:\/\/|\/(?!\/))\S*$/, "El enlace del cronograma debe empezar por https://").nullable().optional(),
   isSample: z.boolean().optional(),
 };
 

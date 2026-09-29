@@ -223,6 +223,8 @@ export async function uploadProductImages(productId: string, formData: FormData)
 export async function updateImageAltAction(productId: string, imageId: string, alt: string): Promise<Res> {
   const user = await requireAdminAction();
   try {
+    // La imagen debe ser de este programa (el id viene del cliente).
+    if (!(await prisma.productImage.findFirst({ where: { id: imageId, productId }, select: { id: true } }))) return { ok: false, error: "La imagen no es de este programa." };
     await services().catalog.updateProductImage(user, imageId, { alt: alt.trim() || null });
     refresh(productId);
     return { ok: true };
@@ -249,6 +251,7 @@ export async function saveChoiceAction(input: { id?: string; productId: string; 
 export async function deleteChoiceAction(productId: string, choiceId: string): Promise<Res> {
   const user = await requireAdminAction();
   try {
+    if (!(await prisma.productChoice.findFirst({ where: { id: choiceId, productId }, select: { id: true } }))) return { ok: false, error: "La opción no es de este programa." };
     await services().catalog.deleteProductChoice(user, choiceId);
     refresh(productId);
     return { ok: true };

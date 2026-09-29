@@ -65,7 +65,7 @@ function proofPng(): Buffer {
   ihdr.writeUInt32BE(8, 4);
   ihdr[8] = 8;
   ihdr[9] = 2;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(Buffer.alloc(8 * 25, 0x40))), chunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(Buffer.concat(Array.from({ length: 8 }, () => Buffer.concat([Buffer.from([0]), Buffer.alloc(24, 0x40)]))))), chunk("IEND", Buffer.alloc(0))]);
 }
 const PROOF = { name: "comprobante.png", mimeType: "image/png", buffer: proofPng() };
 const bs = (usdCents: number) => (Math.round(usdCents * RATE) / 100).toLocaleString("es-VE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

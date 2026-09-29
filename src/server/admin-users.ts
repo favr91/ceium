@@ -6,7 +6,7 @@ import { recordAudit } from "@/server/audit";
 import { withTx, type Deps, type Tx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
 
-const password = z.string().min(10, "La contraseña debe tener al menos 10 caracteres").max(200);
+const password = z.string().min(10, "La contraseña debe tener al menos 10 caracteres").max(72, "La contraseña puede tener hasta 72 caracteres");
 
 export const createAdminUserSchema = z.object({ email: z.email().transform((e) => e.toLowerCase()), name: z.string().trim().min(1).max(200), role: z.enum(["ADMIN", "STAFF"]), password }).strict();
 export const updateAdminUserSchema = z.object({ name: z.string().trim().min(1).max(200), role: z.enum(["ADMIN", "STAFF"]), active: z.boolean() }).partial().strict();

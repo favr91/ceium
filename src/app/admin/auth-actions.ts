@@ -3,9 +3,9 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/server/db";
-import { ADMIN_CHALLENGE_COOKIE, ADMIN_DEVICE_COOKIE, ADMIN_SESSION_COOKIE, adminCookieOptions, completeLoginChallenge, login, logout } from "@/server/auth";
+import { ADMIN_CHALLENGE_COOKIE, ADMIN_DEVICE_COOKIE, ADMIN_SESSION_COOKIE, ADMIN_WEAK_PASSWORD_COOKIE, adminCookieOptions, completeLoginChallenge, login, logout } from "@/server/auth";
 import { notifyRecoveryUsed } from "@/server/admin-account";
-import { clientIp } from "@/server/client-ip";
+import { clientIp, ipKey } from "@/server/client-ip";
 import { isDomainError } from "@/server/errors";
 import { record, tooMany } from "@/server/rate-limit";
 import { services } from "@/server/services";
@@ -19,6 +19,9 @@ const IP_LIMIT = 20;
 const IP_WINDOW_MS = 15 * 60_000;
 const TOO_MANY = "Demasiados intentos desde esta conexión. Espera unos minutos e inténtalo de nuevo.";
 
+// Contraseñas de ejemplo del seed (públicas): el panel muestra un aviso fijo hasta cambiarla (ver AdminFrame).
+const EXAMPLE_PASSWORDS = new Set(["ceium-admin-2026", "ceium-staff-2026"]);
+
 function safeNext(raw: FormDataEntryValue | null): string {
   const n = String(raw ?? "");
   return n.startsWith("/admin") && !n.startsWith("//") && !n.startsWith("/admin/login") ? n : "/admin/products";
@@ -26,23 +29,27 @@ function safeNext(raw: FormDataEntryValue | null): string {
 
 export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const email = String(formData.get("email") ?? "");
+  const password = String(formData.get("password") ?? "");
   const next = safeNext(formData.get("next"));
   const h = await headers();
   const ip = clientIp(h);
-  if (tooMany(`admin-login:${ip}`, IP_LIMIT, IP_WINDOW_MS)) return { error: TOO_MANY, email };
+  if (tooMany(ipKey("admin-login", ip), IP_LIMIT, IP_WINDOW_MS)) return { error: TOO_MANY, email };
   const jar = await cookies();
   let step2 = false;
   try {
-    const r = await login(prisma, { email, password: String(formData.get("password") ?? ""), ip, userAgent: h.get("user-agent"), deviceToken: jar.get(ADMIN_DEVICE_COOKIE)?.value });
+    const weak = EXAMPLE_PASSWORDS.has(password);
+    const r = await login(prisma, { email, password, ip, userAgent: h.get("user-agent"), deviceToken: jar.get(ADMIN_DEVICE_COOKIE)?.value });
     if (r.kind === "challenge") {
       jar.set(ADMIN_CHALLENGE_COOKIE, r.token, adminCookieOptions(r.expiresAt));
       step2 = true;
     } else {
       jar.set(ADMIN_SESSION_COOKIE, r.token, adminCookieOptions(r.expiresAt));
     }
+    if (weak) jar.set(ADMIN_WEAK_PASSWORD_COOKIE, "1", adminCookieOptions(new Date(Date.now() + 30 * 86_400_000)));
+    else jar.delete(ADMIN_WEAK_PASSWORD_COOKIE);
   } catch (e) {
     if (isDomainError(e)) {
-      record(`admin-login:${ip}`);
+      record(ipKey("admin-login", ip));
       return { error: e.message, email };
     }
     console.error("[admin/login]", e);
@@ -56,7 +63,7 @@ export async function verifyLoginCodeAction(prev: VerifyState, formData: FormDat
   const recovery = formData.get("recovery") === "1";
   const h = await headers();
   const ip = clientIp(h);
-  if (tooMany(`admin-login:${ip}`, IP_LIMIT, IP_WINDOW_MS)) return { error: TOO_MANY, recovery };
+  if (tooMany(ipKey("admin-login", ip), IP_LIMIT, IP_WINDOW_MS)) return { error: TOO_MANY, recovery };
   const jar = await cookies();
   let dest = safeNext(formData.get("next"));
   try {
@@ -77,7 +84,7 @@ export async function verifyLoginCodeAction(prev: VerifyState, formData: FormDat
     }
   } catch (e) {
     if (isDomainError(e)) {
-      record(`admin-login:${ip}`);
+      record(ipKey("admin-login", ip));
       // Desafío vencido o agotado: de vuelta al paso 1.
       if (/Vuelve a escribir tu correo/.test(e.message)) {
         jar.delete(ADMIN_CHALLENGE_COOKIE);

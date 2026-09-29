@@ -5,13 +5,15 @@
 //   - manual (pago móvil, transferencia, Zelle, efectivo) → vuelve a /checkout, que muestra la reserva con su
 //     cuenta regresiva y los datos para pagar.
 // Si el médico vuelve atrás o envía dos veces con el mismo carrito, se reutiliza el pedido en curso.
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import type { PaymentMethod } from "@/generated/prisma/client";
 import { cartCheckoutItems, resolveCart } from "@/server/cart";
 import { prisma } from "@/server/db";
+import { clientIp, ipKey } from "@/server/client-ip";
 import { isDomainError } from "@/server/errors";
+import { record, tooMany } from "@/server/rate-limit";
 import { configFromEnv } from "@/server/deps";
 import { services } from "@/server/services";
 import { FIELD_ORDER, normalizeCedula, normalizePhone, specialtyOf, validateCheckout, type CheckoutField, type CheckoutValues } from "@/components/checkout/checkout-fields";
@@ -35,6 +37,10 @@ function checkoutPaypalUrls() {
 }
 
 const fail = (formError: string, fieldErrors?: Partial<Record<CheckoutField, string>>): PlaceOrderState => ({ formError, fieldErrors, at: Date.now() });
+
+// Pedidos nuevos por conexión: cada uno aparta cupos, así que un script no puede acaparar las cohortes.
+const ORDERS_PER_IP = 10;
+const ORDERS_WINDOW_MS = 60 * 60_000;
 
 export async function placeOrder(_prev: PlaceOrderState, fd: FormData): Promise<PlaceOrderState> {
   const v = values(fd);
@@ -60,6 +66,9 @@ export async function placeOrder(_prev: PlaceOrderState, fd: FormData): Promise<
     if (existing && existing.customer.email === email) {
       order = existing;
     } else {
+      const key = ipKey("checkout", clientIp(await headers()));
+      if (tooMany(key, ORDERS_PER_IP, ORDERS_WINDOW_MS)) return fail("Se crearon demasiados pedidos desde esta conexión. Espera un rato o escríbenos por WhatsApp.");
+      record(key);
       order = await s.orders.createCheckout({
         customer: {
           email,

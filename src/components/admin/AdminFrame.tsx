@@ -29,7 +29,7 @@ function isActive(path: string, href: string) {
   return href === "/admin" ? path === "/admin" : path === href || path.startsWith(href + "/");
 }
 
-export function AdminFrame({ user, children }: { user: { name: string; email: string; role: string }; children: React.ReactNode }) {
+export function AdminFrame({ user, children, weakPassword = false }: { user: { name: string; email: string; role: string }; children: React.ReactNode; weakPassword?: boolean }) {
   const path = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -130,7 +130,17 @@ export function AdminFrame({ user, children }: { user: { name: string; email: st
           </li>
         </ul>
       </nav>
-      <main className="adm-main">{children}</main>
+      <main className="adm-main">
+        {weakPassword ? (
+          <div className="banner critical adm-weakpw" role="note">
+            <Icon name="alert" />
+            <span>
+              <b>Entraste con una contraseña de ejemplo, que es pública.</b> Cámbiala ya en <Link href="/admin/account" style={{ textDecoration: "underline" }}>Mi cuenta y seguridad</Link> y activa la verificación en dos pasos.
+            </span>
+          </div>
+        ) : null}
+        {children}
+      </main>
     </>
   );
 }

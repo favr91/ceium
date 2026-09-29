@@ -11,7 +11,7 @@ import {
   startPaypalPayment,
   storeProofFile,
 } from "@/server/payments";
-import { buyer, setupContext, type TestContext } from "./helpers/setup";
+import { buyer, setupContext, type TestContext, TINY_JPEG } from "./helpers/setup";
 
 let ctx: TestContext;
 beforeEach(async () => {
@@ -32,7 +32,7 @@ async function semiCourseOrder(method: "PAYPAL" | "PAGO_MOVIL" = "PAGO_MOVIL", p
 describe("pago manual (pago móvil / transferencia)", () => {
   it("comprobante → verificación → admin aprueba → cupo confirmado + matrícula Moodle + correos", async () => {
     const o = await semiCourseOrder("PAGO_MOVIL");
-    const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", new Uint8Array([1, 2, 3]));
+    const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", TINY_JPEG);
     const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "00123456", bank: "Banesco", amountCents: 1_800_000, currency: "VES", exchangeRate: 100, proofFile: proof });
     expect(fs.existsSync(proof)).toBe(true);
     expect(p.status).toBe("AWAITING_VERIFICATION");

@@ -6,6 +6,7 @@
 import { addCartLine, MAX_QUANTITY, removeCartLine, type CartLineInput } from "@/server/cart";
 import { prisma } from "@/server/db";
 import { HTTP_STATUS, isDomainError } from "@/server/errors";
+import { readTextLimited } from "@/server/http-body";
 import { getCart, readCartLines, writeCartLines } from "@/app/(store)/cart/data";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ function fail(e: unknown) {
 
 async function body(req: Request): Promise<Record<string, unknown>> {
   try {
-    const b = await req.json();
+    const b = JSON.parse(await readTextLimited(req, 16 * 1024)); // una línea del carrito son unos cientos de bytes
     return b && typeof b === "object" ? b : {};
   } catch {
     return {};

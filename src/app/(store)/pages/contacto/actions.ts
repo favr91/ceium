@@ -9,6 +9,8 @@ import { z } from "zod";
 import { contactInbox } from "@/components/store/pages/pages-data";
 import { esc } from "@/server/email/templates";
 import { services } from "@/server/services";
+import { clientIp } from "@/server/client-ip";
+import { hit } from "@/server/rate-limit";
 
 export type ContactFormState =
   | { status: "idle" }
@@ -26,19 +28,8 @@ const WINDOW_MS = 10 * 60 * 1000;
 /** Por remitente (IP + correo) y, más holgado, por IP (varias personas pueden compartir la IP de una clínica). */
 const MAX_PER_SENDER = 5;
 const MAX_PER_IP = 30;
-const g = globalThis as unknown as { __ceiumContactHits?: Map<string, number[]> };
-const hits = (g.__ceiumContactHits ??= new Map<string, number[]>());
-
-function throttled(key: string, max: number, now: number): boolean {
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < WINDOW_MS);
-  if (recent.length >= max) {
-    hits.set(key, recent);
-    return true;
-  }
-  recent.push(now);
-  hits.set(key, recent);
-  return false;
-}
+// Límite en memoria compartido (limpia claves viejas; ver server/rate-limit.ts).
+const throttled = (key: string | null, max: number, now: number) => !hit(key ? `contact:${key}` : null, max, WINDOW_MS, now).ok;
 
 export async function sendContactMessage(_prev: ContactFormState, formData: FormData): Promise<ContactFormState> {
   const raw = {
@@ -64,9 +55,11 @@ export async function sendContactMessage(_prev: ContactFormState, formData: Form
   const data = parsed.data;
 
   const h = await headers();
-  const ip = (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || h.get("x-real-ip") || "local";
+  // La IP que agrega nuestro proxy (el primer valor de X-Forwarded-For lo escribe el cliente y se puede inventar).
+  const ip = clientIp(h);
   const now = Date.now();
-  if (throttled(`ip:${ip}`, MAX_PER_IP, now) || throttled(`from:${ip}:${data.email.toLowerCase()}`, MAX_PER_SENDER, now)) {
+  // Sin IP conocida (sin proxy) cuenta solo por remitente: no se mezcla a todos los visitantes en un mismo límite.
+  if (throttled(ip ? `ip:${ip}` : null, MAX_PER_IP, now) || throttled(`from:${ip ?? "?"}:${data.email.toLowerCase()}`, MAX_PER_SENDER, now)) {
     return { status: "error", message: "Enviaste varios mensajes seguidos. Espera unos minutos e inténtalo de nuevo.", values: raw };
   }
 

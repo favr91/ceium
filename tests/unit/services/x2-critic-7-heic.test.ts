@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCheckout } from "@/server/orders";
 import { storeProofFile } from "@/server/payments";
 import { PROOF_ACCEPT, proofError } from "@/components/checkout/manual-payment-fields";
-import { buyer, setupContext, type TestContext } from "./helpers/setup";
+import { buyer, setupContext, type TestContext, TINY_JPEG } from "./helpers/setup";
 
 const HEIC = fs.readFileSync(path.join(__dirname, "../../e2e/fixtures/x2/comprobante.heic"));
 const ftyp = (major: string, ...compat: string[]) => {
@@ -49,11 +49,14 @@ describe("comprobante HEIC", () => {
 
   it("acepta JPEG/PNG/PDF reales y no confunde AVIF ni bytes cortos con HEIC", async () => {
     const o = await order();
-    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1]);
-    await expect(storeProofFile(ctx.d, o.id, "captura.jpg", jpeg)).resolves.toMatch(/\.jpg$/);
+    const jpegHeaderOnly = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1]);
+    await expect(storeProofFile(ctx.d, o.id, "captura.jpg", TINY_JPEG)).resolves.toMatch(/\.jpg$/);
     await expect(storeProofFile(ctx.d, o.id, "recibo.pdf", new Uint8Array(Buffer.from("%PDF-1.4\n%…")))).resolves.toMatch(/\.pdf$/);
-    await expect(storeProofFile(ctx.d, o.id, "a.webp", ftyp("avif", "mif1", "miaf"))).resolves.toMatch(/\.webp$/);
-    await expect(storeProofFile(ctx.d, o.id, "a.jpg", new Uint8Array([1, 2, 3]))).resolves.toMatch(/\.jpg$/);
+    // Se valida por contenido (y las fotos se vuelven a codificar): una cabecera sin imagen, un AVIF renombrado a
+    // .webp o bytes sueltos no entran, pero tampoco se confunden con HEIC.
+    for (const [name, bytes] of [["captura.jpg", jpegHeaderOnly], ["a.webp", ftyp("avif", "mif1", "miaf")], ["a.jpg", new Uint8Array([1, 2, 3])]] as const) {
+      await expect(storeProofFile(ctx.d, o.id, name, bytes)).rejects.toMatchObject({ code: "VALIDATION", message: expect.not.stringMatching(/HEIC/) });
+    }
   });
 
   it("el checkout no ofrece HEIC y explica qué enviar", () => {

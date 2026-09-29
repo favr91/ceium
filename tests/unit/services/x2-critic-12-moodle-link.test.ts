@@ -6,7 +6,7 @@ import { createCheckout } from "@/server/orders";
 import { adminVerifyPayment, recordManualPayment, storeProofFile } from "@/server/payments";
 import { linkMoodleAccount } from "@/server/enrollment";
 import { MoodleError } from "@/server/moodle";
-import { buyer, setupContext, type TestContext } from "./helpers/setup";
+import { buyer, setupContext, type TestContext, TINY_JPEG } from "./helpers/setup";
 
 let ctx: TestContext;
 beforeEach(async () => {
@@ -31,7 +31,7 @@ async function paidOrderBlockedByMoodle() {
     return real(email, names, hooks);
   };
   const o = await createCheckout(ctx.d, { customer: who, items: [{ productId: ctx.fx.course, modality: "SEMIPRESENCIAL", cohortId: ctx.fx.courseCohort, planKind: "FULL" }], paymentMethod: "PAGO_MOVIL" });
-  const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", new Uint8Array([1, 2, 3]));
+  const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", TINY_JPEG);
   const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: `0134${n}55501`, bank: "Banesco", amountCents: 1_800_000, currency: "VES", exchangeRate: 100, proofFile: proof });
   await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
   return { o, who, legacyId };

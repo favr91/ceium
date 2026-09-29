@@ -13,8 +13,15 @@ const h1: React.CSSProperties = { color: "var(--ink)", fontSize: 24, lineHeight:
 const row: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 16, padding: "8px 0", borderBottom: "1px solid rgba(0,30,43,0.08)" };
 
 export default async function VerifyCertificatePage({ params }: PageProps<"/certificados/[code]">) {
-  const { code } = await params;
-  const cert = await services().certificates.verifyCertificate(decodeURIComponent(code));
+  const { code: raw } = await params;
+  // Un «%» suelto en la URL hacía fallar decodeURIComponent (error 500).
+  let code: string;
+  try {
+    code = decodeURIComponent(raw).slice(0, 64);
+  } catch {
+    code = raw.slice(0, 64);
+  }
+  const cert = await services().certificates.verifyCertificate(code);
   const valid = cert?.status === "ISSUED";
   return (
     <main style={{ padding: "0 16px" }}>
@@ -23,7 +30,7 @@ export default async function VerifyCertificatePage({ params }: PageProps<"/cert
           <>
             <h1 style={h1}>Certificado no encontrado</h1>
             <p>
-              No existe un certificado con el código <strong>{decodeURIComponent(code)}</strong>. Revisa que el código esté completo (formato CEIUM-XXXXX-XXXXX).
+              No existe un certificado con el código <strong>{code}</strong>. Revisa que el código esté completo (formato CEIUM-XXXXX-XXXXX).
             </p>
           </>
         ) : (

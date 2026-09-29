@@ -7,7 +7,7 @@ import { HOUR } from "@/server/deps";
 import { createCheckout } from "@/server/orders";
 import { adminRecordManualPayment, adminVerifyPayment, onPaypalCaptureCompleted, recordManualPayment, startPaypalPayment, storeProofFile, syncPaypalOrder } from "@/server/payments";
 import { runJobs } from "@/server/jobs";
-import { buyer, setupContext, type TestContext } from "./helpers/setup";
+import { buyer, setupContext, type TestContext, TINY_JPEG } from "./helpers/setup";
 
 let ctx: TestContext;
 beforeEach(async () => {
@@ -28,7 +28,7 @@ async function heldByPaypal() {
 describe("captura de PayPal retenida + pago manual del mismo primer pago", () => {
   it("el médico no puede registrar un pago móvil mientras PayPal revisa su pago (y no queda comprobante huérfano)", async () => {
     const { o } = await heldByPaypal();
-    const proof = await storeProofFile(ctx.d, o.id, "captura.png", new Uint8Array([1, 2, 3]));
+    const proof = await storeProofFile(ctx.d, o.id, "captura.png", TINY_JPEG);
     await expect(recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "01341234", bank: "Banesco", amountCents: 1_800_000, currency: "VES", proofFile: proof })).rejects.toMatchObject({ code: "INVALID_STATE" });
     expect(await ctx.db.payment.count({ where: { orderId: o.id, method: "PAGO_MOVIL" } })).toBe(0);
     expect(await ctx.db.payment.count({ where: { proofFile: proof } })).toBe(0);

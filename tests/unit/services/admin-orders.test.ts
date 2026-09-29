@@ -16,7 +16,8 @@ afterEach(async () => {
   await ctx.dispose();
 });
 
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+/** PNG real de 2×2 px (los comprobantes se validan por contenido y se vuelven a codificar). */
+const PNG = new Uint8Array(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADklEQVQI12P4DwYMEAoAU7oL9SiHvSoAAAAASUVORK5CYII=", "base64"));
 
 async function manualOrderWithProof(reference = "01020304") {
   const o = await createCheckout(ctx.d, { customer: buyer(), items: [{ productId: ctx.fx.course, modality: "SEMIPRESENCIAL", cohortId: ctx.fx.courseCohort, planKind: "FULL" }], paymentMethod: "PAGO_MOVIL" });
@@ -63,7 +64,8 @@ describe("lectura del panel", () => {
     const { o, p } = await manualOrderWithProof();
     const proof = await readPaymentProof(ctx.d, ctx.fx.staff, p.id);
     expect(proof).toMatchObject({ orderId: o.id, contentType: "image/png" });
-    expect(new Uint8Array(proof.bytes)).toEqual(PNG);
+    // Se guarda re-codificado (sin metadatos): sigue siendo un PNG válido.
+    expect(Buffer.from(proof.bytes).subarray(0, 8)).toEqual(Buffer.from(PNG.subarray(0, 8)));
 
     await expect(readPaymentProof(ctx.d, null as never, p.id)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     // Una ruta manipulada (fuera de proofs/) no se sirve.

@@ -9,7 +9,7 @@ npm install                 # postinstall = prisma generate
 npm run db:push             # crea/actualiza dev.db (SQLite) + genera cliente
 npm run db:seed             # BORRA y recrea catálogo real, sedes, cohortes de ejemplo, admin, settings
 npm run mocks               # mock Moodle :4010 + mock PayPal :4020 (protocolo real: REST de Moodle, Orders v2/Payments/Webhooks)
-npm run dev                 # http://localhost:3000   · panel: /admin (admin@ceium.net / ceium-admin-2026)
+npm run dev                 # http://localhost:3000   · panel: /admin (usuarios del seed: ADMIN_PASSWORD / STAFF_PASSWORD de .env)
 ```
 Otros: `build`, `start`, `test` (vitest, `tests/unit`), `test:e2e` (playwright, `tests/e2e`: entorno aislado — BD `var/e2e/e2e.db` recreada y sembrada, app en :3100 con
 `APP_URL` = :3100, mocks Moodle :4110 / PayPal :4120 con webhooks → :3100; no reutiliza servidores salvo `E2E_REUSE=1`),
@@ -22,6 +22,17 @@ ejecutarlos cada pocos minutos: `npm run jobs -- --loop 300`, o un cron del host
 Se cobra con la tasa de **fecha valor de hoy** (el BCV publica en la tarde la del día hábil siguiente). Si las fuentes no
 coinciden (> 0,5 %) o el valor salta > 30 %, se mantiene la anterior y el panel avisa. Consulta cada hora (y cada 10 min tras un
 fallo o al cambiar el día). Se apaga en Configuración (queda la carga manual) o con `EXCHANGE_RATE_SYNC=off` (carriles de prueba).
+
+**Seguridad** (ver también `src/server/config-check.ts`, que impide arrancar en producción con configuración de ejemplo):
+- Panel: verificación en dos pasos (TOTP) desde *Mi cuenta y seguridad*; Configuración puede exigirla a todo el equipo.
+  Si alguien pierde el teléfono y los códigos de recuperación: `npm run admin:reset-2fa -- correo@ceium.net` en el servidor.
+- Producción exige `APP_URL` https, `SESSION_SECRET` (32+ caracteres; cifra los secretos TOTP: si cambia, cada usuario
+  entra con un código de recuperación y la vuelve a activar), `PAYPAL_BASE_URL` y `PAYPAL_WEBHOOK_ID` reales, y
+  `CRON_SECRET` de 24+ caracteres si se usa. El seed exige `ADMIN_PASSWORD`/`STAFF_PASSWORD` propias (12+).
+- El proxy (nginx) debe enviar `X-Real-IP` (o agregar `X-Forwarded-For`): los límites por IP (inicio de sesión,
+  pedidos, comprobantes, contacto) la usan. Sin esa cabecera se omiten y quedan solo los límites por cuenta/correo.
+  Límite de cuerpo en el proxy: `client_max_body_size 12m`.
+- Webhook de PayPal: suscribir también `PAYMENT.CAPTURE.REVERSED` (contracargos) y `CUSTOMER.DISPUTE.CREATED`.
 
 **Exportar CSV** (`src/server/csv.ts`, rutas `/admin/<sección>/export`, diálogo `ExportButton`): pedidos, clientes,
 matrículas, certificados, cohortes (y la lista de alumnos de cada cohorte) y programas con su lista de precios. Alcance:

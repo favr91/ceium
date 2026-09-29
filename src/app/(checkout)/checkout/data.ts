@@ -16,9 +16,10 @@ import { quote } from "@/server/quote";
 import { getCohortAvailability } from "@/server/seats";
 import { services } from "@/server/services";
 import { SETTING_KEYS } from "@/server/settings";
+import { maskCedula, maskPhone } from "@/components/checkout/mask";
 
 export const CHECKOUT_COOKIE = "ceium_checkout";
-export const CHECKOUT_COOKIE_OPTIONS = { path: "/", httpOnly: true, sameSite: "lax" as const, maxAge: 60 * 60 * 24 * 4 };
+export const CHECKOUT_COOKIE_OPTIONS = { path: "/", httpOnly: true, sameSite: "lax" as const, secure: process.env.NODE_ENV === "production" && !(process.env.APP_URL ?? "").startsWith("http://"), maxAge: 60 * 60 * 24 * 4 };
 
 export type MethodKey = "PAYPAL" | "PAGO_MOVIL" | "TRANSFERENCIA" | "ZELLE" | "EFECTIVO";
 
@@ -250,8 +251,9 @@ export async function getCheckoutView(): Promise<CheckoutView> {
         email: order.customer.email,
         firstName: order.buyerFirstName ?? order.customer.firstName,
         lastName: order.buyerLastName ?? order.customer.lastName,
-        cedula: order.customer.cedula,
-        phone: order.customer.phone,
+        // Parciales: esta página es pública (la cookie/enlace del pedido); ver components/checkout/mask.ts.
+        cedula: maskCedula(order.customer.cedula),
+        phone: maskPhone(order.customer.phone),
         specialty: order.customer.specialty,
         city: order.customer.city,
         country: order.customer.country,

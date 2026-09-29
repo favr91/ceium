@@ -316,13 +316,14 @@ export async function getOrderDetail(d: Pick<Deps, "db" | "now">, user: SessionU
 
   // Duplicados: la misma referencia en otro pedido (ayuda al verificar un pago manual).
   // Misma referencia con otro relleno de ceros, formato o solo los últimos dígitos (sameBankMovement): se buscan
-  // candidatas por sus últimos 4 caracteres y se comparan en forma canónica.
+  // candidatas por los últimos 4 caracteres de la clave canónica (sin guiones ni ceros: en la referencia tal como
+  // se escribió, «12345678-90» no contenía «7890») y se comparan en forma canónica.
   const refs = o.payments.filter((p) => p.reference && p.status === "AWAITING_VERIFICATION").map((p) => p.reference!);
   const tails = [...new Set(refs.map((r) => canonicalReference(r).slice(-4)).filter(Boolean))];
   const dupRefs = tails.length
     ? (
         await d.db.payment.findMany({
-          where: { OR: tails.map((t) => ({ reference: { contains: t } })), orderId: { not: o.id } },
+          where: { OR: tails.map((t) => ({ referenceKey: { endsWith: t } })), orderId: { not: o.id } },
           select: { reference: true, status: true, order: { select: { id: true, number: true } } },
         })
       ).filter((x) => refs.some((r) => sameBankMovement(r, x.reference)))

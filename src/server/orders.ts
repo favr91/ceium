@@ -301,6 +301,31 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
       const twin = await findPendingTwin(tx, cust.id, input.paymentMethod, customer, quotes, now);
       if (twin) return twin;
     }
+    // Tope de pedidos sin pagar por correo (cada uno aparta cupos, hasta 72 h con pago manual): al pasar de 3, el
+    // pedido nuevo reemplaza al más viejo que no tenga ningún pago en curso (se cancela y libera su cupo). Así un
+    // correo no acapara una cohorte, y un médico que probó varios métodos no queda bloqueado.
+    // Cuentan también los que ya tienen un comprobante en verificación (no se reemplazan: tienen un pago en curso).
+    const open = await tx.order.findMany({
+      where: { customerId: cust.id, OR: [{ status: "PENDING_PAYMENT", expiresAt: { gt: now } }, { status: "AWAITING_VERIFICATION" }] },
+      orderBy: { placedAt: "asc" },
+      select: { id: true, amountPaidCents: true },
+    });
+    let excess = open.length - (MAX_OPEN_ORDERS_PER_CUSTOMER - 1);
+    for (const o of open) {
+      if (excess <= 0) break;
+      if (o.amountPaidCents > 0) continue;
+      const busy = await tx.payment.count({
+        where: { orderId: o.id, OR: [{ status: { in: ["AWAITING_VERIFICATION", "COMPLETED"] } }, { method: "PAYPAL", status: "PENDING", providerStatus: { in: ["CAPTURE_PENDING", "CAPTURING"] } }] },
+      });
+      if (busy) continue;
+      await releaseOrderReservations(tx, o.id, "CANCELLED", now);
+      await tx.payment.updateMany({ where: { orderId: o.id, status: "PENDING" }, data: { status: "CANCELLED" } });
+      await transitionOrder(tx, o.id, "CANCELLED", { actor: SYSTEM, note: `Reemplazado por un pedido nuevo del mismo correo (máximo ${MAX_OPEN_ORDERS_PER_CUSTOMER} pedidos sin pagar a la vez); cupo liberado.` });
+      excess--;
+    }
+    if (excess > 0) {
+      throw new DomainError("CONFLICT", `Ya tienes ${open.length} pedidos con pagos en curso con este correo. Espera a que se confirmen (te avisamos por correo) antes de crear otro.`);
+    }
     const number = await nextOrderNumber(tx);
     const order = await tx.order.create({
       data: {
@@ -377,6 +402,11 @@ export async function createCheckout(d: Deps, input: CheckoutInput) {
   return getOrder(d, orderId);
 }
 
+/** Pedidos sin pagar (vigentes) que puede tener a la vez un mismo correo. */
+const MAX_OPEN_ORDERS_PER_CUSTOMER = 3;
+/** Ventana del «mismo checkout enviado dos veces». */
+const TWIN_WINDOW_MS = 2 * 60_000;
+
 /** Pedido pendiente y vigente del cliente con los mismos ítems y método (cada ítem semipresencial con su cupo HELD). */
 async function findPendingTwin(
   tx: Tx,
@@ -393,7 +423,9 @@ async function findPendingTwin(
     .sort()
     .join("\n");
   const candidates = await tx.order.findMany({
-    where: { customerId, status: "PENDING_PAYMENT", paymentMethod: method, amountPaidCents: 0, expiresAt: { gt: now }, buyerFirstName: buyer.firstName, buyerLastName: buyer.lastName },
+    // Solo pedidos de hace instantes (doble clic, reintento de red): quien repite el nombre, correo y carrito de
+    // otro médico más tarde no recibe su pedido ni su enlace (/pedido/<token> muestra sus datos).
+    where: { customerId, status: "PENDING_PAYMENT", paymentMethod: method, amountPaidCents: 0, expiresAt: { gt: now }, buyerFirstName: buyer.firstName, buyerLastName: buyer.lastName, placedAt: { gte: new Date(now.getTime() - TWIN_WINDOW_MS) } },
     include: { items: { include: { reservation: true } } },
     orderBy: { createdAt: "desc" },
     take: 5,

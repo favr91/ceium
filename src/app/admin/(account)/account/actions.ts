@@ -13,7 +13,7 @@ import {
   revokeOtherSessions,
   revokeSession,
 } from "@/server/admin-account";
-import { ADMIN_DEVICE_COOKIE, ADMIN_SESSION_COOKIE, adminCookieOptions, createSession } from "@/server/auth";
+import { ADMIN_DEVICE_COOKIE, ADMIN_SESSION_COOKIE, ADMIN_WEAK_PASSWORD_COOKIE, adminCookieOptions, createSession } from "@/server/auth";
 import { clientIp } from "@/server/client-ip";
 import { prisma } from "@/server/db";
 import { isDomainError } from "@/server/errors";
@@ -102,6 +102,7 @@ export async function changePasswordAction(current: string, next: string): Promi
     const jar = await cookies();
     jar.set(ADMIN_SESSION_COOKIE, fresh.token, adminCookieOptions(fresh.expiresAt));
     jar.delete(ADMIN_DEVICE_COOKIE);
+    jar.delete(ADMIN_WEAK_PASSWORD_COOKIE);
     revalidatePath("/admin/account");
     return { ok: true, message: "Contraseña cambiada. Cerramos tus otras sesiones." };
   } catch (e) {

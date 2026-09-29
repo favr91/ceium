@@ -170,7 +170,8 @@ test.describe("c2 checkout", () => {
     await expect(timer).toHaveText(/^(2\d|30):\d\d$/);
     const first = await timer.textContent();
     await expect(timer).not.toHaveText(first!, { timeout: 3_000 }); // corre
-    await expect(page.getByTestId("order-review")).toContainText("María José Pérez Rodríguez · V-12345678");
+    // Cédula parcial: la página del pedido es pública (el enlace es la única credencial).
+    await expect(page.getByTestId("order-review")).toContainText("María José Pérez Rodríguez · V-•••••678");
 
     // Pagar de nuevo usa el MISMO pedido (sin otro pedido ni otra reserva).
     await page.getByRole("button", { name: "Pagar con PayPal" }).click();

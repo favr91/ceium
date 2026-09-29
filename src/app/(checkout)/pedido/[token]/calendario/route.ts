@@ -9,7 +9,13 @@ export const dynamic = "force-dynamic";
 const CLOSED = ["CANCELLED", "EXPIRED", "REFUNDED", "REJECTED"];
 
 function text(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/([,;])/g, "\\$1");
+  // Saltos \r\n, \r o \n → «\n» escapado, y fuera cualquier otro carácter de control: un título con un \r suelto
+  // podía agregar propiedades (URL, ATTACH, VALARM) al evento en los calendarios que cortan línea en \r.
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/\r\n?|\n/g, "\\n")
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "")
+    .replace(/([,;])/g, "\\$1");
 }
 /** Plegado de líneas a 75 octetos (RFC 5545 §3.1). */
 function fold(line: string): string {

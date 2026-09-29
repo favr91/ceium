@@ -25,6 +25,8 @@ import { PROOF_ACCEPT } from "@/components/checkout/manual-payment-fields";
 import { cohortSessions, directionsUrl, sessionDay } from "./cohort";
 import { DETAIL_LABELS } from "../../checkout/data";
 import { payOrderWithPaypal, reportManualPayment } from "./actions";
+import { maskCedula, maskPhone } from "@/components/checkout/mask";
+import { verifiedMessage } from "@/server/flash";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Tu pedido", robots: { index: false, follow: false } };
@@ -160,7 +162,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
 
   const paypal = one("paypal");
   const pago = one("pago");
-  const motivo = one("motivo");
+  // Solo mensajes firmados por el servidor (un enlace armado por otro muestra el texto genérico).
+  const motivo = verifiedMessage(one("motivo"), one("firma"));
   const cuotaId = one("cuota");
   const metodo = one("metodo")?.toUpperCase() ?? null;
   const cuota = cuotaId ? order.installments.find((i) => i.id === cuotaId) ?? null : null;
@@ -675,14 +678,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                   <p>
                     <Email value={c.email} />
                   </p>
-                  {c.phone ? <p>{c.phone}</p> : null}
+                  {c.phone ? <p>{maskPhone(c.phone)}</p> : null}
                 </div>
                 <div>
                   <h3>Médico</h3>
                   <p>
                     {order.buyerFirstName ?? c.firstName} {order.buyerLastName ?? c.lastName}
                   </p>
-                  {c.cedula ? <p>{c.cedula}</p> : null}
+                  {c.cedula ? <p>{maskCedula(c.cedula)}</p> : null}
                   {c.specialty ? <p>{c.specialty}</p> : null}
                 </div>
                 <div>

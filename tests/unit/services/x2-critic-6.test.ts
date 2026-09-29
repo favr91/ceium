@@ -11,7 +11,7 @@ import { adminVerifyPayment, canonicalReference, recordManualPayment, refundPaym
 import { retryFailedUnenrollments, UNENROLLMENT_RECHECK } from "@/server/enrollment";
 import { runInstallmentReminders } from "@/server/installments";
 import { getOrderDetail } from "@/server/admin-order-views";
-import { buyer, setupContext, type TestContext } from "./helpers/setup";
+import { buyer, setupContext, type TestContext, TINY_JPEG } from "./helpers/setup";
 
 let ctx: TestContext;
 beforeEach(async () => {
@@ -23,7 +23,7 @@ afterEach(async () => {
 
 async function pagoMovil(reference: string, n?: number) {
   const o = await createCheckout(ctx.d, { customer: buyer(n), items: [{ productId: ctx.fx.course, modality: "SEMIPRESENCIAL", cohortId: ctx.fx.courseCohort, planKind: "FULL" }], paymentMethod: "PAGO_MOVIL" });
-  const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", new Uint8Array([1, 2, 3]));
+  const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", TINY_JPEG);
   const pm = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference, bank: "Banesco", amountCents: 1_800_000, currency: "VES", exchangeRate: 100, proofFile: proof });
   return { o, pm };
 }

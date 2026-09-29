@@ -15,6 +15,7 @@ import { DomainError, isUniqueViolation } from "@/server/errors";
 import { optimizeImage } from "@/server/images";
 import { IMAGE_TIERS } from "@/components/store/image-url";
 import { priceScopeKey } from "@/server/pricing";
+import { sanitizeRichText } from "@/server/rich-text";
 
 /** Pedidos que siguen su curso (en pago, pagados o matriculados). */
 const LIVE_ORDER_STATES = ["PENDING_PAYMENT", "AWAITING_VERIFICATION", "PAID", "PARTIALLY_PAID", "ENROLLED"] as const;
@@ -41,7 +42,7 @@ export const updateProductSchema = z
   .object({
     title: z.string().trim().min(1).max(300),
     slug,
-    descriptionHtml: z.string().max(200_000),
+    descriptionHtml: z.string().max(200_000).transform(sanitizeRichText),
     excerpt: z.string().max(2000).nullable(),
     offersOnline: z.boolean(),
     offersSemipresencial: z.boolean(),
@@ -56,7 +57,7 @@ export const updateProductSchema = z
     enrollmentNote: z.string().max(1000).nullable(),
     /** Último día de inscripción (inclusivo). quote()/createCheckout dejan de vender al día siguiente. */
     enrollmentDeadline: z.coerce.date().nullable(),
-    syllabusUrl: z.string().max(1000).nullable(),
+    syllabusUrl: z.string().max(1000).regex(/^(https:\/\/|\/(?!\/))\S*$/, "El enlace del contenido descargable debe empezar por https://").nullable(),
     topics: z.array(z.object({ title: z.string(), heading: z.string().optional(), items: z.array(z.string()) })).nullable(),
     faculty: z.array(z.string()).nullable(),
     benefits: z.array(z.string()).nullable(),
@@ -415,7 +416,7 @@ export async function deleteProduct(d: Deps, actor: SessionUser, productId: stri
     await recordAudit(tx, { actor, action: "product.delete", entityType: "Product", entityId: productId, before, after: null, note, force: true });
     return { deleted: true as const, images: images.map((i) => i.url) };
   });
-  for (const url of res.images) await removeUploadedFile(d, url);
+  for (const url of res.images) await removeUploadedFile(d, url, productId);
   return { deleted: true as const };
 }
 
@@ -485,6 +486,8 @@ function uploadPathFor(d: Deps, url: string): string | null {
   return abs.startsWith(root + path.sep) ? abs : null;
 }
 
+const productDir = (productId: string) => productId.replace(/[^a-z0-9]/gi, "");
+
 /** Archivos de una imagen subida: la URL guardada y, si es optimizada (`…-w<ancho>.webp`), todos sus anchos y el JPG. */
 function uploadedFiles(d: Deps, url: string): string[] {
   const abs = uploadPathFor(d, url);
@@ -493,7 +496,9 @@ function uploadedFiles(d: Deps, url: string): string[] {
   return m ? [...IMAGE_TIERS.map((t) => `${m[1]}-w${t}.webp`), `${m[1]}-og.jpg`] : [abs];
 }
 
-async function removeUploadedFile(d: Deps, url: string) {
+/** Borra los archivos de una imagen subida, solo si están en la carpeta de ESTE programa (products/<id>/). */
+async function removeUploadedFile(d: Deps, url: string, productId: string) {
+  if (!url.startsWith(`${UPLOADS_URL}products/${productDir(productId)}/`)) return;
   for (const abs of uploadedFiles(d, url)) {
     try {
       await fs.rm(abs, { force: true });
@@ -535,6 +540,10 @@ export async function addProductImage(d: Deps, actor: SessionUser, productId: st
   const meta = parse(productImageMetaSchema, metaIn);
   if (!!file === !!givenUrl) throw new DomainError("VALIDATION", "Sube un archivo o indica una URL (solo uno).");
   if (givenUrl && !/^(https:\/\/|\/uploads\/)[^\s]+$/.test(givenUrl)) throw new DomainError("VALIDATION", "La URL de la imagen debe empezar por https:// o /uploads/.");
+  // Una imagen subida a OTRO programa no se enlaza: al quitarla de aquí se borrarían los archivos de aquel.
+  if (givenUrl?.startsWith(UPLOADS_URL) && !givenUrl.startsWith(`${UPLOADS_URL}products/${productDir(productId)}/`)) {
+    throw new DomainError("VALIDATION", "Esa imagen pertenece a otro programa: súbela de nuevo aquí.");
+  }
   const product = await withTx(d, (tx) => mustProduct(tx, productId));
 
   let url = givenUrl ?? "";
@@ -544,7 +553,7 @@ export async function addProductImage(d: Deps, actor: SessionUser, productId: st
     if (file.bytes.byteLength > MAX_IMAGE_BYTES) throw new DomainError("VALIDATION", "La imagen no puede superar 10 MB.");
     sniffImage(file.bytes); // solo imágenes (por su firma, no por el nombre)
     const img = await optimizeImage(file.bytes);
-    const dir = `products/${productId.replace(/[^a-z0-9]/gi, "")}`;
+    const dir = `products/${productDir(productId)}`;
     const stem = `${fileStem(product.slug)}-${crypto.randomBytes(4).toString("hex")}`;
     const abs = path.resolve(d.config.publicUploadsDir, dir);
     await fs.mkdir(abs, { recursive: true });
@@ -614,7 +623,7 @@ export async function deleteProductImage(d: Deps, actor: SessionUser, imageId: s
     return row;
   });
   const stillUsed = await d.db.productImage.count({ where: { url: before.url } });
-  if (!stillUsed) await removeUploadedFile(d, before.url);
+  if (!stillUsed) await removeUploadedFile(d, before.url, before.productId);
   return { deleted: true as const };
 }
 

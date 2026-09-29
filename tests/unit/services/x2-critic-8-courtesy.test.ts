@@ -6,7 +6,7 @@ import { createCheckout } from "@/server/orders";
 import { adminVerifyPayment, capturePaypalReturn, handlePaypalWebhook, recordManualPayment, refundPayment, startPaypalPayment, storeProofFile } from "@/server/payments";
 import { runInstallmentReminders } from "@/server/installments";
 import { DAY } from "@/server/deps";
-import { buyer, setupContext, type TestContext } from "./helpers/setup";
+import { buyer, setupContext, type TestContext, TINY_JPEG } from "./helpers/setup";
 
 let ctx: TestContext;
 beforeEach(async () => {
@@ -22,7 +22,7 @@ async function paidPagoMovil(planKind: "FULL" | "HALF", payments: number) {
   const per = planKind === "FULL" ? 1_800_000 : 900_000;
   const ids: string[] = [];
   for (let i = 0; i < payments; i++) {
-    const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", new Uint8Array([1, 2, 3]));
+    const proof = await storeProofFile(ctx.d, o.id, "captura.jpg", TINY_JPEG);
     const p = await recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: `0134${refN}${i}9876`, bank: "Banesco", amountCents: per, currency: "VES", exchangeRate: 100, proofFile: proof });
     await adminVerifyPayment(ctx.d, ctx.fx.admin, { paymentId: p.id, decision: "approve" });
     ids.push(p.id);

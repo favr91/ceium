@@ -56,10 +56,14 @@ export function todayCaracas(now: Date = new Date()): string {
  * («1.234,567», «33.56.4», «12,3456», «33,564,60») se rechaza en vez de adivinar un monto 100 o 1000 veces menor.
  */
 export function parseAmountCents(raw: string): number {
-  const s = raw
-    .trim()
+  // Un monto nunca pasa de ~20 caracteres: cortar antes de las expresiones evita que un texto enorme (p. ej. miles
+  // de espacios) las vuelva lentas y bloquee el servidor.
+  const trimmed = raw.trim();
+  if (trimmed.length > 40) return NaN;
+  const s = trimmed
     .replace(/^(?:bs\.?\s*s\.?|bs\.?|ves|usd|us\$|\$)\s*/i, "")
-    .replace(/\s*(?:bs\.?\s*s?\.?|ves|usd|\$)$/i, "")
+    .trimEnd()
+    .replace(/(?:bs\.?\s*s?\.?|ves|usd|\$)$/i, "")
     .replace(/[\s\u00a0']/g, "");
   if (!/^\d[\d.,]*$/.test(s)) return NaN;
   const last = Math.max(s.lastIndexOf("."), s.lastIndexOf(","));

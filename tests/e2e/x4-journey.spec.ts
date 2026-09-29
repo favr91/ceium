@@ -23,6 +23,7 @@ import { expect, test, type APIRequestContext, type Browser, type BrowserContext
 import { MOODLE, PAYPAL, cohort, customerOf, emails, events, one, order, paypalConfig, q, reservationOf, runCron, uniqueEmail, waitForOrderStatus } from "./support/purchase";
 import { todayCaracas } from "./support/dates";
 import { e2eEnv } from "../../playwright.config";
+import sharp from "sharp";
 
 test.describe.configure({ mode: "serial" });
 test.beforeEach(({}, info) => {
@@ -61,7 +62,8 @@ function proofPng(): Buffer {
   ihdr.writeUInt32BE(16, 4);
   ihdr[8] = 8;
   ihdr[9] = 2;
-  const raw = Buffer.alloc(16 * (1 + 16 * 3), 0x7f);
+  // Cada fila empieza con el byte de filtro (0 = ninguno); 0x7f no es un filtro válido y la imagen no se podía leer.
+  const raw = Buffer.concat(Array.from({ length: 16 }, () => Buffer.concat([Buffer.from([0]), Buffer.alloc(16 * 3, 0x7f)])));
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 const PROOF = { name: "comprobante-pago-movil.png", mimeType: "image/png", buffer: proofPng() };
@@ -129,7 +131,9 @@ async function adminApprove(browser: Browser, orderId: string, reference: string
     const src = await box.getByRole("img").getAttribute("src");
     const proof = await page.request.get(src!);
     expect(proof.status()).toBe(200);
-    expect(Buffer.compare(await proof.body(), PROOF.buffer), "el panel sirve el comprobante tal cual").toBe(0);
+    // Se guarda re-codificado (sin metadatos): la misma imagen, no los mismos bytes.
+    const served = await sharp(await proof.body()).metadata();
+    expect([served.format, served.width, served.height], "el panel sirve el comprobante").toEqual(["png", 16, 16]);
     await box.getByRole("button", { name: "Cerrar" }).click();
     await card.getByRole("button", { name: "Aprobar pago" }).click();
     await expect(page.getByRole("status").filter({ hasText: /Pago aprobado/ })).toBeVisible({ timeout: 60_000 });

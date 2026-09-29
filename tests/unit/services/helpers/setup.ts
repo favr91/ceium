@@ -12,6 +12,8 @@ import { createTestDb } from "./testdb";
 import { FakeMoodle, FakePaypal } from "./fakes";
 
 export const T0 = new Date("2026-09-01T12:00:00Z");
+/** JPEG real de 2×2 px (los comprobantes se validan por contenido y se vuelven a codificar con sharp). */
+export const TINY_JPEG = new Uint8Array(Buffer.from("/9j/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAACAAIDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAj/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKpAB//Z", "base64"));
 
 export class Clock {
   constructor(public t: Date = T0) {}
