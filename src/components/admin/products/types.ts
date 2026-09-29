@@ -42,6 +42,9 @@ export interface ProductRow {
 
 export interface ImageItem { id: string; url: string; alt: string | null }
 
+/** Cambios de multimedia pendientes de guardar: imágenes quitadas y, si cambió, el orden final. */
+export interface MediaDraft { remove: string[]; order: string[] | null }
+
 export interface PriceCell {
   id: string | null;
   modality: Modality;

@@ -7,7 +7,7 @@ import { services } from "@/server/services";
 import { DomainError, isDomainError } from "@/server/errors";
 import { requireAdminAction } from "../../_lib/session";
 import { parseMoney } from "@/components/admin/products/money";
-import type { ProductForm, SaveResult } from "@/components/admin/products/types";
+import type { MediaDraft, ProductForm, SaveResult } from "@/components/admin/products/types";
 
 type Res = { ok: true } | { ok: false; error: string };
 
@@ -59,11 +59,11 @@ function productFields(f: ProductForm) {
 }
 
 /**
- * Guarda el programa completo (alta o edición): ficha → cursos del diplomado → precios → planes → colecciones.
- * Cada paso es su propia transacción auditada; si uno falla se informa la sección y lo anterior queda guardado
- * (la página se recarga con el estado real de la BD).
+ * Guarda el programa completo (alta o edición): ficha → cursos del diplomado → precios → planes → colecciones →
+ * multimedia (imágenes quitadas y nuevo orden). Cada paso es su propia transacción auditada; si uno falla se
+ * informa la sección y lo anterior queda guardado (la página se recarga con el estado real de la BD).
  */
-export async function saveProduct(form: ProductForm): Promise<SaveResult> {
+export async function saveProduct(form: ProductForm, media?: MediaDraft): Promise<SaveResult> {
   const user = await requireAdminAction();
   const cat = services().catalog;
   let id = form.id;
@@ -151,6 +151,20 @@ export async function saveProduct(form: ProductForm): Promise<SaveResult> {
       if (wanted.has(cid)) ids.push(id);
       await cat.upsertCollection(user, { id: col.id, slug: col.slug, title: col.title, productIds: ids });
     }
+
+    // 6) Multimedia: subir es inmediato; quitar y reordenar esperan a «Guardar» (se pueden descartar).
+    if (media && (media.remove.length || media.order)) {
+      section = "media";
+      const current = (await prisma.productImage.findMany({ where: { productId: id }, orderBy: { position: "asc" }, select: { id: true } })).map((r) => r.id);
+      const gone = new Set(media.remove.filter((x) => current.includes(x)));
+      for (const imageId of gone) await cat.deleteProductImage(user, imageId);
+      if (media.order) {
+        const left = current.filter((x) => !gone.has(x));
+        // Imágenes subidas mientras tanto (p. ej. desde otra pestaña) quedan al final.
+        const ids = [...media.order.filter((x) => left.includes(x)), ...left.filter((x) => !media.order!.includes(x))];
+        if (ids.join() !== left.join()) await cat.reorderProductImages(user, id, ids);
+      }
+    }
     refresh(id);
     return { ok: true, id, notes };
   } catch (e) {
@@ -188,7 +202,7 @@ export async function deleteProductAction(id: string): Promise<Res> {
   }
 }
 
-// ───────── Multimedia (se guarda al instante, como en Shopify) ─────────
+// ───────── Multimedia (subir y el texto alternativo se guardan al instante; quitar y reordenar, con «Guardar») ─────────
 
 export async function uploadProductImages(productId: string, formData: FormData): Promise<Res> {
   const user = await requireAdminAction();
@@ -202,28 +216,6 @@ export async function uploadProductImages(productId: string, formData: FormData)
     return { ok: true };
   } catch (e) {
     refresh(productId);
-    return { ok: false, error: errMsg(e) };
-  }
-}
-
-export async function deleteProductImageAction(productId: string, imageId: string): Promise<Res> {
-  const user = await requireAdminAction();
-  try {
-    await services().catalog.deleteProductImage(user, imageId);
-    refresh(productId);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: errMsg(e) };
-  }
-}
-
-export async function reorderProductImagesAction(productId: string, ids: string[]): Promise<Res> {
-  const user = await requireAdminAction();
-  try {
-    await services().catalog.reorderProductImages(user, productId, ids);
-    refresh(productId);
-    return { ok: true };
-  } catch (e) {
     return { ok: false, error: errMsg(e) };
   }
 }

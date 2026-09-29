@@ -3,6 +3,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const DIPLOMA = "Diplomado Universitario Avanzado de Medicina Materno Fetal";
+const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 async function login(page: Page, next = "/admin/products") {
   await page.goto(`/admin/login?next=${encodeURIComponent(next)}`);
@@ -115,6 +116,50 @@ test.describe("panel · programas", () => {
     await expect(page.getByRole("region", { name: "Cambios sin guardar" })).toBeHidden();
     await page.reload();
     await expect(items.nth(0)).toHaveAttribute("data-course-id", first!);
+  });
+
+  test("multimedia: quitar y reordenar imágenes esperan a «Guardar» y «Descartar» las deshace", async ({ page }) => {
+    await openDiploma(page);
+    const items = page.getByTestId("media-item");
+    const bar = page.getByRole("region", { name: "Cambios sin guardar" });
+    const srcs = () => items.locator("img").evaluateAll((els) => els.map((e) => e.getAttribute("src")));
+    await expect(items.first()).toBeVisible();
+    const before = await srcs();
+
+    // Subir se guarda al instante (sin barra): queda al final.
+    await page.getByTestId("media-input").setInputFiles({ name: "e2e.png", mimeType: "image/png", buffer: Buffer.from(PNG_1PX, "base64") });
+    await expect(items).toHaveCount(before.length + 1);
+    await expect(bar).toBeHidden();
+    const withNew = await srcs();
+
+    // Quitar la principal: desaparece y aparece la barra; «Descartar» la devuelve.
+    await items.first().hover();
+    await items.first().getByRole("button", { name: "Eliminar imagen" }).click();
+    await expect(items).toHaveCount(withNew.length - 1);
+    await expect(bar).toBeVisible();
+    await bar.getByRole("button", { name: "Descartar" }).click();
+    await expect(bar).toBeHidden();
+    await expect(items).toHaveCount(withNew.length);
+    expect(await srcs()).toEqual(withNew);
+
+    // Hacer principal la nueva y guardar: el orden persiste al recargar.
+    await items.last().hover();
+    await items.last().getByRole("button", { name: "Hacer principal" }).click();
+    await expect(bar).toBeVisible();
+    await bar.getByRole("button", { name: "Guardar" }).click();
+    await expect(bar).toBeHidden();
+    await page.reload();
+    await expect(items).toHaveCount(withNew.length);
+    expect(await srcs()).toEqual([withNew.at(-1), ...withNew.slice(0, -1)]);
+
+    // Quitar la nueva y guardar deja las imágenes como estaban.
+    await items.first().hover();
+    await items.first().getByRole("button", { name: "Eliminar imagen" }).click();
+    await bar.getByRole("button", { name: "Guardar" }).click();
+    await expect(bar).toBeHidden();
+    await page.reload();
+    await expect(items).toHaveCount(before.length);
+    expect(await srcs()).toEqual(before);
   });
 
   test("alta de un taller: validación, guardado como borrador, publicar en lote y eliminar", async ({ page }, info) => {

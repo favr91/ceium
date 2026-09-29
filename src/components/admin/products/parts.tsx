@@ -6,8 +6,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
   deleteChoiceAction,
-  deleteProductImageAction,
-  reorderProductImagesAction,
   saveChoiceAction,
   updateImageAltAction,
   uploadProductImages,
@@ -69,10 +67,13 @@ export function RichText({ value, onChange, seed, label }: { value: string; onCh
 
 // ───────── Multimedia ─────────
 
-export function MediaCard({ productId, images, pending, onPending, onMessage }: { productId: string | null; images: ImageItem[]; pending: File[]; onPending: (f: File[]) => void; onMessage: (t: string, err?: boolean) => void }) {
+/**
+ * Subir y editar el texto alternativo se guardan al instante; quitar y reordenar son cambios del editor
+ * (`images` ya viene con el borrador aplicado) que se confirman o descartan con la barra de guardado.
+ */
+export function MediaCard({ productId, images: order, pending, onPending, onReorder, onRemove, onMessage }: { productId: string | null; images: ImageItem[]; pending: File[]; onPending: (f: File[]) => void; onReorder: (ids: string[]) => void; onRemove: (id: string) => void; onMessage: (t: string, err?: boolean) => void }) {
   const router = useRouter();
   const [busy, start] = useTransition();
-  const [order, setOrder] = useState(images);
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState(false);
   const [urlOpen, setUrlOpen] = useState(false);
@@ -80,8 +81,6 @@ export function MediaCard({ productId, images, pending, onPending, onMessage }: 
   const [edit, setEdit] = useState<ImageItem | null>(null);
   const [alt, setAlt] = useState("");
   const input = useRef<HTMLInputElement>(null);
-  const [lastImages, setLastImages] = useState(images);
-  if (lastImages !== images) { setLastImages(images); setOrder(images); }
 
   const upload = (files: File[], link?: string) => {
     if (!productId) { onPending([...pending, ...files]); return; }
@@ -97,25 +96,11 @@ export function MediaCard({ productId, images, pending, onPending, onMessage }: 
   };
 
   const move = (from: string, to: string) => {
-    if (!productId || from === to) return;
+    if (from === to) return;
     const ids = order.map((i) => i.id);
     const a = ids.indexOf(from), b = ids.indexOf(to);
     ids.splice(b, 0, ids.splice(a, 1)[0]);
-    setOrder(ids.map((id) => order.find((o) => o.id === id)!));
-    start(async () => {
-      const r = await reorderProductImagesAction(productId, ids);
-      if (!r.ok) onMessage(r.error, true);
-      router.refresh();
-    });
-  };
-
-  const remove = (id: string) => {
-    if (!productId) return;
-    start(async () => {
-      const r = await deleteProductImageAction(productId, id);
-      onMessage(r.ok ? "Imagen eliminada" : r.error, !r.ok);
-      router.refresh();
-    });
+    onReorder(ids);
   };
 
   const onDrop = (e: React.DragEvent) => {
@@ -163,7 +148,7 @@ export function MediaCard({ productId, images, pending, onPending, onMessage }: 
               <div className="media-act">
                 {i > 0 ? <button type="button" title="Hacer principal" aria-label="Hacer principal" onClick={() => move(img.id, order[0].id)}><Icon name="star" size={14} /></button> : null}
                 <button type="button" title="Texto alternativo" aria-label="Editar texto alternativo" onClick={() => { setEdit(img); setAlt(img.alt ?? ""); }}><Icon name="eye" size={14} /></button>
-                <button type="button" title="Eliminar" aria-label="Eliminar imagen" onClick={() => remove(img.id)}><Icon name="trash" size={14} /></button>
+                <button type="button" title="Eliminar" aria-label="Eliminar imagen" onClick={() => onRemove(img.id)}><Icon name="trash" size={14} /></button>
               </div>
             </div>
           ))}

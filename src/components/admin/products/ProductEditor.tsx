@@ -11,11 +11,11 @@ import { Modal, StatusBadge, useOutside, useToast } from "../ui";
 import { PriceMatrix } from "./PriceMatrix";
 import { ChoicesCard, CoursesCard, MediaCard, RichText } from "./parts";
 import { parseMoney, planPreview, usd } from "./money";
-import { CATEGORY_LABEL, CATEGORY_ORDER, statusOf, type Category, type EditorContext, type PlanRow, type ProductForm } from "./types";
+import { CATEGORY_LABEL, CATEGORY_ORDER, statusOf, type Category, type EditorContext, type MediaDraft, type PlanRow, type ProductForm } from "./types";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const slugify = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 200);
-const SECTION_LABEL: Record<string, string> = { general: "Datos del programa", courses: "Cursos del diplomado", prices: "Precios", plans: "Formas de pago", organization: "Colecciones" };
+const SECTION_LABEL: Record<string, string> = { general: "Datos del programa", courses: "Cursos del diplomado", prices: "Precios", plans: "Formas de pago", organization: "Colecciones", media: "Multimedia" };
 const ACTION_LABEL: Record<string, string> = {
   "product.create": "Programa creado",
   "product.update": "Programa actualizado",
@@ -45,6 +45,9 @@ export function ProductEditor({ initial, ctx, canEdit }: { initial: ProductForm;
   const [error, setError] = useState<{ text: string; section?: string } | null>(null);
   const [tried, setTried] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  // Borrador de multimedia: imágenes quitadas y orden elegido (null = el del servidor). Subir es inmediato.
+  const [imgRemoved, setImgRemoved] = useState<string[]>([]);
+  const [imgOrder, setImgOrder] = useState<string[] | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [seoOpen, setSeoOpen] = useState(false);
   const toast = useToast();
@@ -65,7 +68,20 @@ export function ProductEditor({ initial, ctx, canEdit }: { initial: ProductForm;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialJson]);
 
-  const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(base) || pendingFiles.length > 0, [form, base, pendingFiles]);
+  const images = useMemo(() => {
+    const byId = new Map(ctx.images.map((i) => [i.id, i]));
+    const ids = imgOrder ? [...imgOrder.filter((id) => byId.has(id)), ...ctx.images.map((i) => i.id).filter((id) => !imgOrder.includes(id))] : ctx.images.map((i) => i.id);
+    return ids.filter((id) => !imgRemoved.includes(id)).map((id) => byId.get(id)!);
+  }, [ctx.images, imgOrder, imgRemoved]);
+  const media = useMemo<MediaDraft | null>(() => {
+    const remove = ctx.images.map((i) => i.id).filter((id) => imgRemoved.includes(id));
+    const kept = ctx.images.map((i) => i.id).filter((id) => !remove.includes(id));
+    const order = images.map((i) => i.id);
+    const reordered = order.join() !== kept.join();
+    return remove.length || reordered ? { remove, order: reordered ? order : null } : null;
+  }, [ctx.images, imgRemoved, images]);
+
+  const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(base) || pendingFiles.length > 0 || media !== null, [form, base, pendingFiles, media]);
   useEffect(() => {
     if (!dirty) return;
     const h = (e: BeforeUnloadEvent) => { e.preventDefault(); };
@@ -85,14 +101,14 @@ export function ProductEditor({ initial, ctx, canEdit }: { initial: ProductForm;
   };
   const firstError = Object.values(errors).find(Boolean);
 
-  const discard = () => { setForm(base); setPendingFiles([]); setSeed((s) => s + 1); setError(null); setTried(false); };
+  const discard = () => { setForm(base); setPendingFiles([]); setImgRemoved([]); setImgOrder(null); setSeed((s) => s + 1); setError(null); setTried(false); };
 
   const save = () => {
     setTried(true);
     if (firstError) { setError({ text: firstError }); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
     setError(null);
     start(async () => {
-      const r = await saveProduct(form);
+      const r = await saveProduct(form, media ?? undefined);
       if (r.id && pendingFiles.length) {
         const fd = new FormData();
         for (const f of pendingFiles) fd.append("files", f);
@@ -208,7 +224,7 @@ export function ProductEditor({ initial, ctx, canEdit }: { initial: ProductForm;
               {textField("excerpt", "Extracto", { area: true, help: "Texto corto para las tarjetas de la tienda." })}
             </div>
 
-            <MediaCard productId={form.id} images={ctx.images} pending={pendingFiles} onPending={setPendingFiles} onMessage={toast.show} />
+            <MediaCard productId={form.id} images={images} pending={pendingFiles} onPending={setPendingFiles} onReorder={setImgOrder} onRemove={(id) => setImgRemoved((r) => [...r, id])} onMessage={toast.show} />
 
             {/* Precios */}
             <div className="card card-flush" id="sec-prices" style={error?.section === "prices" ? { boxShadow: "0 0 0 2px #c70a24" } : undefined}>
