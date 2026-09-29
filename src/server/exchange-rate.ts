@@ -198,14 +198,14 @@ export async function syncExchangeRate(d: Deps, opts: SyncOptions = {}): Promise
       };
     } else {
       const changed = !stored || stored.vesPerUsd !== q.vesPerUsd || stored.valueDate !== q.valueDate || prev.placeholder;
-      const next: ExchangeRateSetting = { vesPerUsd: q.vesPerUsd, source: `BCV · vía ${q.provider}`, updatedAt: checkedAt, valueDate: q.valueDate, auto: true };
+      const next: ExchangeRateSetting = { vesPerUsd: q.vesPerUsd, source: "BCV", updatedAt: checkedAt, valueDate: q.valueDate, auto: true, provider: q.provider };
       await withTx(d, async (tx) => {
         const before = await tx.setting.findUnique({ where: { key: SETTING_KEYS.exchangeRate } });
         await tx.setting.upsert({ where: { key: SETTING_KEYS.exchangeRate }, create: { key: SETTING_KEYS.exchangeRate, value: next as unknown as Prisma.InputJsonValue }, update: { value: next as unknown as Prisma.InputJsonValue } });
         // Auditoría solo cuando cambia la tasa (confirmarla cada hora no es un cambio).
         if (changed) await recordAudit(tx, { actor: null, action: "setting.update", entityType: "Setting", entityId: SETTING_KEYS.exchangeRate, before: before?.value ?? null, after: next, note: `Tasa BCV automática (${q.provider}, fecha valor ${q.valueDate})`, force: !before });
       });
-      status = { checkedAt, ok: true, changed, applied: q, message: `Tasa BCV con fecha valor ${q.valueDate}: Bs. ${fmt(q.vesPerUsd)} por USD (vía ${q.provider}).`, sources };
+      status = { checkedAt, ok: true, changed, applied: q, message: `Tasa BCV con fecha valor ${q.valueDate}: Bs. ${fmt(q.vesPerUsd)} por USD.`, sources };
     }
   }
   await d.db.setting.upsert({ where: { key: SETTING_KEYS.exchangeRateSync }, create: { key: SETTING_KEYS.exchangeRateSync, value: status as unknown as Prisma.InputJsonValue }, update: { value: status as unknown as Prisma.InputJsonValue } });

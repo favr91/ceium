@@ -317,18 +317,24 @@ export function CheckoutForm({ action, methods, initialMethod, ttl, holds, dueNo
   );
 }
 
-const METHOD_VERB: Record<string, string> = { PAGO_MOVIL: "el pago móvil", TRANSFERENCIA: "la transferencia bancaria", ZELLE: "el pago por Zelle", EFECTIVO: "el pago en la sede" };
+/** Cómo se nombra cada método dentro de una frase («pagar por pago móvil»). */
+const METHOD_IN_TEXT: Record<string, string> = { PAGO_MOVIL: "pago móvil", TRANSFERENCIA: "transferencia bancaria", ZELLE: "Zelle" };
 
 function MethodBody({ m, dueNowCents, semi, holdLong }: { m: MethodView; dueNowCents: number; semi: boolean; holdLong: string }) {
   if (m.method === "PAYPAL") {
     return <PaypalRedirectNotice />;
   }
-  const reserve = semi ? `reservamos tu cupo por ${holdLong} y ` : "";
+  const reserve = semi ? `apartamos tu cupo por ${holdLong} y ` : "";
   return (
     <div className="co-manual-panel">
       <p className="co-method-intro">
-        Al finalizar el pedido, {reserve}te mostraremos los datos de {m.label} de CEIUM para hacer {METHOD_VERB[m.method] ?? "el pago"}.{" "}
-        {m.method === "EFECTIVO" ? "El personal de la sede registra tu pago" : "Luego registras aquí mismo la referencia y el comprobante"}; una vez que el pago sea verificado, tendrás acceso al curso o diplomado en la plataforma Moodle.
+        {m.method === "EFECTIVO" ? (
+          <>Al confirmar, {reserve}te indicamos dónde pagar en efectivo. El personal de la sede registra tu pago y, al confirmarlo, recibes tu acceso a Moodle.</>
+        ) : (
+          <>
+            Al confirmar, {reserve}te mostramos los datos para pagar por {METHOD_IN_TEXT[m.method] ?? m.label}. Luego subes el comprobante y, al verificarlo, recibes tu acceso a Moodle.
+          </>
+        )}
       </p>
       <ManualAmount m={m} dueNowCents={dueNowCents} />
     </div>

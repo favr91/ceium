@@ -344,7 +344,7 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
             <input type="checkbox" className="toggle" role="switch" aria-label="Actualizar la tasa automáticamente desde el BCV" checked={rateAuto} disabled={ro || (pending && busy === "rateAuto")} onChange={(e) => toggleRateAuto(e.target.checked)} />
             <span className="t">
               Actualizar automáticamente con la tasa oficial del BCV
-              <span className="d">Se consulta cada hora en DolarApi y, si no responde, en DolarVZLA. Si las fuentes no coinciden o el valor parece erróneo, se mantiene la tasa anterior y verás un aviso aquí.</span>
+              <span className="d">Se consulta cada hora la tasa oficial publicada por el BCV. Si hay datos inconsistentes o el valor parece erróneo, se mantiene la tasa anterior y verás un aviso aquí.</span>
             </span>
           </label>
 
@@ -356,7 +356,7 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
                 {data.rate.placeholder
                   ? "Tasa de ejemplo de la instalación."
                   : data.rate.auto && data.rate.valueDate
-                    ? `Oficial del BCV, fecha valor ${fmtValueDate(data.rate.valueDate)} · ${data.rate.source.replace(/^BCV · /, "")}`
+                    ? `Oficial del BCV, fecha valor ${fmtValueDate(data.rate.valueDate)}`
                     : `Escrita a mano${data.rate.source ? ` · ${data.rate.source}` : ""}`}
                 {updated ? ` · ${data.rate.auto ? "verificada" : "guardada"} ${updated}` : ""}
               </span>

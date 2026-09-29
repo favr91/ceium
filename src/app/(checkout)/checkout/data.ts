@@ -154,8 +154,9 @@ export async function findPendingOrder(lines: CartLine[], ref: { token: string; 
 }
 
 async function rateLabel(): Promise<string | null> {
-  const r = await readSetting<{ source?: string; updatedAt?: string } | null>(prisma, SETTING_KEYS.exchangeRate, null);
-  const ts = r?.updatedAt ? Date.parse(r.updatedAt) : NaN;
+  const r = await readSetting<{ source?: string; updatedAt?: string; valueDate?: string } | null>(prisma, SETTING_KEYS.exchangeRate, null);
+  // Tasa automática: su fecha valor BCV (mediodía UTC = ese día en Caracas). Tasa manual: cuándo se guardó.
+  const ts = r?.valueDate ? Date.parse(`${r.valueDate}T12:00:00Z`) : r?.updatedAt ? Date.parse(r.updatedAt) : NaN;
   const parts = [r?.source?.trim() || null, Number.isFinite(ts) ? shortDate(new Date(ts)) : null].filter(Boolean);
   return parts.length ? parts.join(" · ") : null;
 }

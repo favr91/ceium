@@ -55,7 +55,7 @@ describe("tasa BCV automática", () => {
     const r = (await syncExchangeRate(d, { fetch: f.fn })) as RateSyncStatus;
     expect(r.ok).toBe(true);
     expect(r.changed).toBe(true);
-    expect(await stored()).toMatchObject({ vesPerUsd: 857.8876, valueDate: "2026-09-29", source: "BCV · vía DolarApi", auto: true, updatedAt: ctx.clock.now().toISOString() });
+    expect(await stored()).toMatchObject({ vesPerUsd: 857.8876, valueDate: "2026-09-29", source: "BCV", provider: "DolarApi", auto: true, updatedAt: ctx.clock.now().toISOString() });
     expect((await lastSync()).ok).toBe(true);
     const audit = await ctx.db.auditLog.findMany({ where: { entityId: SETTING_KEYS.exchangeRate } });
     expect(audit).toHaveLength(1);
@@ -89,7 +89,7 @@ describe("tasa BCV automática", () => {
     const r = (await syncExchangeRate(d, { fetch: f.fn })) as RateSyncStatus;
     expect(r.ok).toBe(true);
     expect(r.applied?.provider).toBe("DolarVZLA");
-    expect(await stored()).toMatchObject({ vesPerUsd: 857.8876, source: "BCV · vía DolarVZLA" });
+    expect(await stored()).toMatchObject({ vesPerUsd: 857.8876, source: "BCV", provider: "DolarVZLA" });
     expect(r.sources[0]).toMatchObject({ provider: "DolarApi", ok: false, error: "HTTP 503" });
   });
 

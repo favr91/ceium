@@ -89,6 +89,8 @@ export interface ExchangeRateSetting {
   valueDate?: string;
   /** true si la escribió la actualización automática; ausente si la escribió el personal. */
   auto?: boolean;
+  /** Servicio que la trajo (dato interno: nunca se muestra; la fuente es el BCV). */
+  provider?: string;
 }
 
 /** Horas tras las cuales la tasa Bs/USD se considera desactualizada (la tasa BCV cambia a diario). */

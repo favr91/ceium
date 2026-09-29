@@ -79,7 +79,7 @@ test.describe("c4 pago móvil y transferencia con comprobante", () => {
     await page.goto("/checkout");
     await page.getByText("Pago Móvil", { exact: true }).click();
     const body = page.getByTestId("method-PAGO_MOVIL").getByTestId("method-body");
-    await expect(body).toContainText("Al finalizar el pedido, reservamos tu cupo por 72 horas y te mostraremos los datos de Pago Móvil de CEIUM");
+    await expect(body).toContainText("Al confirmar, apartamos tu cupo por 72 horas y te mostramos los datos para pagar por pago móvil.");
     const usdText = (await body.getByTestId("method-usd").textContent())!;
     const dueCents = Math.round(Number(usdText.replace(/[^0-9.]/g, "")) * 100);
     expect(dueCents).toBeGreaterThan(0);
@@ -89,7 +89,7 @@ test.describe("c4 pago móvil y transferencia con comprobante", () => {
     await shot(page, "c4-0-pago-movil-seleccionado");
 
     await page.getByText("Transferencia bancaria", { exact: true }).click();
-    await expect(page.getByTestId("method-TRANSFERENCIA").getByTestId("method-body")).toContainText("para hacer la transferencia bancaria");
+    await expect(page.getByTestId("method-TRANSFERENCIA").getByTestId("method-body")).toContainText("para pagar por transferencia bancaria");
     await expect(page.getByTestId("method-PAGO_MOVIL").getByTestId("method-body")).toHaveCount(0);
   });
 
