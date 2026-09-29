@@ -144,6 +144,18 @@ export async function addCartLine(db: Db, lines: CartLine[], raw: CartLineInput,
   return next;
 }
 
+/**
+ * Quita las líneas cuyo programa ya no existe (se borró, o la cookie viene de una BD anterior). Todo lo que lee
+ * el carrito pasa por aquí, así la burbuja del header y la página del carrito cuentan las mismas líneas, y la
+ * siguiente escritura del carrito limpia la cookie.
+ */
+export async function dropMissingProducts(db: Db, lines: CartLine[]): Promise<CartLine[]> {
+  if (lines.length === 0) return lines;
+  const found = await db.product.findMany({ where: { id: { in: lines.map((l) => l.productId) } }, select: { id: true } });
+  const ids = new Set(found.map((p) => p.id));
+  return lines.filter((l) => ids.has(l.productId));
+}
+
 export function removeCartLine(lines: CartLine[], key: string): CartLine[] {
   return lines.filter((l) => l.key !== key);
 }

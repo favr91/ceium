@@ -22,7 +22,7 @@ const inter = localFont({
 export default async function StoreLayout({ children }: { children: React.ReactNode }) {
   await connection(); // menú, contacto y sedes se leen de la BD en cada request
   const [chrome, jar] = await Promise.all([getStoreChrome(), cookies()]);
-  const cartCount = cartCountFromCookie(jar.get(CART_COOKIE)?.value);
+  const cartCount = await cartCountFromCookie(jar.get(CART_COOKIE)?.value);
   return (
     <div className={`store-root ${inter.variable}`}>
       <a className="skip-to-content-link visually-hidden" href="#MainContent">

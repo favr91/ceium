@@ -8,7 +8,7 @@
 // usar el mismo pedido (volver atrás desde PayPal o enviar dos veces no crea otro pedido ni otra reserva).
 import { cookies } from "next/headers";
 import type { Modality, PlanKind } from "@/generated/prisma/client";
-import { CART_COOKIE, parseCartCookie, resolveCart, type CartLine } from "@/server/cart";
+import { CART_COOKIE, dropMissingProducts, parseCartCookie, resolveCart, type CartLine } from "@/server/cart";
 import { prisma } from "@/server/db";
 import { readSetting } from "@/server/deps";
 import { isDomainError } from "@/server/errors";
@@ -132,7 +132,7 @@ export function decodePendingCookie(raw: string | undefined): { token: string; s
 
 export async function readCheckoutCookies() {
   const jar = await cookies();
-  const lines = parseCartCookie(jar.get(CART_COOKIE)?.value);
+  const lines = await dropMissingProducts(prisma, parseCartCookie(jar.get(CART_COOKIE)?.value));
   return { lines, pendingRef: decodePendingCookie(jar.get(CHECKOUT_COOKIE)?.value) };
 }
 

@@ -2,10 +2,11 @@
 // El header de la tienda puede usar `getCartCount()` para la burbuja del ícono del carrito.
 import { cookies } from "next/headers";
 import { prisma } from "@/server/db";
-import { CART_COOKIE, CART_COOKIE_OPTIONS, parseCartCookie, resolveCart, serializeCart, type CartLine, type ResolvedCart } from "@/server/cart";
+import { CART_COOKIE, CART_COOKIE_OPTIONS, dropMissingProducts, parseCartCookie, resolveCart, serializeCart, type CartLine, type ResolvedCart } from "@/server/cart";
 
+/** Líneas del carrito cuyo programa sigue existiendo (ver dropMissingProducts). */
 export async function readCartLines(): Promise<CartLine[]> {
-  return parseCartCookie((await cookies()).get(CART_COOKIE)?.value);
+  return dropMissingProducts(prisma, parseCartCookie((await cookies()).get(CART_COOKIE)?.value));
 }
 
 /** Cookie que el header de la tienda lee para la burbuja del carrito (contrato en components/store/cart-count.ts). */
@@ -27,7 +28,7 @@ export async function getCart(): Promise<ResolvedCart> {
   return resolveCart({ db: prisma, now: () => new Date() }, await readCartLines());
 }
 
-/** Nº de programas en el carrito (sin consultar la BD). */
+/** Nº de programas en el carrito (las mismas líneas que muestra la página del carrito). */
 export async function getCartCount(): Promise<number> {
   return (await readCartLines()).length;
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { addCartLine, parseCartCookie, removeCartLine, resolveCart, serializeCart, type CartLine } from "@/server/cart";
+import { addCartLine, dropMissingProducts, parseCartCookie, removeCartLine, resolveCart, serializeCart, type CartLine } from "@/server/cart";
 import { isDomainError } from "@/server/errors";
 import { setupContext, type TestContext } from "./helpers/setup";
 
@@ -84,5 +84,21 @@ describe("cart: agregar y resolver contra la BD", () => {
     expect(isDomainError(e1, "VALIDATION")).toBe(true);
     const e2 = await addCartLine(ctx.db, [], { productId: ctx.fx.course, modality: "SEMIPRESENCIAL", planKind: "FULL" }, now()).catch((e) => e);
     expect(e2.message).toBe("Selecciona una sede.");
+  });
+});
+
+describe("cart: programas que ya no existen", () => {
+  it("una línea cuyo programa no está en la BD (borrado o cookie de una BD anterior) no se cuenta ni se muestra", async () => {
+    const real = await addCartLine(ctx.db, [], { productId: ctx.fx.course, modality: "ONLINE", planKind: "FULL" }, now());
+    const stale: CartLine[] = [
+      ...real,
+      { key: "old1", productId: "cviejo0000000000000000001", modality: "ONLINE", sedeId: null, cohortId: null, choiceId: null, planKind: "FULL" },
+      { key: "old2", productId: "cviejo0000000000000000002", modality: "ONLINE", sedeId: null, cohortId: null, choiceId: null, planKind: "FULL" },
+    ];
+    const kept = await dropMissingProducts(ctx.db, stale);
+    expect(kept.map((l) => l.productId)).toEqual([ctx.fx.course]);
+    // La burbuja del header (que cuenta `kept`) y la página del carrito muestran lo mismo.
+    expect((await resolveCart({ db: ctx.db, now }, stale)).lines).toHaveLength(kept.length);
+    expect(await dropMissingProducts(ctx.db, [])).toEqual([]);
   });
 });
