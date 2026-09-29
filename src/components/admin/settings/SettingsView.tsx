@@ -28,6 +28,8 @@ export interface SettingsData {
   rateAuto: boolean;
   /** Última consulta automática (null: nunca se consultó). */
   rateSync: { checkedAt: string; ok: boolean; message: string } | null;
+  /** Verificación en dos pasos: si el equipo la exige, si el usuario actual la tiene y quiénes no. */
+  security: { require2fa: boolean; meEnabled: boolean; team: number; without: string[] };
   ttlPaypalMinutes: number;
   ttlManualHours: number;
   reminders: { daysBefore: number; overdueGraceDays: number; overdueEveryDays: number; maxOverdueReminders: number };
@@ -103,6 +105,12 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
     setRate(manualRate());
   }
   const [rateAuto, setRateAuto] = useState(data.rateAuto);
+  const [require2fa, setRequire2fa] = useState(data.security.require2fa);
+  const [lastRequire, setLastRequire] = useState(data.security.require2fa);
+  if (lastRequire !== data.security.require2fa) {
+    setLastRequire(data.security.require2fa);
+    setRequire2fa(data.security.require2fa);
+  }
   const [ttl, setTtl] = useState({ paypal: String(data.ttlPaypalMinutes), manual: String(data.ttlManualHours) });
   const [rem, setRem] = useState({
     daysBefore: String(data.reminders.daysBefore),
@@ -152,6 +160,28 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
     if (!(n > 0)) return setErrors((e) => ({ ...e, rate: "Escribe la tasa en bolívares por dólar, p. ej. 187,25." }));
     if (!rate.source.trim()) return setErrors((e) => ({ ...e, rate: "Indica la fuente de la tasa (p. ej. BCV)." }));
     save("rate", [{ key: "exchangeRate.vesPerUsd", value: { vesPerUsd: n, source: rate.source.trim() } }]);
+  };
+  const toggleRequire2fa = (enabled: boolean) => {
+    setRequire2fa(enabled);
+    setBusy("security");
+    setErrors((e) => ({ ...e, security: null }));
+    start(async () => {
+      try {
+        const r = await saveSettingsAction([{ key: "security.require2fa", value: { enabled } }]);
+        if (r.ok) {
+          toast.show(enabled ? "Listo: todo el equipo deberá usar la verificación en dos pasos." : "Ya no se exige la verificación en dos pasos.");
+          router.refresh();
+        } else {
+          setRequire2fa(!enabled); // no se guardó: el interruptor vuelve a su estado real
+          setErrors((e) => ({ ...e, security: r.error }));
+        }
+      } catch {
+        setRequire2fa(!enabled);
+        setErrors((e) => ({ ...e, security: "No pudimos guardar. Revisa tu conexión e intenta de nuevo." }));
+      } finally {
+        setBusy(null);
+      }
+    });
   };
   const toggleRateAuto = (enabled: boolean) => {
     setRateAuto(enabled);
@@ -449,6 +479,41 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
             </label>
           </div>
           {saveButton("reminders", "Guardar recordatorios", saveReminders)}
+        </div>
+      </section>
+
+      <section className="set-sec" aria-labelledby="h-sec">
+        <div className="set-ann">
+          <h2 id="h-sec">Seguridad del panel</h2>
+          <p>Cada usuario activa su verificación en dos pasos desde su menú (Mi cuenta y seguridad). Aquí puedes exigirla a todo el equipo.</p>
+        </div>
+        <div className="card set-card">
+          {sectionError("security")}
+          <label className="set-switch">
+            <input
+              type="checkbox"
+              className="toggle"
+              role="switch"
+              aria-label="Exigir la verificación en dos pasos a todo el equipo"
+              checked={require2fa}
+              disabled={ro || (pending && busy === "security") || (!require2fa && !data.security.meEnabled)}
+              onChange={(e) => toggleRequire2fa(e.target.checked)}
+            />
+            <span className="t">
+              Exigir la verificación en dos pasos a todo el equipo
+              <span className="d">Quien no la tenga activada solo podrá entrar a Mi cuenta hasta activarla.</span>
+            </span>
+          </label>
+          {!data.security.meEnabled ? (
+            <p className="small muted" style={{ marginTop: 8 }}>
+              Para exigirla, primero actívala en tu cuenta: <a className="lk" href="/admin/account#dos-pasos">Mi cuenta y seguridad</a>.
+            </p>
+          ) : null}
+          <p className="small muted" data-testid="team-2fa" style={{ marginTop: 8 }}>
+            {data.security.without.length === 0
+              ? `Todo el equipo (${data.security.team}) la tiene activada.`
+              : `${data.security.team - data.security.without.length} de ${data.security.team} usuarios la tienen activada. Falta: ${data.security.without.join(", ")}.`}
+          </p>
         </div>
       </section>
       {toast.node}

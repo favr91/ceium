@@ -18,6 +18,11 @@ export default async function LoginPage({ searchParams }: PageProps<"/admin/logi
         </div>
         <h1>Inicia sesión</h1>
         <p className="muted" style={{ marginBottom: 20 }}>para continuar al panel de CEIUM</p>
+        {sp.vencido ? (
+          <div className="banner info" role="status" style={{ marginBottom: 12 }}>
+            <span>La verificación venció o tuvo demasiados intentos. Vuelve a escribir tu correo y contraseña.</span>
+          </div>
+        ) : null}
         <LoginForm next={next} />
       </div>
     </main>

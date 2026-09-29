@@ -27,13 +27,11 @@ describe("auth del panel", () => {
     expect(await getAdminSession(ctx.db, r.token, ctx.clock.now())).toBeNull();
   });
 
-  it("sesión vence, se renueva al pasar la mitad y logout / cambio de clave la revocan", async () => {
+  it("sesión vence a las 12 h aunque se use (sin renovación) y logout / cambio de clave la revocan", async () => {
     const r = await login(ctx.db, { email: "staff@ceium.net", password: "clave-staff-123" }, ctx.clock.now());
-    expect((await getAdminSession(ctx.db, r.token, ctx.clock.now()))?.renewedUntil).toBeUndefined();
     ctx.clock.advance(ADMIN_SESSION_TTL_MS * 0.75);
-    const renewed = await getAdminSession(ctx.db, r.token, ctx.clock.now());
-    expect(renewed?.renewedUntil?.getTime()).toBe(ctx.clock.now().getTime() + ADMIN_SESSION_TTL_MS);
-    ctx.clock.advance(ADMIN_SESSION_TTL_MS + 1);
+    expect((await getAdminSession(ctx.db, r.token, ctx.clock.now()))?.session.expiresAt.getTime()).toBe(r.expiresAt.getTime());
+    ctx.clock.advance(ADMIN_SESSION_TTL_MS * 0.25 + 1);
     expect(await getAdminSession(ctx.db, r.token, ctx.clock.now())).toBeNull();
     expect(await ctx.db.adminSession.count()).toBe(0);
 

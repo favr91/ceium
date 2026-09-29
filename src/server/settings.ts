@@ -16,6 +16,8 @@ export const SETTING_KEYS = {
   exchangeRateAuto: "exchangeRate.auto",
   /** RateSyncStatus — resultado de la última consulta automática (lo escribe el sistema) */
   exchangeRateSync: "exchangeRate.sync",
+  /** { enabled: true } — todo el equipo debe usar la verificación en dos pasos (ver auth.requireAdmin) */
+  require2fa: "security.require2fa",
   /** { next: 1001 } — siguiente número visible de orden */
   orderNextNumber: "order.nextNumber",
   /** { maxAttempts, baseDelaySeconds } — reintentos de matrícula Moodle */

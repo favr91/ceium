@@ -19,7 +19,9 @@ export type EmailTemplate =
   | "refund_issued"
   | "installment_reminder"
   /** Mensaje del formulario de /pages/contacto hacia el buzón de CEIUM (Setting `store.contact`.emails). */
-  | "contact_message";
+  | "contact_message"
+  /** Aviso de seguridad al propio usuario del panel (verificación en dos pasos, contraseña). */
+  | "admin_security";
 
 /**
  * Marcador que sustituye a la contraseña temporal de Moodle en el HTML/texto que se GUARDA.

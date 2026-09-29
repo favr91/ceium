@@ -9,7 +9,7 @@ import type { SessionUser } from "@/server/auth";
 export type AuditEntity = "Customer" | "Product" | "PriceEntry" | "PaymentPlan" | "Collection" | "Sede" | "Cohort" | "Setting" | "AdminUser" | "DiplomaCourse" | "ProductImage" | "ProductChoice";
 
 /** Campos que nunca se guardan en la auditoría. */
-const SECRET_FIELDS = new Set(["passwordHash", "password", "tokenHash"]);
+const SECRET_FIELDS = new Set(["passwordHash", "password", "tokenHash", "totpSecret", "totpPendingSecret", "recoveryCodes"]);
 /** Campos de servicio que no son un cambio del admin. */
 const NOISE_FIELDS = new Set(["updatedAt", "createdAt"]);
 

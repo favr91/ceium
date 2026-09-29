@@ -45,6 +45,7 @@ export const EDITABLE_SETTINGS = {
     })
     .strict(),
   [SETTING_KEYS.exchangeRateAuto]: z.object({ enabled: z.boolean() }).strict(),
+  [SETTING_KEYS.require2fa]: z.object({ enabled: z.boolean() }).strict(),
   [SETTING_KEYS.enrollmentRetry]: z.object({ maxAttempts: z.number().int().min(1).max(30), baseDelaySeconds: z.number().int().min(5).max(86_400) }).strict(),
   [SETTING_KEYS.installmentReminders]: z
     .object({ daysBefore: z.number().int().min(0).max(60), overdueGraceDays: z.number().int().min(0).max(60), overdueEveryDays: z.number().int().min(1).max(60), maxOverdueReminders: z.number().int().min(0).max(20) })
@@ -68,6 +69,11 @@ export async function updateSetting(d: Deps, actor: SessionUser, key: string, va
   if (!r.success) throw new DomainError("VALIDATION", r.error.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ` : "") + i.message).join(". "), { issues: r.error.issues });
   let parsed = r.data as Record<string, unknown> | unknown[];
   if (key === SETTING_KEYS.exchangeRate) parsed = { ...(parsed as Record<string, unknown>), updatedAt: d.now().toISOString() };
+  if (key === SETTING_KEYS.require2fa && (parsed as { enabled: boolean }).enabled) {
+    // Quien la exige debe tenerla: si no, se quedaría fuera del panel al guardar.
+    const me = await d.db.adminUser.findUnique({ where: { id: actor.id }, select: { totpEnabledAt: true } });
+    if (!me?.totpEnabledAt) throw new DomainError("VALIDATION", "Activa primero tu propia verificación en dos pasos (menú de usuario → Mi cuenta y seguridad).");
+  }
   return withTx(d, async (tx) => {
     const before = await tx.setting.findUnique({ where: { key } });
     const after = await tx.setting.upsert({ where: { key }, create: { key, value: parsed as Prisma.InputJsonValue }, update: { value: parsed as Prisma.InputJsonValue } });

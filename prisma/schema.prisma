@@ -751,12 +751,53 @@ model AdminUser {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  /// Verificación en dos pasos (TOTP, RFC 6238) — src/server/two-factor.ts. Secretos cifrados con AES-256-GCM
+  /// (clave derivada de SESSION_SECRET); null = desactivada.
+  totpSecret        String?
+  /// Secreto propuesto mientras se configura; pasa a totpSecret al confirmarlo con un código.
+  totpPendingSecret String?
+  totpEnabledAt     DateTime?
+  /// Último paso de 30 s aceptado: un mismo código no sirve dos veces.
+  totpLastStep      Int?
+  /// JSON: sha256 de los códigos de recuperación que quedan sin usar.
+  recoveryCodes     String?
+  /// Intentos fallidos seguidos (contraseña o código); al llegar al límite se bloquea un rato (lockedUntil).
+  failedLogins      Int       @default(0)
+  lockedUntil       DateTime?
+
   sessions         AdminSession[]
+  loginChallenges  AdminLoginChallenge[]
+  trustedDevices   AdminTrustedDevice[]
   verifiedPayments Payment[]           @relation("PaymentVerifier")
   refunds          Refund[]            @relation("RefundCreator")
   adjustments      BalanceAdjustment[]
   events           OrderEvent[]
   auditLogs        AuditLog[]
+}
+
+/// Segundo paso del inicio de sesión: la contraseña fue correcta y falta el código (10 min, 5 intentos).
+model AdminLoginChallenge {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique // sha256 del token de la cookie
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  attempts    Int       @default(0)
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  ip          String?
+  userAgent   String?
+}
+
+/// «Recordar este equipo»: durante 30 días no se pide el código en ese navegador (la contraseña sí).
+model AdminTrustedDevice {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique // sha256 del token de la cookie
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+  userAgent   String?
 }
 
 model AdminSession {
@@ -768,6 +809,8 @@ model AdminSession {
   createdAt   DateTime  @default(now())
   ip          String?
   userAgent   String?
+  /// Última vez que se usó (para la lista de sesiones abiertas en Mi cuenta).
+  lastSeenAt  DateTime?
 }
 
 /// Configuración clave/valor (JSON). Claves conocidas: ver src/server/settings.ts.

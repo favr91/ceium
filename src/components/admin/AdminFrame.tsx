@@ -84,6 +84,7 @@ export function AdminFrame({ user, children }: { user: { name: string; email: st
                 <b>{user.name}</b>
                 <span>{user.email} · {user.role === "ADMIN" ? "Administrador" : "Personal"}</span>
               </div>
+              <Link className="adm-menu-item" href="/admin/account" role="menuitem" onClick={() => setMenu(false)}><Icon name="shield" size={18} /> Mi cuenta y seguridad</Link>
               <a className="adm-menu-item" href="/" target="_blank" rel="noreferrer" role="menuitem"><Icon name="external" size={18} /> Ver tienda</a>
               <form action={logoutAction}>
                 <button className="adm-menu-item" type="submit" role="menuitem"><Icon name="logout" size={18} /> Cerrar sesión</button>

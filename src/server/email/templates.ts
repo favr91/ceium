@@ -744,3 +744,42 @@ export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
   const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n${r.courseTitle ? `\nAl confirmarse el pago te matricularemos en ${r.courseTitle}.\n` : ""}\n${textPay.join("\n")}\n\nPedido: ${r.statusUrl}`;
   return { subject, html, text };
 }
+
+// ───────────── Seguridad de la cuenta del panel ─────────────
+
+export type AdminSecurityEvent = "2fa_enabled" | "2fa_disabled" | "recovery_used" | "recovery_regenerated" | "password_changed";
+
+export interface AdminSecurityView {
+  name: string;
+  event: AdminSecurityEvent;
+  at: Date;
+  ip?: string | null;
+  device?: string | null;
+  recoveryLeft?: number;
+  accountUrl: string;
+}
+
+const SECURITY_COPY: Record<AdminSecurityEvent, { subject: string; what: string }> = {
+  "2fa_enabled": { subject: "Activaste la verificación en dos pasos", what: "se activó la verificación en dos pasos en tu cuenta del panel de CEIUM" },
+  "2fa_disabled": { subject: "Se desactivó la verificación en dos pasos", what: "se desactivó la verificación en dos pasos de tu cuenta del panel de CEIUM" },
+  recovery_used: { subject: "Se usó un código de recuperación", what: "se inició sesión en tu cuenta del panel de CEIUM con un código de recuperación" },
+  recovery_regenerated: { subject: "Generaste nuevos códigos de recuperación", what: "se generaron nuevos códigos de recuperación para tu cuenta del panel de CEIUM (los anteriores ya no sirven)" },
+  password_changed: { subject: "Cambiaste la contraseña del panel", what: "se cambió la contraseña de tu cuenta del panel de CEIUM" },
+};
+
+/** Aviso al propio usuario del panel cuando cambia algo de la seguridad de su cuenta. */
+export function adminSecurityNotice(v: AdminSecurityView): RenderedEmail {
+  const c = SECURITY_COPY[v.event];
+  const rows: [string, string][] = [["Fecha", formatDateTime(v.at)], ...(v.ip ? [["Desde la IP", v.ip] as [string, string]] : []), ...(v.device ? [["Navegador", v.device] as [string, string]] : [])];
+  const left = v.event === "recovery_used" && v.recoveryLeft != null ? `Te ${v.recoveryLeft === 1 ? "queda 1 código" : `quedan ${v.recoveryLeft} códigos`} de recuperación.` : "";
+  const intro = `Hola ${esc(v.name)}, ${esc(c.what)}.`;
+  const body =
+    p(intro) +
+    (left ? p(esc(left)) : "") +
+    kv(rows, { boxed: true }) +
+    notice(`${strong("¿No fuiste tú?")} Cambia tu contraseña de inmediato desde Mi cuenta y avisa al administrador del panel.`, "warn") +
+    button(v.accountUrl, "Ir a Mi cuenta");
+  const html = layout({ title: c.subject, preheader: `${c.subject}.`, tag: "Seguridad", body });
+  const text = `${stripTags(intro)}\n${left ? `${left}\n` : ""}\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n¿No fuiste tú? Cambia tu contraseña desde Mi cuenta (${v.accountUrl}) y avisa al administrador.`;
+  return { subject: c.subject, html, text };
+}
