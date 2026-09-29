@@ -25,6 +25,7 @@ const env = {
   // carriles compartían var/mock-moodle/state.json y se pisaban los usuarios/matrículas).
   MOCK_MOODLE_STATE: path.resolve(`var/lanes/${lane}/mock-moodle-state.json`),
   MAIL_DIR: `var/lanes/${lane}/mail`,
+  UPLOAD_DIR: `var/lanes/${lane}/uploads`,
   PRIVATE_FILES_DIR: `var/lanes/${lane}/files`,
   CERTIFICATES_DIR: `var/lanes/${lane}/certificates`,
   // Sin internet ni tasas reales en los carriles de prueba (fijan su propia tasa); la vista previa sí la consulta.

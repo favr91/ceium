@@ -12,6 +12,8 @@ import { requireAdmin, type SessionUser } from "@/server/auth";
 import { recordAudit } from "@/server/audit";
 import { withTx, type Deps, type Tx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
+import { optimizeImage } from "@/server/images";
+import { IMAGE_TIERS } from "@/components/store/image-url";
 import { priceScopeKey } from "@/server/pricing";
 
 /** Pedidos que siguen su curso (en pago, pagados o matriculados). */
@@ -466,7 +468,8 @@ const IMAGE_TYPES: Record<string, { ext: string; sniff: (b: Uint8Array) => boole
   avif: { ext: ".avif", sniff: (b) => ascii(b, 4, 8) === "ftyp" && /^avi[fs]$/.test(ascii(b, 8, 12)) },
 };
 const ascii = (b: Uint8Array, from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+/** Tope por archivo (el panel sube de a uno y reduce las fotos grandes en el navegador antes de enviarlas). */
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const UPLOADS_URL = "/uploads/";
 
 /** Detecta el tipo por la firma del archivo (no por el nombre): nada que no sea imagen llega a public/. */
@@ -482,14 +485,29 @@ function uploadPathFor(d: Deps, url: string): string | null {
   return abs.startsWith(root + path.sep) ? abs : null;
 }
 
-async function removeUploadedFile(d: Deps, url: string) {
+/** Archivos de una imagen subida: la URL guardada y, si es optimizada (`…-w<ancho>.webp`), todos sus anchos y el JPG. */
+function uploadedFiles(d: Deps, url: string): string[] {
   const abs = uploadPathFor(d, url);
-  if (!abs) return;
-  try {
-    await fs.rm(abs, { force: true });
-  } catch (e) {
-    d.log.warn(`[catalog] no se pudo borrar ${abs}`, e);
+  if (!abs) return [];
+  const m = /^(.+)-w\d+\.webp$/.exec(abs);
+  return m ? [...IMAGE_TIERS.map((t) => `${m[1]}-w${t}.webp`), `${m[1]}-og.jpg`] : [abs];
+}
+
+async function removeUploadedFile(d: Deps, url: string) {
+  for (const abs of uploadedFiles(d, url)) {
+    try {
+      await fs.rm(abs, { force: true });
+    } catch (e) {
+      d.log.warn(`[catalog] no se pudo borrar ${abs}`, e);
+    }
   }
+}
+
+/** Nombre de archivo descriptivo (ayuda a Google Imágenes): slug del programa, cortado en un guion. */
+function fileStem(slug: string): string {
+  const s = slug.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  const cut = s.length > 60 ? s.slice(0, 60).replace(/-[^-]*$/, "") : s;
+  return cut || "imagen";
 }
 
 export const productImageMetaSchema = z
@@ -501,7 +519,10 @@ export const productImageMetaSchema = z
   .strict();
 
 export interface AddProductImageInput extends z.input<typeof productImageMetaSchema> {
-  /** Archivo subido desde el panel: se guarda en public/uploads/products/<id>/. */
+  /**
+   * Archivo subido desde el panel: se optimiza (ver server/images.ts) y se guarda en
+   * <uploads>/products/<id>/<slug>-<hex>-w<ancho>.webp (un archivo por ancho) + <slug>-<hex>-og.jpg.
+   */
   file?: { bytes: Uint8Array };
   /** O una URL ya alojada (https://… o /uploads/…). */
   url?: string;
@@ -514,19 +535,33 @@ export async function addProductImage(d: Deps, actor: SessionUser, productId: st
   const meta = parse(productImageMetaSchema, metaIn);
   if (!!file === !!givenUrl) throw new DomainError("VALIDATION", "Sube un archivo o indica una URL (solo uno).");
   if (givenUrl && !/^(https:\/\/|\/uploads\/)[^\s]+$/.test(givenUrl)) throw new DomainError("VALIDATION", "La URL de la imagen debe empezar por https:// o /uploads/.");
-  await withTx(d, (tx) => mustProduct(tx, productId));
+  const product = await withTx(d, (tx) => mustProduct(tx, productId));
 
   let url = givenUrl ?? "";
-  let written: string | null = null;
+  const written: string[] = [];
   if (file) {
     if (!file.bytes?.byteLength) throw new DomainError("VALIDATION", "El archivo está vacío.");
-    if (file.bytes.byteLength > MAX_IMAGE_BYTES) throw new DomainError("VALIDATION", "La imagen no puede superar 8 MB.");
-    const ext = sniffImage(file.bytes);
-    const rel = `products/${productId.replace(/[^a-z0-9]/gi, "")}/${crypto.randomBytes(8).toString("hex")}${ext}`;
-    written = path.resolve(d.config.publicUploadsDir, rel);
-    await fs.mkdir(path.dirname(written), { recursive: true });
-    await fs.writeFile(written, file.bytes);
-    url = UPLOADS_URL + rel;
+    if (file.bytes.byteLength > MAX_IMAGE_BYTES) throw new DomainError("VALIDATION", "La imagen no puede superar 10 MB.");
+    sniffImage(file.bytes); // solo imágenes (por su firma, no por el nombre)
+    const img = await optimizeImage(file.bytes);
+    const dir = `products/${productId.replace(/[^a-z0-9]/gi, "")}`;
+    const stem = `${fileStem(product.slug)}-${crypto.randomBytes(4).toString("hex")}`;
+    const abs = path.resolve(d.config.publicUploadsDir, dir);
+    await fs.mkdir(abs, { recursive: true });
+    try {
+      for (const v of img.variants) {
+        written.push(path.join(abs, `${stem}-w${v.tier}.webp`));
+        await fs.writeFile(written[written.length - 1], v.data);
+      }
+      written.push(path.join(abs, `${stem}-og.jpg`));
+      await fs.writeFile(written[written.length - 1], img.share);
+    } catch (e) {
+      for (const f of written) await fs.rm(f, { force: true }).catch(() => {});
+      throw e;
+    }
+    url = `${UPLOADS_URL}${dir}/${stem}-w${img.variants[img.variants.length - 1].tier}.webp`;
+    meta.width ??= img.width;
+    meta.height ??= img.height;
   }
   try {
     return await withTx(d, async (tx) => {
@@ -537,7 +572,7 @@ export async function addProductImage(d: Deps, actor: SessionUser, productId: st
       return after;
     });
   } catch (e) {
-    if (written) await fs.rm(written, { force: true }).catch(() => {});
+    for (const f of written) await fs.rm(f, { force: true }).catch(() => {});
     throw e;
   }
 }

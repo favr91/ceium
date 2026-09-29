@@ -23,6 +23,13 @@ Se cobra con la tasa de **fecha valor de hoy** (el BCV publica en la tarde la de
 coinciden (> 0,5 %) o el valor salta > 30 %, se mantiene la anterior y el panel avisa. Consulta cada hora (y cada 10 min tras un
 fallo o al cambiar el día). Se apaga en Configuración (queda la carga manual) o con `EXCHANGE_RATE_SYNC=off` (carriles de prueba).
 
+**Imágenes subidas** (`src/server/images.ts`, con `sharp`): se orientan según la cámara, pierden EXIF/GPS y se guardan en
+WebP a 320/640/960/1280/1600 px (sin agrandar) + un JPG de 1200 px para `og:image`, con el slug del programa en el nombre.
+`sizedImage` (`src/components/store/image-url.ts`) pide el ancho justo. El panel reduce en el navegador los JPG de más de
+1,5 MB y sube de a uno (máx. 10 MB). Viven en `UPLOAD_DIR` (por defecto `var/uploads`, **fuera de `public/`**: `next start`
+no sirve lo que se agrega a `public/` después de arrancar) y las sirve `app/uploads/[...path]` con caché de un año. En
+producción `UPLOAD_DIR` debe ser persistente y respaldarse, igual que `PRIVATE_FILES_DIR`.
+
 ### Base de datos limpia (verificación / agentes)
 **No usar `npx prisma db push --force-reset`**: Prisma 7 lo bloquea cuando lo ejecuta un agente de IA sin
 consentimiento explícito del usuario. En su lugar:

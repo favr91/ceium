@@ -10,6 +10,7 @@ import {
   updateImageAltAction,
   uploadProductImages,
 } from "@/app/admin/(panel)/products/actions";
+import { sizedImage } from "@/components/store/image-url";
 import { Icon } from "../Icon";
 import { Modal, StatusBadge, useOutside } from "../ui";
 import type { ChoiceItem, EditorContext, ImageItem } from "./types";
@@ -67,6 +68,52 @@ export function RichText({ value, onChange, seed, label }: { value: string; onCh
 
 // ───────── Multimedia ─────────
 
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MB = (n: number) => `${(n / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
+
+/**
+ * Las fotos de teléfono (JPG de 3–15 MB) se reducen en el navegador antes de enviarlas: suben en segundos aunque
+ * la conexión sea lenta. La optimización final (WebP en varios anchos, sin metadatos) la hace el servidor.
+ * Solo JPG: un PNG puede tener transparencia, que el JPG perdería.
+ */
+async function shrinkPhoto(f: File): Promise<File> {
+  if (f.type !== "image/jpeg" || f.size <= 1.5 * 1024 * 1024) return f;
+  try {
+    const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
+    const scale = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.9));
+    return blob && blob.size < f.size ? new File([blob], f.name.replace(/\.[^.]*$/, "") + ".jpg", { type: "image/jpeg" }) : f;
+  } catch {
+    return f; // navegador sin soporte: se envía tal cual y el servidor la optimiza igual
+  }
+}
+
+/** Sube las imágenes de a una (cada envío cabe en el límite del servidor). Devuelve cuántas subieron y los errores. */
+export async function uploadImageFiles(productId: string, files: File[], onProgress?: (i: number) => void): Promise<{ ok: number; errors: string[] }> {
+  let ok = 0;
+  const errors: string[] = [];
+  for (const [i, f] of files.entries()) {
+    onProgress?.(i);
+    const file = await shrinkPhoto(f);
+    const name = files.length > 1 ? `«${f.name}»: ` : "";
+    if (file.size > MAX_UPLOAD_BYTES) {
+      errors.push(`${name}pesa ${MB(file.size)}; el máximo es 10 MB.`);
+      continue;
+    }
+    const fd = new FormData();
+    fd.append("files", file);
+    const r = await uploadProductImages(productId, fd).catch(() => ({ ok: false as const, error: "No se pudo enviar (revisa la conexión)." }));
+    if (r.ok) ok++;
+    else errors.push(`${name}${r.error}`);
+  }
+  return { ok, errors };
+}
+
 /**
  * Subir y editar el texto alternativo se guardan al instante; quitar y reordenar son cambios del editor
  * (`images` ya viene con el borrador aplicado) que se confirman o descartan con la barra de guardado.
@@ -80,17 +127,23 @@ export function MediaCard({ productId, images: order, pending, onPending, onReor
   const [url, setUrl] = useState("");
   const [edit, setEdit] = useState<ImageItem | null>(null);
   const [alt, setAlt] = useState("");
+  const [progress, setProgress] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   const upload = (files: File[], link?: string) => {
     if (!productId) { onPending([...pending, ...files]); return; }
-    const fd = new FormData();
-    for (const f of files) fd.append("files", f);
-    if (link) fd.set("url", link);
     start(async () => {
-      const r = await uploadProductImages(productId, fd);
-      if (r.ok) onMessage(files.length + (link ? 1 : 0) > 1 ? "Imágenes agregadas" : "Imagen agregada");
-      else onMessage(r.error, true);
+      const r = await uploadImageFiles(productId, files, (i) => setProgress(files.length > 1 ? `Subiendo y optimizando ${i + 1} de ${files.length}…` : "Subiendo y optimizando…"));
+      if (link) {
+        const fd = new FormData();
+        fd.set("url", link);
+        const u = await uploadProductImages(productId, fd);
+        if (u.ok) r.ok++;
+        else r.errors.push(u.error);
+      }
+      setProgress(null);
+      if (r.errors.length) onMessage(r.errors.join(" "), true);
+      else onMessage(r.ok > 1 ? "Imágenes agregadas" : "Imagen agregada");
       router.refresh();
     });
   };
@@ -115,6 +168,7 @@ export function MediaCard({ productId, images: order, pending, onPending, onReor
     <div className="card" id="sec-media">
       <div className="card-h">
         <h2>Multimedia</h2>
+        {progress ? <span className="muted" role="status" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{progress}</span> : null}
         {!empty ? (
           <div className="btn-group">
             <button type="button" className="btn btn-plain" onClick={() => setUrlOpen(true)}>Agregar desde URL</button>
@@ -128,7 +182,7 @@ export function MediaCard({ productId, images: order, pending, onPending, onReor
             <button type="button" className="btn" onClick={() => input.current?.click()} disabled={busy}>Subir nuevas</button>
             <button type="button" className="btn btn-plain" onClick={() => setUrlOpen(true)}>Agregar desde URL</button>
           </div>
-          <span className="muted">Acepta imágenes JPG, PNG, WEBP, GIF o AVIF (máx. 8 MB)</span>
+          <span className="muted">JPG, PNG, WEBP, GIF o AVIF (máx. 10 MB). Se optimizan solas: sube la foto tal cual.</span>
         </div>
       ) : (
         <div className="media has-main" onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setOver(true); } }} onDrop={(e) => { if (e.dataTransfer.files.length) onDrop(e); }}>
@@ -143,7 +197,7 @@ export function MediaCard({ productId, images: order, pending, onPending, onReor
               onDrop={(e) => { if (drag) { e.preventDefault(); e.stopPropagation(); move(drag, img.id); setDrag(null); } }}
               data-testid="media-item"
             >
-              <img src={img.url} alt={img.alt ?? ""} />
+              <img src={sizedImage(img.url, i === 0 ? 960 : 640)} alt={img.alt ?? ""} />
               {i === 0 ? <span className="media-tag badge neutral sm" style={{ background: "#fff" }}>Principal</span> : null}
               <div className="media-act">
                 {i > 0 ? <button type="button" title="Hacer principal" aria-label="Hacer principal" onClick={() => move(img.id, order[0].id)}><Icon name="star" size={14} /></button> : null}
@@ -196,7 +250,7 @@ export function MediaCard({ productId, images: order, pending, onPending, onReor
           }
         >
           <div className="row" style={{ alignItems: "flex-start", gap: 16 }}>
-            <div className="thumb" style={{ width: 120, height: 120 }}><img src={edit.url} alt="" /></div>
+            <div className="thumb" style={{ width: 120, height: 120 }}><img src={sizedImage(edit.url, 320)} alt="" /></div>
             <label className="field" style={{ flex: 1 }}>
               <span>Texto alternativo</span>
               <textarea className="inp" value={alt} maxLength={300} onChange={(e) => setAlt(e.target.value)} />

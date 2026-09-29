@@ -52,6 +52,7 @@ export const e2eEnv: Record<string, string> = {
   NEXT_PUBLIC_PAYPAL_CLIENT_ID: "mock-client-id",
   MAIL_TRANSPORT: "outbox",
   MAIL_DIR: path.join(E2E_DIR, "mail"),
+  UPLOAD_DIR: path.join(E2E_DIR, "uploads"),
   PRIVATE_FILES_DIR: path.join(E2E_DIR, "files"),
   CERTIFICATES_DIR: path.join(E2E_DIR, "certificates"),
   CRON_SECRET: LANE ? laneCronSecret() : "e2e-cron-secret",

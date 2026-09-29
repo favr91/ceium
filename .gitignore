@@ -49,8 +49,6 @@ next-env.d.ts
 /*.db
 /*.db-*
 /var/
-/public/uploads/*
-!/public/uploads/.gitkeep
 /test-results/
 /playwright-report/
 .next-*/

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  // Base de las URL absolutas que piden og:image y compañía (vista previa al compartir un enlace).
+  metadataBase: new URL(process.env.APP_URL || "http://localhost:3000"),
   title: { default: "CEIUM", template: "%s – CEIUM" },
   description: "Centro de Estudios e Investigación en Ultrasonido Médico — cursos y diplomados avalados por la UCLA.",
 };

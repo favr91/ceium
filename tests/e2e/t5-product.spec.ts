@@ -91,6 +91,15 @@ test.describe("t5 ficha de producto", () => {
     await expect(page.getByRole("link", { name: "Conoce más" })).toHaveAttribute("href", `/collections/cursos-del-${DIPLOMA}`);
   });
 
+  test("vista previa al compartir: og:image absoluta (1200 px) y título del programa", async ({ page }) => {
+    await page.goto(`/products/${COURSE}`);
+    const og = await page.locator('meta[property="og:image"]').getAttribute("content");
+    expect(og).toMatch(/^https:\/\/.+[?&]width=1200$/);
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute("content", product(COURSE).title);
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute("content", new RegExp(`^https?://[^/]+/products/${COURSE}$`));
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute("content", "summary_large_image");
+  });
+
   test("el precio cambia al instante con modalidad, sede y forma de pago", async ({ page }) => {
     await open(page, DIPLOMA);
     const bqto = price(DIPLOMA, "SEMIPRESENCIAL", "Barquisimeto");

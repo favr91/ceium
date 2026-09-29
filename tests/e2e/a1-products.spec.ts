@@ -122,7 +122,9 @@ test.describe("panel · programas", () => {
     await openDiploma(page);
     const items = page.getByTestId("media-item");
     const bar = page.getByRole("region", { name: "Cambios sin guardar" });
-    const srcs = () => items.locator("img").evaluateAll((els) => els.map((e) => e.getAttribute("src")));
+    // La principal se pide más grande que las demás: se compara qué imagen es, no el ancho pedido.
+    const rawSrcs = () => items.locator("img").evaluateAll((els) => els.map((e) => e.getAttribute("src") ?? ""));
+    const srcs = async () => (await rawSrcs()).map((u) => u.replace(/-w\d+\.webp$/, "").replace(/[?&]width=\d+$/, ""));
     await expect(items.first()).toBeVisible();
     const before = await srcs();
 
@@ -131,6 +133,14 @@ test.describe("panel · programas", () => {
     await expect(items).toHaveCount(before.length + 1);
     await expect(bar).toBeHidden();
     const withNew = await srcs();
+    // Se guardó optimizada (WebP con nombre del programa) y /uploads la sirve con caché larga.
+    const added = (await rawSrcs()).at(-1)!;
+    expect(added).toMatch(/^\/uploads\/products\/[a-z0-9]+\/diplomado-universitario-[a-z0-9-]+-[0-9a-f]{8}-w\d+\.webp$/);
+    const res = await page.request.get(added);
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toBe("image/webp");
+    expect(res.headers()["cache-control"]).toContain("immutable");
+    expect((await page.request.get(added.replace(/-w\d+\.webp$/, "-og.jpg"))).headers()["content-type"]).toBe("image/jpeg");
 
     // Quitar la principal: desaparece y aparece la barra; «Descartar» la devuelve.
     await items.first().hover();

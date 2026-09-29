@@ -43,7 +43,8 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ServiceConf
     mailBcc: env.MAIL_BCC || undefined,
     certificatesDir: env.CERTIFICATES_DIR ?? "var/certificates",
     privateFilesDir: env.PRIVATE_FILES_DIR ?? "var/files",
-    publicUploadsDir: env.PUBLIC_UPLOADS_DIR ?? "public/uploads",
+    // Fuera de public/: `next start` no sirve archivos agregados a public/ después de arrancar (ver app/uploads).
+    publicUploadsDir: env.UPLOAD_DIR || env.PUBLIC_UPLOADS_DIR || "var/uploads",
     enrollInlineRetries: 2,
     enrollInlineDelayMs: 750,
     rateSync: {

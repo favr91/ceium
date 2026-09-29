@@ -2,12 +2,7 @@
 // Imagen(es) del programa. Con una sola imagen es la foto fija de ceium.net (borde #eee, radio 12); con varias,
 // un carrusel con scroll-snap (dedo/trackpad) y los puntos del slider PageFly para saltar entre fotos.
 import { useEffect, useRef, useState } from "react";
-
-/** Pide al CDN de Shopify el ancho justo (mismo criterio que sizedImage de home-data, que es solo servidor). */
-function sizedImage(url: string, width: number): string {
-  if (!/^(https?:)?\/\/(cdn\.shopify\.com|ceium\.net\/cdn)\//.test(url)) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}width=${width}`;
-}
+import { sizedImage } from "../image-url";
 
 export interface GalleryImage {
   url: string;

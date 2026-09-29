@@ -10,6 +10,7 @@ import { connection } from "next/server";
 import { cache } from "react";
 import { Carousel } from "@/components/store/home/Carousel";
 import { sizedImage } from "@/components/store/home/home-data";
+import { shareImage } from "@/components/store/image-url";
 import { ProductBuyForm } from "@/components/store/product/ProductBuyForm";
 import { getProductPage, type ProductPageData } from "@/components/store/product/product-data";
 import { ProductGallery } from "@/components/store/product/ProductGallery";
@@ -24,7 +25,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   await connection();
   const data = await loadPage(decodeURIComponent((await params).slug));
   if (!data) return { title: "Programa no encontrado" };
-  return { title: data.title, description: data.seoDescription ?? undefined };
+  const image = data.images[0];
+  return {
+    title: data.title,
+    description: data.seoDescription ?? undefined,
+    // Vista previa al compartir el enlace (WhatsApp, Facebook): primera foto del programa.
+    openGraph: {
+      type: "website",
+      siteName: "CEIUM",
+      title: data.title,
+      description: data.seoDescription ?? undefined,
+      url: `/products/${data.slug}`,
+      images: image ? [{ url: shareImage(image.url), alt: image.alt || data.title }] : undefined,
+    },
+    twitter: { card: image ? "summary_large_image" : "summary" },
+  };
 }
 
 /** Triángulo de los acordeones del diplomado (abierto ▾ / cerrado ▸). */

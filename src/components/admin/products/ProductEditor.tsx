@@ -5,11 +5,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { deleteProductAction, saveProduct, setProductsPublished, uploadProductImages } from "@/app/admin/(panel)/products/actions";
+import { deleteProductAction, saveProduct, setProductsPublished } from "@/app/admin/(panel)/products/actions";
 import { Icon } from "../Icon";
 import { Modal, StatusBadge, useOutside, useToast } from "../ui";
 import { PriceMatrix } from "./PriceMatrix";
-import { ChoicesCard, CoursesCard, MediaCard, RichText } from "./parts";
+import { ChoicesCard, CoursesCard, MediaCard, RichText, uploadImageFiles } from "./parts";
 import { parseMoney, planPreview, usd } from "./money";
 import { CATEGORY_LABEL, CATEGORY_ORDER, statusOf, type Category, type EditorContext, type MediaDraft, type PlanRow, type ProductForm } from "./types";
 
@@ -110,10 +110,8 @@ export function ProductEditor({ initial, ctx, canEdit }: { initial: ProductForm;
     start(async () => {
       const r = await saveProduct(form, media ?? undefined);
       if (r.id && pendingFiles.length) {
-        const fd = new FormData();
-        for (const f of pendingFiles) fd.append("files", f);
-        const up = await uploadProductImages(r.id, fd);
-        if (!up.ok) r.notes = [...(r.notes ?? []), `Imágenes: ${up.error}`];
+        const up = await uploadImageFiles(r.id, pendingFiles);
+        if (up.errors.length) r.notes = [...(r.notes ?? []), `Imágenes: ${up.errors.join(" ")}`];
         setPendingFiles([]);
       }
       if (r.ok) {

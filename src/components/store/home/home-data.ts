@@ -151,11 +151,8 @@ export interface HomeData {
   rows: HomeRow[];
 }
 
-/** Pide al CDN de Shopify una versión reducida (las originales pesan 1600–2048 px). */
-export function sizedImage(url: string, width: number): string {
-  if (!/^(https?:)?\/\/(cdn\.shopify\.com|ceium\.net\/cdn)\//.test(url)) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}width=${width}`;
-}
+/** Imagen al ancho justo (CDN de Shopify o subidas optimizadas): ver image-url. */
+export { sizedImage } from "../image-url";
 
 function modalityLabel(online: boolean, semi: boolean): string {
   if (online && semi) return "Online y semipresencial";

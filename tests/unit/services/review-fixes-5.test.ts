@@ -3,6 +3,7 @@
 // webhook que llega antes con las opciones del admin), CAPTURE_PENDING y unicidad de referencias manuales.
 import fs from "node:fs";
 import path from "node:path";
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SessionUser } from "@/server/auth";
 import { cancelOrder, createCheckout } from "@/server/orders";
@@ -129,6 +130,7 @@ describe("roles dentro de los servicios del panel", () => {
 
 describe("catálogo: alta/baja, imágenes y opciones", () => {
   const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+  const photo = () => sharp({ create: { width: 2000, height: 1200, channels: 3, background: "#3a7ca5" } }).png().toBuffer().then((b) => new Uint8Array(b));
 
   it("alta de programa (sin publicar), imágenes subidas a /uploads, orden y baja con su archivo", async () => {
     const p = await createProduct(ctx.d, ctx.fx.admin, { type: "COURSE", category: "WORKSHOP", title: "Taller de Ecografía Transfontanelar", slug: "taller-transfontanelar", moodleCourseId: 127 });
@@ -136,18 +138,24 @@ describe("catálogo: alta/baja, imágenes y opciones", () => {
     await expect(createProduct(ctx.d, ctx.fx.staff, { type: "COURSE", category: "WORKSHOP", title: "X", slug: "x" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(createProduct(ctx.d, ctx.fx.admin, { type: "DIPLOMA", category: "WORKSHOP", title: "X", slug: "x" })).rejects.toMatchObject({ code: "VALIDATION" });
 
-    const a = await addProductImage(ctx.d, ctx.fx.admin, p.id, { file: { bytes: PNG }, alt: "Portada" });
-    expect(a.url).toMatch(/^\/uploads\/products\/[a-z0-9]+\/[0-9a-f]{16}\.png$/);
+    // Se optimiza al subir: WebP en cada ancho + JPG para compartir, con nombre descriptivo y su tamaño real.
+    const a = await addProductImage(ctx.d, ctx.fx.admin, p.id, { file: { bytes: await photo() }, alt: "Portada" });
+    expect(a.url).toMatch(/^\/uploads\/products\/[a-z0-9]+\/taller-transfontanelar-[0-9a-f]{8}-w1600\.webp$/);
+    expect([a.width, a.height]).toEqual([1600, 960]);
     const file = path.join(ctx.d.config.publicUploadsDir, a.url.slice("/uploads/".length));
-    expect(fs.existsSync(file)).toBe(true);
+    const files = [320, 640, 960, 1280, 1600].map((w) => file.replace(/-w1600\.webp$/, `-w${w}.webp`)).concat(file.replace(/-w1600\.webp$/, "-og.jpg"));
+    for (const f of files) expect(fs.existsSync(f), f).toBe(true);
     await expect(addProductImage(ctx.d, ctx.fx.admin, p.id, { file: { bytes: new TextEncoder().encode("<script>alert(1)</script>") } })).rejects.toMatchObject({ code: "VALIDATION" });
+    // Firma de PNG pero archivo roto: no se guarda nada.
+    await expect(addProductImage(ctx.d, ctx.fx.admin, p.id, { file: { bytes: PNG } })).rejects.toMatchObject({ code: "VALIDATION" });
+    expect(fs.readdirSync(path.dirname(file)).length).toBe(files.length);
     const b = await addProductImage(ctx.d, ctx.fx.admin, p.id, { url: "https://cdn.shopify.com/x.jpg" });
     expect(b.position).toBe(a.position + 1);
     await reorderProductImages(ctx.d, ctx.fx.admin, p.id, [b.id, a.id]);
     expect((await ctx.db.productImage.findMany({ where: { productId: p.id }, orderBy: { position: "asc" } })).map((i) => i.id)).toEqual([b.id, a.id]);
     await expect(reorderProductImages(ctx.d, ctx.fx.admin, p.id, [a.id])).rejects.toMatchObject({ code: "VALIDATION" });
     await deleteProductImage(ctx.d, ctx.fx.admin, a.id);
-    expect(fs.existsSync(file)).toBe(false);
+    for (const f of files) expect(fs.existsSync(f), f).toBe(false);
 
     await deleteProduct(ctx.d, ctx.fx.admin, p.id, "creado por error");
     expect(await ctx.db.product.findUnique({ where: { id: p.id } })).toBeNull();
