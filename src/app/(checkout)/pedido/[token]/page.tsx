@@ -434,6 +434,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                     )}
                     {order.balanceCents > 0 ? <> · Saldo pendiente: {usd(order.balanceCents)}</> : null}
                   </Step>
+                  {semiItems.map((it) => (
+                    <Step key={it.id} state="done" title="Cupo confirmado">
+                      {it.cohort!.name} · {it.sede?.name ?? ""} · desde el {formatDate(it.cohort!.startDate)}. Te enviamos la dirección y el horario por correo.
+                    </Step>
+                  ))}
                   {preparingAccess ? (
                     <Step state="active" title="Preparando tu acceso al aula virtual" testId="step-access">
                       Te llegará por correo a {c.email} en unos minutos. Esta página se actualiza sola.
@@ -461,11 +466,6 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                       ) : null}
                     </Step>
                   )}
-                  {semiItems.map((it) => (
-                    <Step key={it.id} state="done" title="Cupo confirmado">
-                      {it.cohort!.name} · {it.sede?.name ?? ""} · desde el {formatDate(it.cohort!.startDate)}. Te enviamos la dirección y el horario por correo.
-                    </Step>
-                  ))}
                   <Step state="todo" title="Certificado">
                     Al aprobar {order.items.some((i) => i.productType === "DIPLOMA") ? "todos los cursos" : "el programa"}
                     {order.balanceCents > 0 ? " y completar el pago" : ""}, recibirás tu certificado con código de verificación.
@@ -504,6 +504,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                   Recibimos tu comprobante. Lo confirmamos con el banco en horario laboral, normalmente el mismo día, y te avisaremos por correo a <strong>{c.email}</strong>. No hace falta que pagues de nuevo.
                 </p>
                 <ol className="co-steps">
+                  {semiItems.map((it) =>
+                    it.reservation?.status === "HELD" ? (
+                      <Step key={it.id} state="done" title="Cupo apartado">
+                        {it.cohort!.name} · {it.sede?.name ?? ""}. Lo mantenemos para ti mientras verificamos el pago.
+                      </Step>
+                    ) : null,
+                  )}
                   <Step state="done" title="Comprobante recibido" testId="step-proof">
                     {methodLabel(proof.method)}
                     {proof.reference ? <> · ref. <strong>{proof.reference}</strong></> : null}
@@ -521,13 +528,6 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                   <Step state="active" title="Verificación del pago" testId="step-verify">
                     El equipo de CEIUM revisa tu comprobante. Esta página se actualiza sola.
                   </Step>
-                  {semiItems.map((it) =>
-                    it.reservation?.status === "HELD" ? (
-                      <Step key={it.id} state="done" title="Cupo apartado">
-                        {it.cohort!.name} · {it.sede?.name ?? ""}. Lo mantenemos para ti mientras verificamos el pago.
-                      </Step>
-                    ) : null,
-                  )}
                   <Step state="todo" title="Acceso al aula virtual">
                     Al aprobar el pago te enviaremos tu usuario de Moodle y los datos para entrar a {c.email}.
                   </Step>

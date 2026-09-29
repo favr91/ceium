@@ -341,8 +341,16 @@
 .co-steps { display: grid; gap: 0; margin: 16px 0 0; padding: 0; list-style: none; }
 .co-steps > li { position: relative; display: flex; gap: 12px; padding-bottom: 16px; }
 .co-steps > li:last-child { padding-bottom: 0; }
-.co-steps > li:not(:last-child)::before { content: ""; position: absolute; left: 10px; top: 24px; bottom: 2px; width: 2px; border-radius: 1px; background: var(--co-border); }
-.co-steps > li[data-state="done"]:not(:last-child)::before { background: rgba(9, 176, 176, 0.45); }
+.co-steps > li:not(:last-child)::before { content: ""; position: absolute; left: 11px; top: 28px; bottom: 4px; width: 2px; border-radius: 1px; background: #e3e7e8; }
+.co-steps > li[data-state="done"]:not(:last-child)::before { background: var(--co-teal); }
+/* En la cronología del pedido: círculos de 24 px; el paso en curso es un aro con punto (el giro queda para «procesando»). */
+.co-steps .co-step-dot { flex: 0 0 24px; width: 24px; height: 24px; margin-top: -1px; box-shadow: inset 0 0 0 2px #d5dbdd; }
+.co-steps .co-step-dot svg { width: 14px; height: 14px; }
+.co-steps [data-state="done"] > .co-step-dot { box-shadow: none; }
+.co-steps [data-state="active"] > .co-step-dot { box-shadow: inset 0 0 0 2px var(--co-teal), 0 0 0 4px rgba(9, 176, 176, 0.16); }
+.co-steps [data-state="active"] > .co-step-dot::after { inset: 7px; border: 0; background: var(--co-teal); animation: co-pulse 1.6s ease-in-out infinite; }
+@keyframes co-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(0.7); } }
+@media (prefers-reduced-motion: reduce) { .co-steps [data-state="active"] > .co-step-dot::after { animation: none; } }
 .co-step-title { font-size: 14px; line-height: 22px; font-weight: 600; color: var(--co-ink); }
 [data-state="todo"] .co-step-title { color: var(--co-muted-2); }
 .co-step-text { margin-top: 1px; font-size: 13px; line-height: 19px; color: #4d5b61; overflow-wrap: anywhere; }
@@ -552,12 +560,12 @@
 .co-progress li::after { content: ""; position: absolute; top: 12px; left: 30px; right: 6px; height: 2px; background: var(--co-border); border-radius: 1px; }
 .co-progress li:last-child::after { display: none; }
 .co-progress li[data-state="done"]::after { background: var(--co-teal); }
-.co-step-dot { position: relative; z-index: 1; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: #fff; border: 2px solid var(--co-border); color: var(--co-muted); }
-.co-step-dot svg { width: 13px; height: 13px; }
-.co-progress li[data-state="done"] .co-step-dot { background: var(--co-teal); border-color: var(--co-teal); color: #fff; }
-.co-progress li[data-state="current"] .co-step-dot { border-color: var(--co-teal); color: var(--co-teal-ink); box-shadow: 0 0 0 4px rgba(9, 176, 176, 0.15); }
-.co-progress li[data-state="done"] .co-step-label { color: var(--co-ink); }
-.co-progress li[data-state="current"] .co-step-label { color: var(--co-ink); font-weight: 700; }
+.co-progress-dot { position: relative; z-index: 1; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: #fff; border: 2px solid var(--co-border); color: var(--co-muted); }
+.co-progress-dot svg { width: 13px; height: 13px; }
+.co-progress li[data-state="done"] .co-progress-dot { background: var(--co-teal); border-color: var(--co-teal); color: #fff; }
+.co-progress li[data-state="current"] .co-progress-dot { border-color: var(--co-teal); color: var(--co-teal-ink); box-shadow: 0 0 0 4px rgba(9, 176, 176, 0.15); }
+.co-progress li[data-state="done"] .co-progress-label { color: var(--co-ink); }
+.co-progress li[data-state="current"] .co-progress-label { color: var(--co-ink); font-weight: 700; }
 
 .co-pending .co-hold-compact { margin-top: 22px; padding: 12px 14px; }
 .co-pending .co-hold-compact .co-hold-title { font-size: 14px; line-height: 20px; }

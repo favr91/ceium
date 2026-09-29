@@ -168,10 +168,10 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
       <ol className="co-progress" aria-label="Tu inscripción">
         {steps.map((label, i) => (
           <li key={label} data-state={i === 0 ? "done" : i === 1 ? "current" : undefined} aria-current={i === 1 ? "step" : undefined}>
-            <span className="co-step-dot" aria-hidden="true">
+            <span className="co-progress-dot" aria-hidden="true">
               {i === 0 ? <CheckIcon /> : i + 1}
             </span>
-            <span className="co-step-label">
+            <span className="co-progress-label">
               {label}
               {i === 0 ? <span className="co-visually-hidden"> (listo)</span> : i === 1 ? <span className="co-visually-hidden"> (paso actual)</span> : null}
             </span>
