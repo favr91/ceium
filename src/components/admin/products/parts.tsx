@@ -150,7 +150,7 @@ export function MediaCard({ productId, images, pending, onPending, onMessage }: 
           {order.map((img, i) => (
             <div
               key={img.id}
-              className={`mi${drag === img.id ? " dragging" : ""}`}
+              className={`media-item${drag === img.id ? " dragging" : ""}`}
               draggable
               onDragStart={(e) => { setDrag(img.id); e.dataTransfer.effectAllowed = "move"; }}
               onDragEnd={() => setDrag(null)}
@@ -159,8 +159,8 @@ export function MediaCard({ productId, images, pending, onPending, onMessage }: 
               data-testid="media-item"
             >
               <img src={img.url} alt={img.alt ?? ""} />
-              {i === 0 ? <span className="mi-tag badge neutral sm" style={{ background: "#fff" }}>Principal</span> : null}
-              <div className="mi-act">
+              {i === 0 ? <span className="media-tag badge neutral sm" style={{ background: "#fff" }}>Principal</span> : null}
+              <div className="media-act">
                 {i > 0 ? <button type="button" title="Hacer principal" aria-label="Hacer principal" onClick={() => move(img.id, order[0].id)}><Icon name="star" size={14} /></button> : null}
                 <button type="button" title="Texto alternativo" aria-label="Editar texto alternativo" onClick={() => { setEdit(img); setAlt(img.alt ?? ""); }}><Icon name="eye" size={14} /></button>
                 <button type="button" title="Eliminar" aria-label="Eliminar imagen" onClick={() => remove(img.id)}><Icon name="trash" size={14} /></button>
@@ -168,9 +168,9 @@ export function MediaCard({ productId, images, pending, onPending, onMessage }: 
             </div>
           ))}
           {pending.map((f, i) => (
-            <div key={`p${i}`} className="mi pending" title="Se subirá al guardar">
+            <div key={`p${i}`} className="media-item pending" title="Se subirá al guardar">
               <img src={URL.createObjectURL(f)} alt="" />
-              <div className="mi-act" style={{ display: "flex" }}>
+              <div className="media-act" style={{ display: "flex" }}>
                 <button type="button" aria-label="Quitar" onClick={() => onPending(pending.filter((_, j) => j !== i))}><Icon name="x" size={14} /></button>
               </div>
             </div>

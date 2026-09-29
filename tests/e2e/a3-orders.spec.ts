@@ -250,6 +250,9 @@ test.describe("panel · pedidos", () => {
 
     // Ajustar saldo: descuento de $50.
     await page.getByRole("button", { name: "Más acciones" }).click();
+    // Regresión: la galería de productos definía `.mi` global con aspect-ratio 1 y cada opción del menú quedaba cuadrada.
+    await expect(page.getByRole("menuitem", { name: "Ajustar saldo" })).toBeVisible();
+    expect((await page.getByRole("menuitem", { name: "Ajustar saldo" }).boundingBox())!.height).toBeLessThan(48);
     await page.getByRole("menuitem", { name: "Ajustar saldo" }).click();
     const dlg = page.getByRole("dialog", { name: "Ajustar saldo" });
     await dlg.getByRole("textbox", { name: "Monto" }).fill("50");

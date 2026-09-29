@@ -292,16 +292,16 @@
 /* Multimedia */
 .media { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
 .media.has-main { grid-template-columns: repeat(4, 1fr); }
-.media.has-main .mi:first-child { grid-column: span 2; grid-row: span 2; }
-.mi { position: relative; aspect-ratio: 1; border-radius: 8px; border: 1px solid var(--p-border); background: #fff; overflow: hidden; cursor: grab; }
-.mi img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.mi:hover::after { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.25); pointer-events: none; }
-.mi .mi-act { position: absolute; top: 6px; right: 6px; display: none; gap: 4px; z-index: 2; }
-.mi:hover .mi-act, .mi:focus-within .mi-act { display: flex; }
-.mi .mi-act button { width: 24px; height: 24px; border-radius: 6px; background: #fff; border: 0; box-shadow: 0 1px 2px rgba(0,0,0,.3); display: grid; place-items: center; cursor: pointer; }
-.mi.dragging { opacity: .4; }
-.mi.pending { opacity: .6; }
-.mi .mi-tag { position: absolute; left: 6px; bottom: 6px; z-index: 2; }
+.media.has-main .media-item:first-child { grid-column: span 2; grid-row: span 2; }
+.media-item { position: relative; aspect-ratio: 1; border-radius: 8px; border: 1px solid var(--p-border); background: #fff; overflow: hidden; cursor: grab; }
+.media-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-item:hover::after { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.25); pointer-events: none; }
+.media-item .media-act { position: absolute; top: 6px; right: 6px; display: none; gap: 4px; z-index: 2; }
+.media-item:hover .media-act, .media-item:focus-within .media-act { display: flex; }
+.media-item .media-act button { width: 24px; height: 24px; border-radius: 6px; background: #fff; border: 0; box-shadow: 0 1px 2px rgba(0,0,0,.3); display: grid; place-items: center; cursor: pointer; }
+.media-item.dragging { opacity: .4; }
+.media-item.pending { opacity: .6; }
+.media-item .media-tag { position: absolute; left: 6px; bottom: 6px; z-index: 2; }
 .drop { border: 1px dashed #b5b5b5; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 16px; min-height: 104px; background: #fff; }
 .drop.over { background: #f0f7ff; border-color: var(--p-link); }
 .drop.big { min-height: 160px; }
