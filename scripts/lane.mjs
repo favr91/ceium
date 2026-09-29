@@ -29,6 +29,8 @@ const env = {
   CERTIFICATES_DIR: `var/lanes/${lane}/certificates`,
   // Sin internet ni tasas reales en los carriles de prueba (fijan su propia tasa); la vista previa sí la consulta.
   EXCHANGE_RATE_SYNC: lane === "preview" ? (process.env.EXCHANGE_RATE_SYNC ?? "on") : "off",
+  // Los carriles de prueba nunca envían correo real aunque .env tenga SMTP; la vista previa usa lo que diga .env.
+  ...(lane === "preview" ? {} : { MAIL_TRANSPORT: "outbox" }),
 };
 if (process.argv.includes("--reset") || !fs.existsSync(db)) {
   execSync(`node scripts/db-reset.mjs var/lanes/${lane}.db`, { stdio: "inherit", env: { ...env, DB_RESET_SKIP_GENERATE: "1" } });
