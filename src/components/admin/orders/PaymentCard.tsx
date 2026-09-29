@@ -75,8 +75,8 @@ function VerifyPanel({ o, p }: { o: O; p: P }) {
   if (hoursLeft != null) checks.push({ tone: hoursLeft < 12 ? "warn" : "ok", text: <>El cupo está reservado {hoursLeft > 0 ? `${hoursLeft} h más` : "por muy poco tiempo"} (hasta el {listDate(hold!.expiresAt, o.now).replace(/^Hoy/, "hoy").replace(/^Ayer/, "ayer")}).</> });
 
   return (
-    <div className="vf">
-      <div data-testid="proof">
+    <div className="vf" id={`verificar-${p.id}`}>
+      <div className="vf-media" data-testid="proof">
         {p.hasProof && p.proofKind === "image" ? (
           <button type="button" className="vf-proof" onClick={() => setZoom(true)} aria-label="Ampliar comprobante">
             {/* eslint-disable-next-line @next/next/no-img-element -- archivo privado servido por el panel */}
@@ -133,7 +133,9 @@ function VerifyPanel({ o, p }: { o: O; p: P }) {
           <dt>Registrado</dt>
           <dd>{listDate(p.createdAt, o.now)}</dd>
         </dl>
-
+      </div>
+      {/* Hijo directo de .vf: en el teléfono queda fijo abajo mientras se revisa el comprobante (sticky). */}
+      <div className="vf-foot">
         {perms.verify ? (
           mode === "reject" ? (
             <form

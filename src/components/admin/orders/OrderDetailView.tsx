@@ -91,6 +91,9 @@ function Inner({ o, adminName }: { o: O; adminName: string }) {
               Más acciones <Icon name="chevronDown" size={16} />
             </button>
             {menuOpen ? (
+              <>
+              {/* Fondo de la hoja de acciones en el teléfono (en escritorio no se ve): tocarlo solo cierra el menú. */}
+              <div className="menu-scrim" aria-hidden="true" onClick={() => setMenuOpen(false)} />
               <div className="menu" role="menu" onClick={() => setMenuOpen(false)}>
                 <button type="button" role="menuitem" className="mi" disabled={!canReassign} onClick={() => setModal("reassign")}>
                   <Icon name="cohort" size={18} /> Reasignar cohorte
@@ -120,6 +123,7 @@ function Inner({ o, adminName }: { o: O; adminName: string }) {
                   </span>
                 </button>
               </div>
+              </>
             ) : null}
           </div>
           <nav className="adm-pager" aria-label="Pedidos vecinos">
@@ -145,7 +149,8 @@ function Inner({ o, adminName }: { o: O; adminName: string }) {
         <div className="banner attention" role="note">
           <Icon name="alert" />
           <span>
-            <b>{awaiting.length === 1 ? "Hay un pago por verificar." : `Hay ${awaiting.length} pagos por verificar.`}</b> Compara el comprobante con tu estado de cuenta y apruébalo o recházalo. El médico recibe un correo en ambos casos.
+            <b>{awaiting.length === 1 ? "Hay un pago por verificar." : `Hay ${awaiting.length} pagos por verificar.`}</b> Compara el comprobante con tu estado de cuenta y apruébalo o recházalo. El médico recibe un correo en ambos casos.{" "}
+            <a className="lk" href={`#verificar-${awaiting[0].id}`}>Ver el comprobante</a>
           </span>
         </div>
       ) : null}

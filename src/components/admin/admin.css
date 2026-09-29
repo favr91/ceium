@@ -449,3 +449,33 @@
   .modal-bg { align-items: end; padding: 0; }
   .modal { border-radius: 16px 16px 0 0; }
 }
+
+/* ───────── Teléfono: controles a la medida del dedo y campos sin zoom ─────────
+   En escritorio los controles miden 28 px, como en Shopify; en el teléfono pasan a 40 px (tabs 36) para tocarlos con
+   el dedo. Los campos usan letra de 16 px: con menos, Safari en iPhone agranda la página cada vez que se toca uno. */
+@media (max-width: 768px) {
+  .btn { min-height: 40px; padding: 8px 14px; font-size: 13px !important; }
+  .btn-plain { min-height: 0; padding: 6px 4px; }
+  .btn-icon { width: 40px; padding: 8px; }
+  .adm-back { width: 40px; height: 40px; margin: -6px; } /* área táctil de 40 px sin ocupar más que los 28 px de antes */
+  .adm-pager a, .adm-pager span { width: 40px; height: 40px; }
+  .ix-tab { height: 36px; }
+  .pill { height: 32px; padding: 0 10px; }
+  .adm-hamburger { padding: 8px; }
+  .adm input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), .adm select, .adm textarea, .adm select.inp, .adm textarea.inp { font-size: 16px; }
+  .inp, .adm select.inp { min-height: 40px; }
+  .toggle { width: 40px; height: 24px; border-radius: 12px; }
+  .toggle::after { width: 20px; height: 20px; }
+  .toggle:checked::after { transform: translateX(16px); }
+  .check input[type="checkbox"], .adm input[type="checkbox"].cb { width: 20px; height: 20px; }
+  /* Formas de pago de la matriz: la etiqueta arriba y los montos debajo (en una línea se cortaban). */
+  .pm td.plans { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; row-gap: 2px; }
+  .pm td.plans::before { flex-basis: 100%; }
+}
+
+/* Pantallas táctiles (sin puntero que «pase por encima»): lo que en escritorio aparece al pasar el ratón se muestra siempre. */
+@media (hover: none) {
+  .media-item .media-act { display: flex; }
+  .media-item:hover::after { content: none; }
+  .media-item .media-act button { width: 32px; height: 32px; }
+}

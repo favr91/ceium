@@ -125,6 +125,42 @@ test.describe("panel · pedidos", () => {
     await anon.close();
   });
 
+  // Antes de las pruebas que aprueban/rechazan: solo abre y cierra, no cambia el pedido.
+  test("móvil: «Más acciones» como hoja dentro de la pantalla y Aprobar/Rechazar a la vista al revisar el comprobante", async ({ page }, info) => {
+    test.skip(info.project.name !== "mobile", "solo móvil");
+    await login(page, `/admin/orders/${O.awaiting.id}`);
+    const vw = page.viewportSize()!;
+
+    // Anclado al botón, el menú se salía por la izquierda de la pantalla: ahora es una hoja inferior.
+    await page.getByRole("button", { name: "Más acciones" }).click();
+    const menu = page.getByRole("menu");
+    await expect(menu).toBeVisible();
+    const m = (await menu.boundingBox())!;
+    expect(m.x).toBeGreaterThanOrEqual(0);
+    expect(m.x + m.width).toBeLessThanOrEqual(vw.width);
+    expect(m.y + m.height).toBeLessThanOrEqual(vw.height);
+    expect((await menu.getByRole("menuitem", { name: "Ajustar saldo" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await page.mouse.click(vw.width / 2, 150); // tocar el fondo solo cierra la hoja
+    await expect(menu).toBeHidden();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // El aviso lleva al comprobante; Rechazar / Aprobar quedan fijos abajo mientras se revisa (sticky: la tarjeta
+    // no puede tener overflow: hidden, que lo anula).
+    await page.getByRole("link", { name: "Ver el comprobante" }).click();
+    const approve = page.getByRole("button", { name: "Aprobar pago" });
+    await expect(approve).toBeInViewport();
+    expect((await approve.boundingBox())!.height).toBeGreaterThanOrEqual(40);
+    expect(await page.locator(".vf-foot").first().evaluate((e) => getComputedStyle(e).position)).toBe("sticky");
+    expect(await page.locator(".vf-foot").first().evaluate((e) => getComputedStyle(e.closest(".tx")!).overflowY)).not.toBe("hidden");
+
+    // Sin ratón: los botones de copiar se ven siempre; los campos usan 16 px (iOS no hace zoom al tocarlos).
+    await expect(page.getByRole("button", { name: "Copiar correo" })).toHaveCSS("opacity", "1");
+    await page.getByRole("button", { name: "Rechazar pago" }).click();
+    await expect(page.getByRole("textbox", { name: "Motivo del rechazo" })).toHaveCSS("font-size", "16px");
+    await page.getByRole("form", { name: "Rechazar pago" }).getByRole("button", { name: "Cancelar" }).click();
+    expect(orderRow(O.awaiting.id).status).toBe("AWAITING_VERIFICATION");
+  });
+
   test("ficha de un pago móvil por verificar: comprobante, comprobaciones y aprobación", async ({ page }, info) => {
     test.skip(info.project.name !== "desktop", "una aprobación por corrida");
     await login(page, `/admin/orders/${O.awaiting.id}`);

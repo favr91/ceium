@@ -49,6 +49,8 @@ export function CustomerView({ c, perms }: { c: C; perms: Perms }) {
               Más acciones <Icon name="chevronDown" size={16} />
             </button>
             {menuOpen ? (
+              <>
+              <div className="menu-scrim" aria-hidden="true" onClick={() => setMenuOpen(false)} />
               <div className="menu" role="menu">
                 <button type="button" className="mi" role="menuitem" disabled={!perms.manage || !active.length} onClick={() => { setMenuOpen(false); void run("refresh", () => refreshProgressAction(active)); }}>
                   <Icon name="enroll" size={18} /> Consultar progreso en Moodle
@@ -64,6 +66,7 @@ export function CustomerView({ c, perms }: { c: C; perms: Perms }) {
                   <Icon name="mail" size={18} /> Escribir por correo
                 </a>
               </div>
+              </>
             ) : null}
           </div>
           <nav className="adm-pager" aria-label="Clientes">

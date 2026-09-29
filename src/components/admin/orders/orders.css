@@ -101,6 +101,7 @@ a.om-cell:hover { background: var(--p-surface-hover); }
 .od-title .meta { color: #616161; font-size: 13px; margin-top: 2px; }
 .od-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .od-menu { position: relative; }
+.menu-scrim { display: none; }
 .menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 248px; background: #fff; border-radius: 12px; box-shadow: var(--p-popover-shadow); padding: 6px; z-index: 30; }
 .menu .mi { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; background: none; border-radius: 8px; cursor: pointer; text-align: left; font-size: 13px; color: #303030; }
 .menu .mi:hover { background: #f1f1f1; }
@@ -182,7 +183,10 @@ a.om-cell:hover { background: var(--p-surface-hover); }
 .tx.attn { border-color: #ffb866; box-shadow: 0 0 0 3px rgba(255, 184, 102, .22); }
 
 /* Verificación de un pago manual */
-.vf { display: grid; grid-template-columns: 240px 1fr; gap: 16px; padding: 4px 12px 12px; }
+.vf { display: grid; grid-template-columns: 240px 1fr; gap: 12px 16px; padding: 4px 12px 12px; scroll-margin-top: 72px; }
+.vf-media { grid-row: span 2; }
+.vf-foot { grid-column: 2; }
+.vf-foot > .vf-acts, .vf-foot > .vf-reject { margin-top: 0; }
 .vf-proof { position: relative; width: 100%; border: 1px solid var(--p-border); border-radius: 10px; background: #f7f7f7; overflow: hidden; display: grid; place-items: center; min-height: 220px; cursor: zoom-in; padding: 0; }
 .vf-proof img { display: block; width: 100%; max-height: 360px; object-fit: contain; background: #f7f7f7; }
 .vf-proof .zoom { position: absolute; right: 8px; bottom: 8px; background: rgba(26,26,26,.78); color: #fff; font-size: 12px; font-weight: 550; border-radius: 8px; padding: 2px 8px; display: flex; align-items: center; gap: 4px; }
@@ -342,6 +346,8 @@ a.om-cell:hover { background: var(--p-surface-hover); }
   .od-actions { width: 100%; padding-left: 36px; flex-wrap: wrap; }
   .od-actions .adm-pager { margin-left: auto; }
   .vf { grid-template-columns: 1fr; padding: 4px 12px 12px; }
+  .vf-media { grid-row: auto; }
+  .vf-foot { grid-column: auto; }
   .vf-proof { min-height: 180px; }
   .vf-proof img { max-height: 280px; }
   .tx-kv { grid-template-columns: 116px 1fr; }
@@ -355,6 +361,30 @@ a.om-cell:hover { background: var(--p-surface-hover); }
   .modal-b.scroll { max-height: none; flex: 1; }
 }
 @media print {
-  .adm-top, .adm-nav, .od-actions, .otl-compose, .otl-note, .card-actions, .tx-acts, .vf-acts { display: none !important; }
+  .adm-top, .adm-nav, .od-actions, .otl-compose, .otl-note, .card-actions, .tx-acts, .vf-acts, .vf-foot { display: none !important; }
   .adm-main { padding: 0 !important; }
+}
+
+/* ───────── Teléfono ─────────
+   «Más acciones» se abre como hoja inferior (anclado a la derecha del botón se salía por la izquierda de la pantalla),
+   y en un pago por verificar Rechazar / Aprobar quedan fijos abajo mientras se revisa el comprobante. */
+@media (max-width: 768px) {
+  .oi-tool { height: 40px; min-width: 40px; }
+  .od-head .adm-back { margin: -4px -6px -6px; }
+  .otl-compose textarea { font-size: 16px; }
+  .tx { overflow: clip; } /* recorta las esquinas igual que hidden, pero sin romper la barra fija (sticky) de .vf-foot */
+  .menu-scrim { display: block; position: fixed; inset: 0; background: rgba(0, 0, 0, .4); z-index: 59; }
+  .od-menu .menu { position: fixed; left: 8px; right: 8px; top: auto; bottom: 8px; min-width: 0; max-height: calc(100dvh - 72px); overflow-y: auto; border-radius: 16px; padding: 8px; z-index: 60; }
+  .od-menu .menu .mi { min-height: 44px; padding: 10px 12px; font-size: 15px; }
+  .od-menu .menu .sep { margin: 6px -8px; }
+  .od-menu .menu .hint { font-size: 13px; }
+  .vf-noproof { min-height: 96px; }
+  .vf-foot:has(> .vf-acts) { position: sticky; bottom: 0; z-index: 4; margin: 0 -12px -12px; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); background: #fff; box-shadow: 0 -1px 0 var(--p-border-2), 0 -8px 16px -12px rgba(0, 0, 0, .25); }
+  .vf-foot .vf-acts .btn { flex: 1; }
+  .tx-row .tog { padding: 7px; }
+}
+
+/* Pantallas táctiles: los botones de copiar (correo, teléfono…) solo aparecían al pasar el ratón. */
+@media (hover: none) {
+  .copy button { opacity: 1; padding: 6px; margin: -4px 0; }
 }

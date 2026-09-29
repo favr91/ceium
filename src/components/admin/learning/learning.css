@@ -213,6 +213,7 @@ a.hm-pill:hover { background: #f7f7f7; }
   .cu-stats > div:nth-child(n+3) { border-top: 1px solid var(--p-border-2); }
 }
 @media (max-width: 768px) {
+  .lx-select select.inp { font-size: 16px; min-height: 40px; }
   .hm-top, .hm-hello { padding: 0 16px; }
   .hm-cmp { display: none; }
   .hm-metrics { border-radius: 0; }
