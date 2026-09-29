@@ -56,9 +56,9 @@
 .hm-tip .d { font-weight: 650; margin-bottom: 2px; }
 .hm-tip .r { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 .hm-tip small { color: #8a8a8a; }
-.k { display: inline-block; width: 12px; height: 2px; border-radius: 1px; vertical-align: middle; }
-.k.cur { background: #2c6ecb; }
-.k.prev { background: repeating-linear-gradient(90deg, #a4c8f5 0 4px, transparent 4px 7px); }
+.hm-key { display: inline-block; width: 12px; height: 2px; border-radius: 1px; vertical-align: middle; }
+.hm-key.cur { background: #2c6ecb; }
+.hm-key.prev { background: repeating-linear-gradient(90deg, #a4c8f5 0 4px, transparent 4px 7px); }
 .hm-legend { display: flex; gap: 16px; justify-content: center; padding: 4px 16px 14px; color: #616161; font-size: 12px; }
 .hm-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .hm-todo { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }

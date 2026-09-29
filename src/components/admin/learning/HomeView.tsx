@@ -105,8 +105,8 @@ function Chart({ series, prev, labels, money, name }: { series: number[]; prev: 
       {hover != null ? (
         <div className="hm-tip" style={{ left: Math.min(Math.max(x(hover) - 90, 0), w - 180) }} role="status">
           <div className="d">{F_DAY.format(new Date(labels[hover]))}</div>
-          <div className="r"><i className="k cur" />{fmtVal(series[hover], money)}</div>
-          <div className="r muted"><i className="k prev" />{fmtVal(prev[hover], money)} <small>periodo anterior</small></div>
+          <div className="r"><i className="hm-key cur" />{fmtVal(series[hover], money)}</div>
+          <div className="r muted"><i className="hm-key prev" />{fmtVal(prev[hover], money)} <small>periodo anterior</small></div>
         </div>
       ) : null}
     </div>
@@ -173,8 +173,8 @@ export function HomeView({ data, userName }: { data: HomeDashboard; userName: st
         </div>
         <Chart series={data.metrics[metric].series} prev={data.metrics[metric].prevSeries} labels={data.labels} money={m.money} name={m.label} />
         <div className="hm-legend">
-          <span><i className="k cur" /> Últimos {data.days} días</span>
-          <span><i className="k prev" /> Periodo anterior</span>
+          <span><i className="hm-key cur" /> Últimos {data.days} días</span>
+          <span><i className="hm-key prev" /> Periodo anterior</span>
         </div>
       </section>
 

@@ -297,3 +297,25 @@ test.describe("panel · pedidos", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+
+// Regresión: el CSS del Inicio definía `.k` global (muestra de 12×2 px de la leyenda del gráfico); al llegar a la ficha
+// navegando desde Inicio, las etiquetas del resumen de pago (`.ps .k`) quedaban de 12×2 px, una palabra por línea y
+// encimadas. Next mantiene cargado el CSS de las páginas ya visitadas, así que solo se ve navegando dentro del panel.
+test("llegar a la ficha navegando desde Inicio no deforma el resumen de pago", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "navegación lateral de escritorio");
+  await login(page, "/admin");
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("link", { name: "Pedidos", exact: true }).first().click();
+  await page.waitForURL(/\/admin\/orders(\?|$)/);
+  await page.getByRole("button", { name: "Buscar y filtrar" }).click();
+  await page.getByRole("searchbox", { name: "Buscar pedidos" }).fill(emailOf(O.awaiting.id));
+  const row = page.getByTestId("orders-table").locator(`tr[data-order-number="${O.awaiting.number}"]`);
+  await row.locator(".c-num a").click();
+  await page.waitForURL(new RegExp(`/admin/orders/${O.awaiting.id}`));
+  const labels = page.locator(".ps .k");
+  await expect(labels.filter({ hasText: "Saldo pendiente" })).toBeVisible();
+  for (const [text, w, h] of await labels.evaluateAll((els) => els.map((e) => [e.textContent, e.getBoundingClientRect().width, e.getBoundingClientRect().height] as const))) {
+    expect(w, `ancho de «${text}»`).toBeGreaterThan(80);
+    expect(h, `alto de «${text}»`).toBeGreaterThanOrEqual(16);
+  }
+});
