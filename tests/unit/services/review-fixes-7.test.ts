@@ -2,7 +2,7 @@
 // manual / tasa Bs/USD de ejemplo nunca llegan a un comprador.
 import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createCheckout, listPaymentOptions } from "@/server/orders";
+import { createCheckout, listPaymentOptions, manualMethodUnavailableReason } from "@/server/orders";
 import { capturePaypalReturn, recordManualPayment, startPaypalPayment } from "@/server/payments";
 import { checkDiplomaCompletion, verifyCertificate } from "@/server/certificates";
 import { enrollOrder } from "@/server/enrollment";
@@ -144,5 +144,28 @@ describe("datos de pago manual y tasa Bs/USD de ejemplo", () => {
     const o = await createCheckout(ctx.d, { customer: buyer(), items: [{ productId: ctx.fx.course, modality: "ONLINE", planKind: "FULL" }], paymentMethod: "PAGO_MOVIL" });
     await ctx.db.setting.update({ where: { key: SETTING_KEYS.manualMethods }, data: { value: todoMethods() as never } });
     await expect(recordManualPayment(ctx.d, { orderId: o.id, method: "PAGO_MOVIL", reference: "123456", amountCents: 1_000_000, currency: "VES" })).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+});
+
+describe("pago móvil activado con la tasa de ejemplo del seed (y además vieja)", () => {
+  it("solo la tasa de ejemplo bloquea; la antigüedad es un aviso; el panel muestra el mismo motivo que usa el checkout", async () => {
+    const old = new Date(ctx.clock.now().getTime() - 113 * 3_600_000).toISOString();
+    await ctx.db.setting.update({ where: { key: SETTING_KEYS.exchangeRate }, data: { value: { vesPerUsd: 100, source: "TODO: actualizar con la tasa oficial BCV", updatedAt: old } } });
+    expect((await listPaymentOptions(ctx.d)).map((o) => o.method)).toEqual(["PAYPAL"]);
+
+    const w = await getSettingsWarnings(ctx.d, admin);
+    expect(w.filter((x) => x.severity === "error").map((x) => x.message)).toEqual([expect.stringMatching(/es de ejemplo.*no se ofrecen en la tienda/)]);
+    expect(w.filter((x) => x.severity === "warning").map((x) => x.message)).toEqual([expect.stringMatching(/113 h sin actualizarse\. Se sigue usando/)]);
+
+    const methods = (await ctx.db.setting.findUniqueOrThrow({ where: { key: SETTING_KEYS.manualMethods } })).value as unknown as ManualMethodConfig[];
+    const pm = methods.find((m) => m.method === "PAGO_MOVIL")!;
+    const why = await manualMethodUnavailableReason(ctx.d, pm);
+    expect(why).toMatch(/es de ejemplo/);
+    expect(why).not.toMatch(/sin actualizarse/);
+
+    // Con la tasa real (aunque siga vieja) vuelve a ofrecerse.
+    await ctx.db.setting.update({ where: { key: SETTING_KEYS.exchangeRate }, data: { value: { vesPerUsd: 187.25, source: "BCV", updatedAt: old } } });
+    expect(await manualMethodUnavailableReason(ctx.d, pm)).toBeNull();
+    expect((await listPaymentOptions(ctx.d)).map((o) => o.method)).toContain("PAGO_MOVIL");
   });
 });

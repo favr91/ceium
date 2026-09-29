@@ -95,6 +95,11 @@ export interface ExchangeRateStatus {
   /** Más vieja que EXCHANGE_RATE_STALE_HOURS (o sin fecha). Se sigue usando, pero el panel avisa. */
   stale: boolean;
   ageHours: number | null;
+  /** Lo que impide cobrar en bolívares (sin tasa, o tasa de ejemplo). */
+  blockers: string[];
+  /** Avisos que no bloquean (tasa desactualizada). */
+  notices: string[];
+  /** blockers + notices. */
   problems: string[];
 }
 
@@ -104,9 +109,10 @@ export function exchangeRateStatus(rate: Partial<ExchangeRateSetting> | null | u
   const ts = rate?.updatedAt ? Date.parse(rate.updatedAt) : NaN;
   const ageHours = Number.isFinite(ts) ? Math.max(0, (now.getTime() - ts) / 3_600_000) : null;
   const stale = ageHours == null || ageHours > EXCHANGE_RATE_STALE_HOURS;
-  const problems: string[] = [];
-  if (!(vesPerUsd > 0) || !Number.isFinite(vesPerUsd)) problems.push("No hay tasa de cambio Bs/USD configurada.");
-  if (placeholder) problems.push(`La tasa de cambio (Bs. ${vesPerUsd} por USD) es de ejemplo: actualízala con la tasa oficial.`);
-  if (stale) problems.push(ageHours == null ? "La tasa de cambio no tiene fecha de actualización." : `La tasa de cambio tiene ${Math.floor(ageHours)} h sin actualizarse.`);
-  return { vesPerUsd, usable: vesPerUsd > 0 && Number.isFinite(vesPerUsd) && !placeholder, placeholder, stale, ageHours, problems };
+  const blockers: string[] = [];
+  const notices: string[] = [];
+  if (!(vesPerUsd > 0) || !Number.isFinite(vesPerUsd)) blockers.push("No hay tasa de cambio Bs/USD configurada.");
+  if (placeholder) blockers.push(`La tasa de cambio (Bs. ${vesPerUsd} por USD) es de ejemplo: actualízala con la tasa oficial.`);
+  if (stale) notices.push(ageHours == null ? "La tasa de cambio no tiene fecha de actualización." : `La tasa de cambio tiene ${Math.floor(ageHours)} h sin actualizarse.`);
+  return { vesPerUsd, usable: blockers.length === 0, placeholder, stale, ageHours, blockers, notices, problems: [...blockers, ...notices] };
 }

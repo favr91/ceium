@@ -20,6 +20,8 @@ export interface ManualMethod {
 
 export interface SettingsData {
   methods: ManualMethod[];
+  /** Métodos activos que la tienda NO ofrece ahora, con el motivo (null = se ofrece). Refleja lo guardado. */
+  hiddenReasons: Partial<Record<ManualMethod["method"], string | null>>;
   paypalEnabled: boolean;
   rate: { vesPerUsd: number | null; source: string; updatedAt: string | null; placeholder: boolean; stale: boolean };
   ttlPaypalMinutes: number;
@@ -183,7 +185,7 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
         </div>
       ) : null}
       {data.warnings.length ? (
-        <div className="banner attention" role="note" data-testid="settings-warnings">
+        <div className={`banner ${data.warnings.some((w) => w.severity === "error") ? "critical" : "attention"}`} role="note" data-testid="settings-warnings">
           <Icon name="alert" />
           <ul className="set-warn">
             {data.warnings.map((w, i) => (
@@ -202,16 +204,30 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
           {sectionError("methods")}
           {methods.map((m, i) => {
             const problems = methodProblems(m);
+            const saved = data.methods.find((x) => x.method === m.method);
+            const hiddenReason = saved?.enabled ? data.hiddenReasons[m.method] ?? null : null;
             return (
               <fieldset key={m.method} className="set-method" data-method={m.method} aria-label={m.label || m.method}>
                 <div className="set-method-h">
                   <div className="grow">
                     <div className="t">
                       {m.label || m.method}
-                      <span className={`badge sm ${m.enabled ? "success" : ""}`}>{m.enabled ? "Activo" : "Inactivo"}</span>
+                      {hiddenReason ? (
+                        <span className="badge sm critical" data-testid="method-hidden">No visible en la tienda</span>
+                      ) : (
+                        <span className={`badge sm ${m.enabled ? "success" : ""}`}>{m.enabled ? "Activo" : "Inactivo"}</span>
+                      )}
                       <span className="badge sm">{m.currency === "VES" ? "Bs." : "USD"}</span>
                     </div>
                     <div className="small muted">{METHOD_HELP[m.method]}</div>
+                    {hiddenReason ? (
+                      <p className="field-err" data-testid="method-hidden-reason">
+                        <span>
+                          Está activado, pero el checkout no lo ofrece: {hiddenReason}{" "}
+                          {m.currency === "VES" && data.rate.placeholder ? <a href="#h-rate">Actualizar la tasa</a> : null}
+                        </span>
+                      </p>
+                    ) : null}
                   </div>
                   <input type="checkbox" className="toggle" role="switch" aria-label={`Activar ${m.label || m.method}`} checked={m.enabled} disabled={ro} onChange={(e) => setMethod(i, { enabled: e.target.checked })} />
                 </div>

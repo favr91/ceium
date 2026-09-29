@@ -96,7 +96,8 @@ export async function getSettingsWarnings(d: Deps, actor: SessionUser): Promise<
   }
   if (methods.some((m) => m.enabled && m.currency === "VES")) {
     const st = exchangeRateStatus(await readSetting<ExchangeRateSetting | null>(d.db, SETTING_KEYS.exchangeRate, null), d.now());
-    for (const message of st.problems) out.push({ key: SETTING_KEYS.exchangeRate, severity: st.usable ? "warning" : "error", message: st.usable ? message : `${message} Los métodos en bolívares no se ofrecen hasta corregirla.` });
+    for (const message of st.blockers) out.push({ key: SETTING_KEYS.exchangeRate, severity: "error", message: `${message} Los métodos en bolívares no se ofrecen en la tienda hasta corregirla.` });
+    for (const message of st.notices) out.push({ key: SETTING_KEYS.exchangeRate, severity: "warning", message: `${message} Se sigue usando, pero conviene actualizarla.` });
   }
   return out;
 }

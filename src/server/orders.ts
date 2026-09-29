@@ -166,13 +166,13 @@ async function assertMethodEnabled(d: Deps, method: PaymentMethod) {
   }
 }
 
-/** Motivo por el que un método manual habilitado no se puede ofrecer (datos de ejemplo, tasa Bs/USD de ejemplo). */
-async function manualMethodUnavailableReason(d: Pick<Deps, "db" | "now">, m: ManualMethodConfig): Promise<string | null> {
+/** Motivo por el que un método manual habilitado no se puede ofrecer (datos de ejemplo, tasa Bs/USD de ejemplo); null = se ofrece. Lo usa también el panel. */
+export async function manualMethodUnavailableReason(d: Pick<Deps, "db" | "now">, m: ManualMethodConfig): Promise<string | null> {
   const problems = manualMethodProblems(m);
   if (problems.length) return problems.join(" ");
   if (m.currency === "VES") {
     const st = exchangeRateStatus(await readSetting<ExchangeRateSetting | null>(d.db, SETTING_KEYS.exchangeRate, null), d.now());
-    if (!st.usable) return st.problems.join(" ");
+    if (!st.usable) return st.blockers.join(" ");
   }
   return null;
 }

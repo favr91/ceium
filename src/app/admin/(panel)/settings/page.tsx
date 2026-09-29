@@ -3,6 +3,7 @@
 import type { Metadata } from "next";
 import { can } from "@/server/auth";
 import { readSetting } from "@/server/deps";
+import { manualMethodUnavailableReason } from "@/server/orders";
 import { services } from "@/server/services";
 import { DEFAULT_INSTALLMENT_REMINDERS, SETTING_KEYS, exchangeRateStatus, type ExchangeRateSetting, type InstallmentReminderPolicy, type ManualMethodConfig } from "@/server/settings";
 import { SettingsView, type SettingsData } from "@/components/admin/settings/SettingsView";
@@ -25,8 +26,14 @@ export default async function SettingsPage() {
     s.settings.getSettingsWarnings(user),
   ]);
   const st = exchangeRateStatus(rate, s.deps.now());
+  const list = Array.isArray(methods) ? methods : [];
+  // Lo mismo que decide el checkout: un método activo puede quedar fuera de la tienda (datos o tasa de ejemplo).
+  const hiddenReasons = Object.fromEntries(
+    await Promise.all(list.filter((m) => m.enabled).map(async (m) => [m.method, await manualMethodUnavailableReason(s.deps, m)] as const)),
+  );
   const data: SettingsData = {
-    methods: Array.isArray(methods) ? methods : [],
+    methods: list,
+    hiddenReasons,
     paypalEnabled: paypal.enabled !== false,
     rate: { vesPerUsd: rate?.vesPerUsd ?? null, source: st.placeholder ? "" : (rate?.source ?? ""), updatedAt: rate?.updatedAt ?? null, placeholder: st.placeholder, stale: st.stale },
     ttlPaypalMinutes: ttlPaypal.minutes,
