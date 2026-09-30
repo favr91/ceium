@@ -206,7 +206,7 @@ test("0 · el admin activa Pago Móvil con los datos bancarios y fija la tasa BC
       await expect(admin.getByRole("alert").filter({ hasText: "Completa los datos" })).toBeVisible();
     }
 
-    await pm.getByLabel(/^Banco \(/).fill("Banco Nacional de Crédito (0191)");
+    await pm.getByLabel(/^Banco \(/).selectOption("Banco Nacional de Crédito, BNC (0191)");
     await pm.getByLabel(/^Teléfono \(/).fill("0412-0840407");
     await pm.getByLabel(/^Cédula \/ RIF \(/).fill("J-50123456-0");
     await pm.getByLabel(/^Titular \(/).fill("CEIUM, C.A.");

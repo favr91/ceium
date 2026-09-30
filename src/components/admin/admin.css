@@ -173,7 +173,7 @@
 .inp:hover { background: #fafafa; border-color: #616161; }
 .inp:focus { border-color: #1a1a1a; background: #fff; outline: 2px solid var(--p-focus); outline-offset: 1px; }
 .inp[aria-invalid="true"] { border-color: #8e1f0b; background: #fee9e8; }
-.inp[disabled], .inp[readonly] { background: #f7f7f7; border-color: #e3e3e3; color: #616161; }
+.inp[disabled], .inp[readonly], .adm select.inp[disabled], .adm textarea.inp[disabled], .adm textarea.inp[readonly] { background: #f7f7f7; border-color: #e3e3e3; color: #616161; }
 .adm textarea.inp { min-height: 64px; resize: vertical; }
 .adm select.inp { appearance: none; padding-right: 32px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M7 8l3-3 3 3M7 12l3 3 3-3' fill='none' stroke='%234a4a4a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
 .inp-affix { position: relative; display: flex; align-items: center; }

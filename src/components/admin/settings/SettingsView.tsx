@@ -5,6 +5,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { saveSettingsAction, syncRateNowAction } from "@/app/admin/(panel)/settings/actions";
+import { VE_BANKS } from "@/components/checkout/manual-payment-fields";
 import { Icon } from "../Icon";
 import { useToast } from "../ui";
 import "./settings.css";
@@ -53,6 +54,21 @@ const METHOD_HELP: Record<ManualMethod["method"], string> = {
   EFECTIVO: "Pago en la sede; el personal lo registra desde el pedido.",
 };
 
+/**
+ * Banco de un método en bolívares → su opción de la lista del checkout (VE_BANKS): por código SUDEBAN («0102») o por
+ * nombre («banesco»). Si no se reconoce, queda el texto tal cual (el desplegable lo muestra como opción aparte).
+ */
+function matchBank(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "";
+  const code = s.match(/\b(0\d{3})\b/)?.[1];
+  const byCode = code ? VE_BANKS.find((b) => b.endsWith(`(${code})`)) : undefined;
+  if (byCode) return byCode;
+  const norm = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s*\(\d{4}\)$/, "").trim();
+  return VE_BANKS.find((b) => norm(b) === norm(s)) ?? s;
+}
+const isBankField = (m: Pick<ManualMethod, "currency">, key: string) => key === "banco" && m.currency === "VES";
+
 /** Dato de ejemplo del seed («TODO: banco», «04xx-xxxxxxx»): se muestra como pista, no como valor. */
 const isPlaceholder = (v: string) => !v.trim() || /\bTODO\b|x{3,}|^[-/.\s]+$/i.test(v.trim());
 
@@ -89,7 +105,7 @@ export function SettingsView({ data, canEdit, roleLabel }: { data: SettingsData;
         if (isPlaceholder(String(v ?? ""))) {
           hints[k] = String(v ?? "").replace(/^TODO:\s*/i, "");
           details[k] = "";
-        } else details[k] = String(v);
+        } else details[k] = isBankField(m, k) ? matchBank(String(v)) : String(v);
       }
       return { ...m, details, hints, instructions: isPlaceholder(m.instructions ?? "") ? "" : m.instructions };
     });
@@ -312,15 +328,30 @@ export function SettingsView({ data, canEdit, roleLabel }: { data: SettingsData;
                     return (
                       <label className="field" key={k}>
                         <span>{label}</span>
-                        <input
-                          className="inp"
-                          aria-label={`${label} (${m.label || m.method})`}
-                          value={m.details[k]}
-                          placeholder={m.hints[k] || undefined}
-                          aria-invalid={missing}
-                          disabled={ro}
-                          onChange={(e) => setMethod(i, { details: { ...m.details, [k]: e.target.value } })}
-                        />
+                        {isBankField(m, k) ? (
+                          <select
+                            className="inp"
+                            aria-label={`${label} (${m.label || m.method})`}
+                            value={m.details[k]}
+                            aria-invalid={missing}
+                            disabled={ro}
+                            onChange={(e) => setMethod(i, { details: { ...m.details, [k]: e.target.value } })}
+                          >
+                            <option value="" disabled>Selecciona el banco</option>
+                            {m.details[k] && !VE_BANKS.includes(m.details[k]) ? <option value={m.details[k]}>{m.details[k]}</option> : null}
+                            {VE_BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
+                          </select>
+                        ) : (
+                          <input
+                            className="inp"
+                            aria-label={`${label} (${m.label || m.method})`}
+                            value={m.details[k]}
+                            placeholder={m.hints[k] || undefined}
+                            aria-invalid={missing}
+                            disabled={ro}
+                            onChange={(e) => setMethod(i, { details: { ...m.details, [k]: e.target.value } })}
+                          />
+                        )}
                       </label>
                     );
                   })}
