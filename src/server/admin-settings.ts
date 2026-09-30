@@ -34,7 +34,7 @@ export const EDITABLE_SETTINGS = {
     .superRefine((a, ctx) => {
       a.forEach((m, i) => {
         if (!m.enabled) return;
-        for (const msg of manualMethodProblems(m)) ctx.addIssue({ code: "custom", path: [i, "details"], message: `${msg} Complétalo o deja el método deshabilitado.` });
+        for (const msg of manualMethodProblems(m)) ctx.addIssue({ code: "custom", path: [i, "details"], message: `${msg} Corrige esto o deja el método deshabilitado.` });
       });
     }),
   [SETTING_KEYS.paypal]: z.object({ enabled: z.boolean() }).strict(),
@@ -67,7 +67,7 @@ export async function updateSetting(d: Deps, actor: SessionUser, key: string, va
   actor = await requireAdmin(d.db, actor, "settings.manage");
   if (!isEditableSetting(key)) throw new DomainError("VALIDATION", `La configuración «${key}» no se puede editar desde el panel.`);
   const r = (EDITABLE_SETTINGS[key] as z.ZodType).safeParse(value);
-  if (!r.success) throw new DomainError("VALIDATION", r.error.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ` : "") + i.message).join(". "), { issues: r.error.issues });
+  if (!r.success) throw new DomainError("VALIDATION", r.error.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ` : "") + i.message.replace(/\.$/, "")).join(". ") + ".", { issues: r.error.issues });
   let parsed = r.data as Record<string, unknown> | unknown[];
   if (key === SETTING_KEYS.exchangeRate) parsed = { ...(parsed as Record<string, unknown>), updatedAt: d.now().toISOString() };
   if (key === SETTING_KEYS.require2fa && (parsed as { enabled: boolean }).enabled) {

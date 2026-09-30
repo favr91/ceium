@@ -24,9 +24,9 @@ coinciden (> 0,5 %) o el valor salta > 30 %, se mantiene la anterior y el panel 
 fallo o al cambiar el día). Se apaga en Configuración (queda la carga manual) o con `EXCHANGE_RATE_SYNC=off` (carriles de prueba).
 
 **Seguridad** (ver también `src/server/config-check.ts`, que impide arrancar en producción con configuración de ejemplo):
-- Roles del panel (`src/server/admin-roles.ts`, permisos en `auth.ts → PERMISSIONS`): **super administrador** (todo),
+- Roles del panel (`src/server/admin-roles.ts`, permisos en `auth.ts → PERMISSIONS`): **superadministrador** (todo),
   **administrador comercial** (academia completa, pedidos y pagos; en el equipo solo gestiona asistentes) y **asistente**
-  (el día a día). Configuración, métodos de pago, reembolsos y ajustes de saldo son solo del super administrador. El
+  (el día a día). Configuración, métodos de pago, reembolsos y ajustes de saldo son solo del superadministrador. El
   equipo se gestiona en *Equipo* (`/admin/team`): se invita con un enlace de un solo uso para crear la contraseña (el
   token no se guarda: en BD va su sha256, y el correo lo lleva como secreto); las cuentas se desactivan, no se borran.
 - Panel: verificación en dos pasos (TOTP) desde *Mi cuenta y seguridad*; Configuración puede exigirla a todo el equipo.

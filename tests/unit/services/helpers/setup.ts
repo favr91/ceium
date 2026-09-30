@@ -58,7 +58,7 @@ export async function seedFixture(db: PrismaClient): Promise<Fixture> {
     ],
   });
   const courseCohort = await db.cohort.create({
-    data: { productId: course.id, sedeId: bqto.id, name: "Cohorte Octubre 2026", startDate: new Date("2026-10-03T12:00:00Z"), endDate: new Date("2026-10-31T12:00:00Z"), capacity: 3, sessions: [{ date: "2026-10-03", title: "Práctica 1", startTime: "08:00", endTime: "13:00" }] },
+    data: { productId: course.id, sedeId: bqto.id, name: "Cohorte octubre 2026", startDate: new Date("2026-10-03T12:00:00Z"), endDate: new Date("2026-10-31T12:00:00Z"), capacity: 3, sessions: [{ date: "2026-10-03", title: "Práctica 1", startTime: "08:00", endTime: "13:00" }] },
   });
 
   const diploma = await db.product.create({ data: { type: "DIPLOMA", category: "DIPLOMA", slug: "diplomado-ecografia-integral", title: "Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico", endorsementTitle: "Avalado por la UCLA" } });
@@ -78,8 +78,8 @@ export async function seedFixture(db: PrismaClient): Promise<Fixture> {
   });
   await db.paymentPlan.createMany({
     data: [
-      { productId: diploma.id, kind: "FULL", label: "Paga todo el diplomado (10% de descuento)", discountPct: 10, installments: 1, position: 0 },
-      { productId: diploma.id, kind: "HALF", label: "Paga la midad (5% de descuento)", discountPct: 5, installments: 2, position: 1 },
+      { productId: diploma.id, kind: "FULL", label: "Paga todo el diplomado (10 % de descuento)", discountPct: 10, installments: 1, position: 0 },
+      { productId: diploma.id, kind: "HALF", label: "Paga la mitad (5 % de descuento)", discountPct: 5, installments: 2, position: 1 },
       { productId: diploma.id, kind: "MONTHLY", label: "Paga mes a mes", discountPct: 0, installments: 9, position: 2 },
     ],
   });

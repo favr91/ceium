@@ -2,9 +2,9 @@
 // enlace para restablecer la contraseña y cancelar invitaciones. Todo con auditoría (el hash nunca se guarda en
 // AuditLog) y aviso por correo a la persona afectada.
 //
-// Jerarquía (admin-roles.ts): el super administrador gestiona a todos; el administrador comercial, solo a los
-// asistentes (ni a otros administradores comerciales ni al super administrador). Nadie cambia su propio rol ni se
-// desactiva a sí mismo (su cuenta se gestiona en Mi cuenta), y siempre queda al menos un super administrador activo.
+// Jerarquía (admin-roles.ts): el superadministrador gestiona a todos; el administrador comercial, solo a los
+// asistentes (ni a otros administradores comerciales ni al superadministrador). Nadie cambia su propio rol ni se
+// desactiva a sí mismo (su cuenta se gestiona en Mi cuenta), y siempre queda al menos un superadministrador activo.
 // Las cuentas no se borran (su nombre sigue en el historial de pagos y pedidos): se desactivan. Solo una invitación
 // que nunca se usó se puede eliminar.
 import crypto from "node:crypto";
@@ -38,17 +38,17 @@ const publicUser = { id: true, email: true, name: true, role: true, active: true
 
 async function assertAnotherActiveAdmin(tx: Tx, exceptId: string) {
   const others = await tx.adminUser.count({ where: { role: "ADMIN", active: true, invitePending: false, id: { not: exceptId } } });
-  if (!others) throw new DomainError("CONFLICT", "Debe quedar al menos un super administrador activo.");
+  if (!others) throw new DomainError("CONFLICT", "Debe quedar al menos un superadministrador activo.");
 }
 
 function assertAssignable(actor: SessionUser, target: AdminRole) {
-  if (!canManageRole(actor.role, target)) throw new DomainError("FORBIDDEN", `Tu rol no puede dar el rol «${ROLE_LABEL[target]}». Pídeselo al super administrador.`);
+  if (!canManageRole(actor.role, target)) throw new DomainError("FORBIDDEN", `Tu rol no puede dar el rol «${ROLE_LABEL[target]}». Pídeselo al superadministrador.`);
 }
 
 /** Otra persona del equipo que `actor` puede gestionar (la propia cuenta se gestiona en Mi cuenta). */
 function assertManageable(actor: SessionUser, target: { id: string; role: AdminRole }) {
   if (target.id === actor.id) throw new DomainError("CONFLICT", "No puedes cambiar tu propio rol ni desactivar tu cuenta: tu contraseña y tu seguridad se gestionan en Mi cuenta.");
-  if (!canManageRole(actor.role, target.role)) throw new DomainError("FORBIDDEN", `Solo el super administrador puede gestionar a un ${ROLE_LABEL[target.role].toLowerCase()}.`);
+  if (!canManageRole(actor.role, target.role)) throw new DomainError("FORBIDDEN", `Solo el superadministrador puede gestionar a un ${ROLE_LABEL[target.role].toLowerCase()}.`);
 }
 
 const firstName = (n: string) => n.split(" ")[0] || n;

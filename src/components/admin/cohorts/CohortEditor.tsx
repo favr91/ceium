@@ -80,7 +80,7 @@ export function CohortEditor({ initial, ctx, canEdit }: { initial: CohortForm; c
     startDate: !form.startDate ? "Indica la fecha de inicio." : null,
     endDate: !form.endDate ? "Indica la fecha de fin." : form.startDate && form.endDate < form.startDate ? "El fin no puede ser anterior al inicio." : null,
     deadline: form.enrollmentDeadline && form.endDate && form.enrollmentDeadline > form.endDate ? "El cierre no puede ser posterior al fin." : null,
-    capacity: Number.isNaN(capNum) ? "El cupo debe ser un número entero." : capNum < used ? `No puede ser menor que los ${used} cupos ocupados.` : capNum > 10000 ? "Máximo 10000." : null,
+    capacity: Number.isNaN(capNum) ? "El cupo debe ser un número entero." : capNum < used ? `No puede ser menor que ${used === 1 ? "el cupo ocupado" : `los ${used} cupos ocupados`}.` : capNum > 10000 ? "Máximo 10 000." : null,
     status: form.status === "CANCELLED" && base.status !== "CANCELLED" && used > 0 ? "No se puede cancelar con cupos ocupados: reasigna o reembolsa esos pedidos primero." : null,
     sessions: form.sessions.some((s) => (s.date || s.title.trim()) && (!s.date || !s.title.trim())) ? "Cada sesión necesita fecha y título." : null,
   };
@@ -111,12 +111,11 @@ export function CohortEditor({ initial, ctx, canEdit }: { initial: CohortForm; c
     const p = ctx.programs.find((x) => x.id === id);
     setForm((f) => ({ ...f, productId: id, ...(p && !f.name.trim() ? { name: suggestName(f.startDate) } : {}) }));
   };
-  // «Cohorte Octubre 2026», como las cohortes existentes.
+  // «Cohorte octubre 2026», como las cohortes existentes (los meses van en minúscula).
   const suggestName = (startDate: string) => {
     if (!startDate) return "";
     const d = new Date(`${startDate}T12:00:00Z`);
-    const month = d.toLocaleString("es-VE", { month: "long", timeZone: "UTC" });
-    return `Cohorte ${month.charAt(0).toUpperCase()}${month.slice(1)} ${d.getUTCFullYear()}`;
+    return `Cohorte ${d.toLocaleString("es-VE", { month: "long", timeZone: "UTC" })} ${d.getUTCFullYear()}`;
   };
 
   // Sesiones
@@ -209,7 +208,7 @@ export function CohortEditor({ initial, ctx, canEdit }: { initial: CohortForm; c
                     <div>
                       <div className="k"><span className="sw h" /> Reservados</div>
                       <div className="v" data-testid="seats-held">{preview.held}</div>
-                      <div className="s">{preview.stale ? `+${preview.stale} vencidas por liberar` : "En checkout o verificación"}</div>
+                      <div className="s">{preview.stale ? `+${preview.stale} ${preview.stale === 1 ? "vencida" : "vencidas"} por liberar` : "En checkout o verificación"}</div>
                     </div>
                     <div>
                       <div className="k"><span className="sw f" /> Libres</div>
@@ -238,7 +237,7 @@ export function CohortEditor({ initial, ctx, canEdit }: { initial: CohortForm; c
                   </div>
                 </label>
                 <p className="muted" style={{ flex: 1, minWidth: 200, paddingBottom: 6 }}>
-                  {isNew ? "Alumnos que caben en la sede. La tienda deja de vender al llenarse." : used ? <>Mínimo <b>{used}</b>: {seats!.confirmed} confirmados + {seats!.held} reservados. Nunca se vende por encima del cupo.</> : "Sin cupos ocupados: puedes ajustarlo libremente."}
+                  {isNew ? "Alumnos que caben en la sede. La tienda deja de vender al llenarse." : used ? <>Mínimo <b>{used}</b>: {seats!.confirmed} {seats!.confirmed === 1 ? "confirmado" : "confirmados"} + {seats!.held} {seats!.held === 1 ? "reservado" : "reservados"}. Nunca se vende por encima del cupo.</> : "Sin cupos ocupados: puedes ajustarlo libremente."}
                 </p>
               </div>
               {errors.capacity && (tried || !isNew) ? <span className="field-err" role="alert"><Icon name="alert" size={18} />{errors.capacity}</span> : null}
@@ -317,7 +316,7 @@ export function CohortEditor({ initial, ctx, canEdit }: { initial: CohortForm; c
               <div className="card-h">
                 <h2 id="h-ses">Cronograma <span className="sub">· {form.sessions.length} {form.sessions.length === 1 ? "sesión" : "sesiones"}</span></h2>
                 {!ro && program && form.startDate ? (
-                  <button type="button" className="btn btn-plain" onClick={generate}>{program.type === "DIPLOMA" && program.courses.length ? `Generar ${program.courses.length} cursos (1 por mes)` : "Generar un día por fecha"}</button>
+                  <button type="button" className="btn btn-plain" onClick={generate}>{program.type === "DIPLOMA" && program.courses.length ? `Generar ${program.courses.length} ${program.courses.length === 1 ? "curso" : "cursos"} (1 por mes)` : "Generar un día por fecha"}</button>
                 ) : null}
               </div>
               <p className="muted" style={{ padding: "0 16px 12px" }}>Reemplaza el PDF de cronograma: el alumno ve estas fechas en su pedido y en los correos de la sede.</p>
@@ -493,13 +492,13 @@ function ResRow({ r }: { r: ReservationRow }) {
   const state =
     r.status === "CONFIRMED" ? <span className="badge success sm"><span className="sw c" style={{ marginRight: 4 }} />Confirmado</span>
     : r.status === "HELD" && r.live ? <span className="badge attention sm"><span className="sw h" style={{ marginRight: 4 }} />Reservado</span>
-    : r.status === "HELD" ? <span className="badge sm">Vencida</span>
-    : <span className="badge sm">Liberada</span>;
+    : r.status === "HELD" ? <span className="badge sm">Vencido</span>
+    : <span className="badge sm">Liberado</span>;
   const when =
     r.status === "CONFIRMED" && r.confirmedAt ? `Confirmado ${fmtWhen(r.confirmedAt)}`
     : r.status === "HELD" && r.live ? `Vence ${fmtWhen(r.expiresAt)}`
     : r.status === "HELD" ? `Venció ${fmtWhen(r.expiresAt)}`
-    : `Liberada ${r.releasedAt ? fmtWhen(r.releasedAt) : ""}${r.releasedReason ? ` · ${RELEASE_LABEL[r.releasedReason] ?? r.releasedReason}` : ""}`;
+    : `Liberado ${r.releasedAt ? fmtWhen(r.releasedAt) : ""}${r.releasedReason ? ` · ${RELEASE_LABEL[r.releasedReason] ?? r.releasedReason}` : ""}`;
   return (
     <tr data-reservation={r.status}>
       <td className="r-num"><Link className="lnk" href={`/admin/orders/${r.orderId}`}>#{r.orderNumber}</Link></td>

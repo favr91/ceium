@@ -10,7 +10,7 @@ const view: T.OrderView = {
   statusUrl: "https://ceium.test/pedido/abc",
   customerFirstName: "Ana <script>",
   customerEmail: "ana@example.com",
-  items: [{ title: "Diplomado Universitario Avanzado de Medicina Materno Fetal", modalityLabel: "Semipresencial — Barquisimeto", planLabel: "Paga la midad (5% de descuento)", cohortName: "Cohorte II - 2026", totalCents: 134900, dueNowCents: 67450 }],
+  items: [{ title: "Diplomado Universitario Avanzado de Medicina Materno-Fetal", modalityLabel: "Semipresencial — Barquisimeto", planLabel: "Paga la mitad (5 % de descuento)", cohortName: "Cohorte II - 2026", totalCents: 134900, dueNowCents: 67450 }],
   totalCents: 134900,
   dueNowCents: 67450,
   amountPaidCents: 67450,

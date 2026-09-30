@@ -263,7 +263,7 @@ export class PayPalClient {
       : undefined;
     if (items) {
       const sum = input.items!.reduce((s, it) => s + it.unitAmountCents * (it.quantity ?? 1), 0);
-      if (sum !== input.amountCents) throw new Error(`PayPal: suma de items (${sum}) ≠ total (${input.amountCents})`);
+      if (sum !== input.amountCents) throw new Error(`PayPal: suma de ítems (${sum}) ≠ total (${input.amountCents})`);
     }
     const experience: ExperienceContext = {
       brand_name: input.brandName ?? "CEIUM",

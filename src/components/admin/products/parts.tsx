@@ -283,7 +283,7 @@ export function CoursesCard({ courseIds, courses, onChange, error }: { courseIds
       <div className="card-h">
         <h2>Cursos del diplomado <span className="sub">· {courseIds.length}</span></h2>
       </div>
-      <p className="muted" style={{ padding: "0 16px 12px" }}>Orden en que se cursan. Con «Paga mes a mes», cada cuota pagada matricula el siguiente curso de esta lista.</p>
+      <p className="muted" style={{ padding: "0 16px 12px" }}>Orden en que se cursan. Con «Paga mes a mes», cada cuota pagada matricula en el siguiente curso de esta lista.</p>
       <div style={{ padding: "0 16px 12px" }}>
         <div className="combo" ref={comboRef}>
           <div className="ix-search" style={{ flex: "none" }}>

@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MethodView } from "@/app/(checkout)/checkout/data";
 import { CheckIcon, ChevronDownIcon, CopyIcon, FieldErrorIcon } from "./icons";
 import { usd } from "./OrderSummary";
-import { formatAmount, parseAmountCents, plainAmount, PROOF_ACCEPT, VE_BANKS, type ManualErrors, type ManualField, type ManualValues } from "./manual-payment-fields";
+import { formatAmount, methodInText, parseAmountCents, plainAmount, PROOF_ACCEPT, VE_BANKS, type ManualErrors, type ManualField, type ManualValues } from "./manual-payment-fields";
 
 /** Lo que se paga con el método, en su moneda (céntimos). */
 export function methodAmountCents(m: MethodView, dueNowCents: number): number {
@@ -28,7 +28,7 @@ export function CopyButton({ value, label, text, className }: { value: string; l
       type="button"
       className={`co-copy${className ? ` ${className}` : ""}`}
       data-done={done || undefined}
-      aria-label={done ? `${label} copiado` : `Copiar ${label.toLowerCase()}`}
+      aria-label={done ? `Copiado: ${label}` : `Copiar ${label.charAt(0).toLowerCase()}${label.slice(1)}`}
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);
@@ -99,9 +99,9 @@ export function PayeeDetails({ m, amountLabel }: { m: MethodView; amountLabel: s
   if (!m.details?.length) return null;
   const all = [...m.details.map((d) => `${d.label}: ${d.value}`), `Monto: ${amountLabel}`].join("\n");
   return (
-    <section className="co-payee" aria-label={`Datos de ${m.label} de CEIUM`}>
+    <section className="co-payee" aria-label={`Datos para pagar por ${methodInText(m.method, m.label)}`}>
       <header className="co-payee-head">
-        <p className="co-payee-title">Datos de {m.label} de CEIUM</p>
+        <p className="co-payee-title">Datos para pagar por {methodInText(m.method, m.label)}</p>
         <CopyButton value={all} label="Todos los datos" text="Copiar todo" className="co-copy-all" />
       </header>
       <dl className="co-bank" data-testid="method-details">

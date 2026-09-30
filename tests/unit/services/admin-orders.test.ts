@@ -88,7 +88,7 @@ describe("rastro de cupos liberados", () => {
     expect(ev).toHaveLength(1);
     expect(ev[0]).toMatchObject({ actorType: "ADMIN", actorId: ctx.fx.staff.id });
     expect(ev[0].data).toMatchObject({ cohortId: ctx.fx.courseCohort, previousStatus: "HELD", reason: "REJECTED" });
-    expect(ev[0].note).toContain("Cohorte Octubre 2026");
+    expect(ev[0].note).toContain("Cohorte octubre 2026");
   });
 
   it("reembolso PayPal con liberar cupo: SEAT_RELEASED por el admin; sin liberar cupo: ninguno", async () => {

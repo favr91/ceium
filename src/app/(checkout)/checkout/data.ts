@@ -39,7 +39,7 @@ export interface CheckoutLineView {
   imageUrl: string | null;
   imageAlt: string;
   modality: Modality;
-  /** «Semipresencial / Barquisimeto / Paga todo (10% de descuento)», como la variante en Shopify. */
+  /** «Semipresencial / Barquisimeto / Paga todo (10 % de descuento)», como la variante en Shopify. */
   variant: string;
   planKind: PlanKind;
   /** Lo que se paga hoy por este programa. */
@@ -68,7 +68,7 @@ export interface MethodView {
 export const DETAIL_LABELS: Record<string, string> = {
   banco: "Banco",
   telefono: "Teléfono",
-  cedulaRif: "Cédula / RIF",
+  cedulaRif: "Cédula/RIF",
   titular: "Titular",
   cuenta: "Número de cuenta",
   tipo: "Tipo de cuenta",

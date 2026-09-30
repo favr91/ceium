@@ -80,7 +80,7 @@ export function SedesManager({ sedes, canEdit }: { sedes: SedeRow[]; canEdit: bo
           {canEdit ? <button type="button" className="btn btn-primary" onClick={() => open()}>Agregar sede</button> : null}
         </div>
       </div>
-      {!canEdit ? <div className="banner info" role="status"><Icon name="info" /><span>Como asistente puedes ver las sedes y sus cupos; editarlas es del administrador comercial o del super administrador.</span></div> : null}
+      {!canEdit ? <div className="banner info" role="status"><Icon name="info" /><span>Como asistente puedes ver las sedes y sus cupos; editarlas es del administrador comercial o del superadministrador.</span></div> : null}
 
       <section className="card card-flush" aria-labelledby="h-sedes">
         <div className="card-h">
@@ -110,7 +110,7 @@ export function SedesManager({ sedes, canEdit }: { sedes: SedeRow[]; canEdit: bo
                   <div className="l">
                     <span><span className="sw c" /> <b>{s.seats.confirmed}</b> conf.</span>
                     <span><span className="sw h" /> <b>{s.seats.held}</b> res.</span>
-                    <span><span className="sw f" /> <b>{s.seats.free}</b> libres</span>
+                    <span><span className="sw f" /> <b>{s.seats.free}</b> {s.seats.free === 1 ? "libre" : "libres"}</span>
                     <span>{pct} % de {s.seats.capacity}</span>
                   </div>
                   <Link className="small lnk" href={`/admin/cohorts?sede=${s.slug}&view=OPEN`}>{s.openCohorts} {s.openCohorts === 1 ? "cohorte abierta" : "cohortes abiertas"}{s.inProgress ? ` · ${s.inProgress} en curso` : ""}</Link>
@@ -229,7 +229,7 @@ export function SedesManager({ sedes, canEdit }: { sedes: SedeRow[]; canEdit: bo
           {edit.id && !edit.active && (edit.openCohorts ?? 0) > 0 ? (
             <div className="banner attention" style={{ marginTop: 12, marginBottom: 0 }} role="note">
               <Icon name="alert" />
-              <span>Tiene {edit.openCohorts} {edit.openCohorts === 1 ? "cohorte abierta" : "cohortes abiertas"}{edit.seatsUsed ? ` con ${edit.seatsUsed} cupos ocupados` : ""}. Siguen vendiéndose hasta que las cierres.</span>
+              <span>Tiene {edit.openCohorts} {edit.openCohorts === 1 ? "cohorte abierta" : "cohortes abiertas"}{edit.seatsUsed ? ` con ${edit.seatsUsed} ${edit.seatsUsed === 1 ? "cupo ocupado" : "cupos ocupados"}` : ""}. Siguen vendiéndose hasta que las cierres.</span>
             </div>
           ) : null}
         </Modal>

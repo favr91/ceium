@@ -13,6 +13,7 @@ import { buildOrderView, safeNotify, sendEmail } from "@/server/email";
 import * as T from "@/server/email/templates";
 import { requireAdmin, type SessionUser } from "@/server/auth";
 import { formatUSD } from "@/server/pricing";
+import { methodInText } from "@/components/checkout/manual-payment-fields";
 
 // ───────────── Máquina de estados ─────────────
 
@@ -214,7 +215,7 @@ function validateCustomer(c: CheckoutCustomerInput): CheckoutCustomerInput {
   const firstName = c.firstName?.trim();
   const lastName = c.lastName?.trim();
   if (!firstName) throw new DomainError("VALIDATION", "Ingresa tu nombre.", { field: "firstName" });
-  if (!lastName) throw new DomainError("VALIDATION", "Ingresa tu apellido.", { field: "lastName" });
+  if (!lastName) throw new DomainError("VALIDATION", "Ingresa tus apellidos.", { field: "lastName" });
   return { ...c, email, firstName, lastName };
 }
 
@@ -464,7 +465,7 @@ export async function notifyOrderReceived(d: Deps, orderId: string) {
         const rate = await readSetting(d.db, SETTING_KEYS.exchangeRate, { vesPerUsd: 0 });
         if (rate.vesPerUsd > 0) amountLabel = `${T.formatVES(Math.round(order.dueNowCents * rate.vesPerUsd))} (${formatUSD(order.dueNowCents)} a Bs. ${rate.vesPerUsd.toLocaleString("es-VE")} por USD)`;
       }
-      manual = { label: m.label, details: m.details, instructions: m.instructions, amountLabel };
+      manual = { label: m.label, inText: methodInText(m.method, m.label), details: m.details, instructions: m.instructions, amountLabel };
     }
     await sendEmail(d, { template: "order_confirmation", to: email, rendered: T.orderConfirmation(view, { paid: false, manual }), dedupeKey: `order_received:${orderId}`, orderId, customerId });
   });

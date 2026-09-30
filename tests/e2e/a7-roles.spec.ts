@@ -1,6 +1,6 @@
 // Panel · Roles y Equipo, de punta a punta: el administrador comercial (comercial@ceium.net del seed) ve la
 // configuración en solo lectura, no puede gestionar a otros administradores, invita a un asistente y el asistente crea
-// su contraseña con el enlace y entra. El super administrador cambia el rol de alguien y lo desactiva.
+// su contraseña con el enlace y entra. El superadministrador cambia el rol de alguien y lo desactiva.
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
 async function signIn(page: Page, email: string, password: string) {
@@ -49,12 +49,12 @@ test.describe("panel · roles y equipo", () => {
     await signIn(page, "comercial@ceium.net", "ceium-comercial-2026");
 
     await page.goto("/admin/settings");
-    await expect(page.getByText("solo el super administrador puede cambiarla")).toBeVisible();
+    await expect(page.getByText("solo el superadministrador puede cambiarla")).toBeVisible();
 
     await page.getByRole("navigation", { name: "Navegación del panel" }).getByRole("link", { name: "Equipo" }).click();
     await page.waitForURL(/\/admin\/team$/);
     await expect(page.getByText("puedes invitar y gestionar asistentes")).toBeVisible();
-    // No puede gestionar al super administrador ni a sí mismo; al asistente, sí.
+    // No puede gestionar al superadministrador ni a sí mismo; al asistente, sí.
     await expect(page.locator('[data-member="admin@ceium.net"]').getByRole("button")).toHaveCount(0);
     await expect(page.locator('[data-member="comercial@ceium.net"]').getByRole("link", { name: "Mi cuenta" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Gestionar a Personal CEIUM" })).toBeVisible();
@@ -87,7 +87,7 @@ test.describe("panel · roles y equipo", () => {
     await expect(page.locator(`[data-member="${email}"]`)).toContainText("Activo");
   });
 
-  test("el super administrador invita a un comercial, le cambia el rol y lo desactiva", async ({ page }) => {
+  test("el superadministrador invita a un comercial, le cambia el rol y lo desactiva", async ({ page }) => {
     test.setTimeout(90_000);
     const stamp = Date.now().toString(36);
     await signIn(page, "admin@ceium.net", "ceium-admin-2026");

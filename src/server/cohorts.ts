@@ -111,7 +111,7 @@ export async function updateCohort(d: Deps, actor: SessionUser, cohortId: string
       const n = await tx.$executeRaw`UPDATE "Cohort" SET "capacity" = ${patch.capacity} WHERE "id" = ${cohortId} AND "seatsHeld" + "seatsConfirmed" <= ${patch.capacity}`;
       if (n !== 1) {
         const now = await loadCohort(tx, cohortId);
-        throw new DomainError("CONFLICT", `El cupo no puede ser menor que los cupos ocupados (${now.seatsConfirmed} confirmados + ${now.seatsHeld} reservados = ${now.seatsConfirmed + now.seatsHeld}).`, {
+        throw new DomainError("CONFLICT", `El cupo no puede ser menor que los cupos ocupados (${now.seatsConfirmed} ${now.seatsConfirmed === 1 ? "confirmado" : "confirmados"} + ${now.seatsHeld} ${now.seatsHeld === 1 ? "reservado" : "reservados"} = ${now.seatsConfirmed + now.seatsHeld}).`, {
           capacity: patch.capacity,
           seatsHeld: now.seatsHeld,
           seatsConfirmed: now.seatsConfirmed,

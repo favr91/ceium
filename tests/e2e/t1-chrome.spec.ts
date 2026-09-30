@@ -35,7 +35,7 @@ test.describe("t1 cromo de la tienda", () => {
     const nav = page.getByRole("navigation", { name: "Menú principal" });
     // Inicio activo en la home.
     await expect(nav.getByRole("link", { name: "Inicio" })).toHaveAttribute("aria-current", "page");
-    for (const name of ["Quiénes Somos", "Preguntas Frecuentes", "Contacto"]) await expect(nav.getByRole("link", { name })).toBeVisible();
+    for (const name of ["Quiénes somos", "Preguntas frecuentes", "Contacto"]) await expect(nav.getByRole("link", { name })).toBeVisible();
     await expect(nav.getByRole("link", { name: "🎓 Campus" })).toHaveAttribute("href", /\/login\/index\.php$/);
 
     const edu = nav.locator("summary", { hasText: "Educación 2026" });
@@ -52,9 +52,9 @@ test.describe("t1 cromo de la tienda", () => {
       "href",
       "/products/diplomado-universitario-de-ecografia-integral-en-el-diagnostico-medico",
     );
-    await expect(dropdown.getByRole("link", { name: "Diplomado Universitario Avanzado de Medicina Materno Fetal" })).toBeVisible();
+    await expect(dropdown.getByRole("link", { name: "Diplomado Universitario Avanzado de Medicina Materno-Fetal" })).toBeVisible();
     const subs = dropdown.locator(":scope > li > details > summary");
-    await expect(subs).toHaveText(["🥇 Cursos y talleres que inician de Marzo a Junio", "Cursos Universitarios Fundamentales", "Cursos Avanzados"]);
+    await expect(subs).toHaveText(["🥇 Cursos y talleres que inician de marzo a junio", "Cursos Universitarios Fundamentales", "Cursos Avanzados"]);
 
     // Submenú anidado: acordeón con los productos de la colección, en su orden.
     const avanzados = dropdown.locator("summary", { hasText: "Cursos Avanzados" });
@@ -80,7 +80,7 @@ test.describe("t1 cromo de la tienda", () => {
 
     // Navegar desde el menú.
     await edu.click();
-    await dropdown.getByRole("link", { name: "Diplomado Universitario Avanzado de Medicina Materno Fetal" }).click();
+    await dropdown.getByRole("link", { name: "Diplomado Universitario Avanzado de Medicina Materno-Fetal" }).click();
     await expect(page).toHaveURL(/\/products\/diplomado-universitario-avanzado-de-medicina-materno-fetal$/);
     await expect(dropdown).toBeHidden();
   });
@@ -97,7 +97,7 @@ test.describe("t1 cromo de la tienda", () => {
     await expect(page.locator("body")).toHaveClass(/overflow-hidden-tablet/);
 
     const top = drawer.locator(".menu-drawer__navigation > .menu-drawer__menu > li > :first-child");
-    await expect(top).toHaveText(["Inicio", "Educación 2026", "Quiénes Somos", "Preguntas Frecuentes", "Contacto", "🎓 Campus"]);
+    await expect(top).toHaveText(["Inicio", "Educación 2026", "Quiénes somos", "Preguntas frecuentes", "Contacto", "🎓 Campus"]);
     await expect(drawer.getByRole("link", { name: "Inicio" })).toHaveClass(/menu-drawer__menu-item--active/);
     await expect(drawer.getByRole("link", { name: "Iniciar sesión" })).toBeVisible();
     await expect(drawer.getByRole("link", { name: "Instagram" })).toHaveAttribute("href", /instagram\.com/);
@@ -108,7 +108,7 @@ test.describe("t1 cromo de la tienda", () => {
     await expect(back1).toBeVisible();
     await expect(back1).toBeFocused();
     const lvl1 = drawer.locator(".menu-drawer__submenu.is-open").first();
-    await expect(lvl1.getByRole("link", { name: "Diplomado Universitario Avanzado de Medicina Materno Fetal" })).toBeVisible();
+    await expect(lvl1.getByRole("link", { name: "Diplomado Universitario Avanzado de Medicina Materno-Fetal" })).toBeVisible();
 
     // Nivel 2: una colección con sus productos.
     await lvl1.getByRole("button", { name: "Cursos Universitarios Fundamentales" }).click();
@@ -198,7 +198,7 @@ test.describe("t1 cromo de la tienda", () => {
     await expect(footer.getByRole("heading", { name: "Sedes CEIUM" })).toBeVisible();
     await expect(footer.locator(".footer-block--menu").last().locator("li")).toHaveCount(3);
     await expect(footer).toContainText("Barquisimeto: Av. Andrés Bello entre carreras 33 y 34");
-    await expect(footer).toContainText("Maracaibo: Av. Universidad entre Av. 10 y 12, Urb. La Estrella Unimedica.");
+    await expect(footer).toContainText("Maracaibo: Av. Universidad entre Av. 10 y 12, Urb. La Estrella, Unimedica.");
     await expect(footer).toContainText(`© ${new Date().getFullYear()}, CEIUM`);
     await footer.getByRole("link", { name: "Política de privacidad" }).click();
     await expect(page.getByRole("heading", { name: "Política de privacidad", level: 1 })).toBeVisible();

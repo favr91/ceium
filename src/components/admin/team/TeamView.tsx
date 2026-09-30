@@ -37,7 +37,7 @@ const MATRIX: [string, [boolean | "view", boolean | "view", boolean | "view"]][]
   ["Programas, precios, colecciones y sedes", [true, true, "view"]],
   ["Revocar y volver a emitir certificados", [true, true, false]],
   ["Invitar y gestionar asistentes", [true, true, false]],
-  ["Gestionar administradores comerciales y super administradores", [true, false, false]],
+  ["Gestionar administradores comerciales y superadministradores", [true, false, false]],
   ["Reembolsos, ajustes de saldo y aprobar un pago por más de lo calculado", [true, false, false]],
   ["Configuración: métodos de pago, PayPal, tasa, reservas y seguridad", [true, "view", "view"]],
 ];
@@ -176,7 +176,7 @@ export function TeamView({ data, require2fa }: { data: TeamOverview; require2fa:
       {me.role !== "ADMIN" ? (
         <div className="banner info" role="status">
           <Icon name="info" />
-          <span>Como {ROLE_LABEL[me.role].toLowerCase()} puedes invitar y gestionar asistentes. A los administradores los gestiona el super administrador.</span>
+          <span>Como {ROLE_LABEL[me.role].toLowerCase()} puedes invitar y gestionar asistentes. A los administradores los gestiona el superadministrador.</span>
         </div>
       ) : null}
 
@@ -208,7 +208,7 @@ export function TeamView({ data, require2fa }: { data: TeamOverview; require2fa:
                         {m.lastLoginAt ? `Último acceso ${when(m.lastLoginAt)}` : "Nunca ha entrado"}
                       </>
                     ) : m.invitePending && m.active ? (
-                      ` · invitada el ${when(m.createdAt)}`
+                      ` · enviada el ${when(m.createdAt)}`
                     ) : null}
                   </div>
                 </div>

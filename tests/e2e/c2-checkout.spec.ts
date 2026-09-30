@@ -201,7 +201,7 @@ test.describe("c2 checkout", () => {
     await expect(details).toContainText("J-50123456-0");
     await expect(page.getByTestId("method-amount")).toHaveText(ves(Math.round(o.dueNowCents * RATE)));
     await details.getByRole("button", { name: "Copiar teléfono" }).click();
-    await expect(details.getByRole("button", { name: "Teléfono copiado" })).toBeVisible();
+    await expect(details.getByRole("button", { name: "Copiado: Teléfono" })).toBeVisible();
     await expect(page.getByTestId("report-payment")).toHaveAttribute("href", `/pedido/${o.token}?metodo=PAGO_MOVIL#pagar`);
 
     // Recargar no crea otro pedido: sigue la misma reserva.

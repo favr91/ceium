@@ -40,8 +40,8 @@ export async function exportCsv(req: Request, permission: Permission, build: (ct
     const t = await build({ user, sp, format, ids: ids.length ? ids : null, page: Number.isInteger(page) && page > 0 ? page : null });
     if (!t) return plain("No encontrado.", 404);
     // Cada descarga de datos personales queda en la auditoría: quién, qué y cuántas filas.
-    const scope = ids.length ? `${ids.length} seleccionados` : Number.isInteger(page) && page > 0 ? `página ${page}` : [...sp.keys()].filter((k) => k !== "format").length ? "filtrado" : "todo";
-    await prisma.$transaction((tx) => recordAudit(tx, { actor: user, action: "export.csv", entityType: "Export", entityId: t.name, note: `${t.rows.length} filas · ${scope}`, force: true }));
+    const scope = ids.length ? `${ids.length} ${ids.length === 1 ? "seleccionado" : "seleccionados"}` : Number.isInteger(page) && page > 0 ? `página ${page}` : [...sp.keys()].filter((k) => k !== "format").length ? "filtrado" : "todo";
+    await prisma.$transaction((tx) => recordAudit(tx, { actor: user, action: "export.csv", entityType: "Export", entityId: t.name, note: `${t.rows.length} ${t.rows.length === 1 ? "fila" : "filas"} · ${scope}`, force: true }));
     return csvResponse(toCsv(format, t.head, t.rows), t.name);
   } catch (e) {
     if (!isDomainError(e)) throw e;

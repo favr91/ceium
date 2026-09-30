@@ -62,7 +62,7 @@ function productsOf(slug: string) {
 test.describe("t6 · Quiénes somos", () => {
   test("título, banner, «Sobre CEIUM» y el personal al píxel", async ({ page }) => {
     await open(page, "/pages/quienes-somos");
-    await expect(page).toHaveTitle(/Quiénes Somos/);
+    await expect(page).toHaveTitle(/Quiénes somos/);
     await expect(page.locator(".pg-eyebrow")).toHaveText("Quiénes somos");
     await expect(page.locator(".pg-eyebrow")).toHaveCSS("text-transform", "uppercase");
     const h1 = page.getByRole("heading", { level: 1 });
@@ -71,7 +71,7 @@ test.describe("t6 · Quiénes somos", () => {
     const members = page.locator(".pg-member");
     await expect(members).toHaveCount(8);
     await expect(members.first().locator(".pg-member__name")).toHaveText("Dr. Carlos Roa");
-    await expect(members.first().locator(".pg-member__role")).toHaveText("Director y Fundador");
+    await expect(members.first().locator(".pg-member__role")).toHaveText("Director y fundador");
 
     const hero = await box(page.locator(".pg-about__hero"));
     if (isMobile(page)) {
@@ -180,7 +180,7 @@ test.describe("t6 · Preguntas frecuentes", () => {
     await open(page, "/pages/preguntas-frecuentes");
     const q0 = await box(page.locator(".pg-faq__q").first());
     const q1 = await box(page.locator(".pg-faq__q").nth(1));
-    const title = page.getByRole("heading", { level: 1, name: "Preguntas Frecuentes" });
+    const title = page.getByRole("heading", { level: 1, name: "Preguntas frecuentes" });
     if (isMobile(page)) {
       expect([q0.x, q0.w, q0.h]).toEqual([15, 360, 74]);
       await expect(title).toHaveCSS("font-size", "33px");
@@ -192,7 +192,7 @@ test.describe("t6 · Preguntas frecuentes", () => {
     }
     const cta = page.locator(".home-closing").getByRole("link", { name: "Contáctanos" });
     await expect(cta).toHaveAttribute("href", "/pages/contacto");
-    await expect(page.locator(".home-closing__title")).toHaveText("Capacitación en\nUltrasonido a tu alcance");
+    await expect(page.locator(".home-closing__title")).toHaveText("Capacitación en\nultrasonido a tu alcance");
   });
 });
 

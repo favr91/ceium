@@ -124,7 +124,7 @@ describe("cohortes desde el panel", () => {
     // contadores no editables
     await expect(updateCohort(ctx.d, admin, ctx.fx.courseCohort, { seatsHeld: 0 } as never)).rejects.toMatchObject({ code: "VALIDATION" });
 
-    const after = await updateCohort(ctx.d, staff, ctx.fx.courseCohort, { capacity: 2, name: "Cohorte Octubre 2026 (B)" }, "Aula más pequeña");
+    const after = await updateCohort(ctx.d, staff, ctx.fx.courseCohort, { capacity: 2, name: "Cohorte octubre 2026 (B)" }, "Aula más pequeña");
     expect(after.capacity).toBe(2);
     const log = await listAuditLog(ctx.d, { entityType: "Cohort", entityId: ctx.fx.courseCohort });
     expect(log).toHaveLength(1);

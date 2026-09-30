@@ -108,7 +108,7 @@ test.describe("c4 pago móvil y transferencia con comprobante", () => {
     const details = pm.getByTestId("method-details");
     for (const v of ["Banco Nacional de Crédito (0191)", "0412-0840407", "J-50123456-0", "CEIUM, C.A."]) await expect(details).toContainText(v);
     await details.getByRole("button", { name: "Copiar teléfono" }).click();
-    await expect(details.getByRole("button", { name: "Teléfono copiado" })).toBeVisible();
+    await expect(details.getByRole("button", { name: "Copiado: Teléfono" })).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("0412-0840407");
     await pm.getByRole("button", { name: "Copiar monto" }).click();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe((dueBs / 100).toFixed(2).replace(".", ","));
@@ -157,7 +157,7 @@ test.describe("c4 pago móvil y transferencia con comprobante", () => {
 
     // «En verificación»: título, aviso, pasos con los datos del comprobante y cupo apartado.
     await expect(page.getByTestId("order-title")).toHaveText("Pago en verificación");
-    await expect(page.getByTestId("order-banner")).toContainText(`Recibimos tu pago por Transferencia bancaria y su comprobante. Te enviamos la confirmación a ${email}.`);
+    await expect(page.getByTestId("order-banner")).toContainText(`Recibimos tu pago por transferencia bancaria y su comprobante. Te enviamos la confirmación a ${email}.`);
     const verifying = page.getByTestId("order-verifying");
     await expect(verifying.getByTestId("step-proof")).toContainText(`Transferencia bancaria · ref. ${reference}`);
     await expect(verifying.getByTestId("step-proof")).toContainText(`Bs. ${bs(dueBs)}`);

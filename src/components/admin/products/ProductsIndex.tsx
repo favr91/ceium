@@ -230,12 +230,12 @@ export function ProductsIndex({ rows, counts, total, query, canEdit }: { rows: P
           </>
         )}
         <div className="card-foot">
-          <span>{rows.length === total ? `${total} programas` : `${rows.length} de ${total} programas`}</span>
+          <span>{rows.length === total ? `${total} ${total === 1 ? "programa" : "programas"}` : `${rows.length} de ${total} programas`}</span>
           <span>Precio de lista = pago total sin descuento del plan</span>
         </div>
       </div>
       <p className="muted" style={{ textAlign: "center", marginTop: 20 }}>
-        Los cambios de precios aplican a compras nuevas; cada pedido conserva el precio con el que se compró.
+        Los cambios de precios se aplican a compras nuevas; cada pedido conserva el precio con el que se compró.
       </p>
       {toast.node}
     </>

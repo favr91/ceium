@@ -29,13 +29,13 @@ function greeting(now: Date) {
 function Delta({ cur, prev }: { cur: number; prev: number }) {
   if (prev === 0) return <span className="hm-delta none">{cur === 0 ? "—" : "Nuevo"}</span>;
   const pct = Math.round(((cur - prev) / prev) * 100);
-  if (pct === 0) return <span className="hm-delta none">0%</span>;
+  if (pct === 0) return <span className="hm-delta none">0 %</span>;
   return (
-    <span className={`hm-delta ${pct > 0 ? "up" : "down"}`} aria-label={`${pct > 0 ? "Sube" : "Baja"} ${Math.abs(pct)}% contra el periodo anterior`}>
+    <span className={`hm-delta ${pct > 0 ? "up" : "down"}`} aria-label={`${pct > 0 ? "Sube" : "Baja"} ${Math.abs(pct)} % contra el periodo anterior`}>
       <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
         <path d={pct > 0 ? "M3 9 9 3M4.5 3H9v4.5" : "M3 3l6 6M9 4.5V9H4.5"} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      {Math.abs(pct)}%
+      {Math.abs(pct)} %
     </span>
   );
 }
@@ -114,9 +114,9 @@ function Chart({ series, prev, labels, money, name }: { series: number[]; prev: 
 }
 
 const EVENT_TEXT: Record<string, { icon: string; text: (n: string) => string; tone?: string }> = {
-  ENROLLMENT: { icon: "enroll", text: (n) => `${n} quedó matriculado en Moodle` },
+  ENROLLMENT: { icon: "enroll", text: (n) => `Se matriculó a ${n} en Moodle` },
   ENROLLMENT_FAILED: { icon: "alert", text: (n) => `Falló la matrícula de ${n} en Moodle`, tone: "critical" },
-  UNENROLLMENT: { icon: "enroll", text: (n) => `${n} fue desmatriculado en Moodle` },
+  UNENROLLMENT: { icon: "enroll", text: (n) => `Se desmatriculó a ${n} de Moodle` },
   CERTIFICATE_ISSUED: { icon: "certificate", text: (n) => `Certificado emitido a ${n}`, tone: "success" },
   CERTIFICATE_REVOKED: { icon: "certificate", text: (n) => `Se revocó el certificado de ${n}`, tone: "critical" },
   PAYMENT_VERIFIED: { icon: "check", text: (n) => `Pago de ${n} aprobado` },
@@ -220,7 +220,7 @@ export function HomeView({ data, userName }: { data: HomeDashboard; userName: st
                         {p.students} {p.students === 1 ? "médico cursando" : "médicos cursando"} · {p.issued} {p.issued === 1 ? "certificado" : "certificados"}
                       </span>
                     </div>
-                    <span className="pct">{Math.round(p.rate * 100)}%</span>
+                    <span className="pct">{Math.round(p.rate * 100)} %</span>
                   </div>
                   <Bar value={p.completedCourses} max={p.totalCourses} tone="success" label={`Cursos completados de ${p.title}`} />
                   {p.courses > 0 && p.students > 0 ? (

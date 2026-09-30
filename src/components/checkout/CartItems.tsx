@@ -23,7 +23,7 @@ function imageSrc(url: string): string {
 
 /**
  * Opciones de la línea para mostrar: «Sede» sobra en Online, la cohorte se parte en nombre + inicio y la forma de
- * pago no repite el «(10% de descuento)» porque el ahorro se muestra con su monto justo debajo.
+ * pago no repite el «(10 % de descuento)» porque el ahorro se muestra con su monto justo debajo.
  */
 function displayOptions(line: ResolvedCartLine): { name: string; value: string }[] {
   const online = line.options.some((o) => o.name === "Modalidad" && o.value === "Online");
@@ -159,7 +159,7 @@ function CartRow({ line, index, updateQuantity, onStatus }: { line: ResolvedCart
         {line.discountCents > 0 && !line.error ? (
           <p className="ck-save" data-testid="cart-line-discount" data-ck-wa-avoid>
             <TagIcon />
-            <span>Ahorras <strong>{usd(line.discountCents)}</strong> (−{line.discountPct}%)</span>
+            <span>Ahorras <strong>{usd(line.discountCents)}</strong> (−{line.discountPct} %)</span>
           </p>
         ) : null}
         {line.planNote ? <p className="ck-plan-note">{line.planNote}</p> : null}
@@ -202,7 +202,7 @@ function CartRow({ line, index, updateQuantity, onStatus }: { line: ResolvedCart
               <PlusIcon />
             </button>
           </div>
-          <button type="button" className="ck-remove" aria-label={`Eliminar ${line.title} - ${optionLabel}`} onClick={() => commit(0)} disabled={pending} data-testid="cart-remove">
+          <button type="button" className="ck-remove" aria-label={`Eliminar ${line.title} (${optionLabel})`} onClick={() => commit(0)} disabled={pending} data-testid="cart-remove">
             <RemoveIcon />
           </button>
         </div>

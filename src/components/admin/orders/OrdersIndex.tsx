@@ -310,7 +310,7 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
               }}
             >
               <Icon name="search" />
-              <input ref={inputRef} className="inp" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por nº de pedido, cliente, cédula, referencia o programa" aria-label="Buscar pedidos" />
+              <input ref={inputRef} className="inp" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por n.º de pedido, cliente, cédula, referencia o programa" aria-label="Buscar pedidos" />
             </form>
             <button
               type="button"
@@ -440,7 +440,7 @@ export function OrdersIndex({ rows, counts, views, sorts, total, page, pages, pe
       )}
 
       <div className="oi-foot">
-        <span>{total === 0 ? "0 pedidos" : `${from}–${to} de ${total} pedidos`}</span>
+        <span>{total === 0 ? "0 pedidos" : `${from}–${to} de ${total} ${total === 1 ? "pedido" : "pedidos"}`}</span>
         {pages > 1 ? (
           <nav className="adm-pager" aria-label="Paginación">
             {page > 1 ? (

@@ -153,7 +153,7 @@ test.describe("t3 home: diplomados y carruseles", () => {
 
   test("geometría de los carruseles y tarjetas igual a ceium.net", async ({ page }) => {
     await open(page);
-    const first = row(page, "Cursos y talleres que inician de Marzo a Junio de 2026");
+    const first = row(page, "Cursos y talleres que inician de marzo a junio de 2026");
     const track = first.locator(".home-carousel__track");
     const trackBox = await box(track);
     const next = await box(first.getByRole("button", { name: "Siguiente" }));
@@ -202,7 +202,7 @@ test.describe("t3 home: diplomados y carruseles", () => {
     await posters.first().click();
     const frame = videos.locator("iframe").first();
     await expect(frame).toHaveAttribute("src", /^https:\/\/www\.youtube-nocookie\.com\/embed\/HdfLwA6L1Xs\?autoplay=1/);
-    await expect(frame).toHaveAttribute("title", "CEIUM: 24 años de Docencia Universitaria");
+    await expect(frame).toHaveAttribute("title", "CEIUM: 24 años de docencia universitaria");
 
     // El carrusel de videos también avanza.
     const track = videos.locator(".home-carousel__track");
@@ -212,7 +212,7 @@ test.describe("t3 home: diplomados y carruseles", () => {
 
   test("galería y llamada final", async ({ page }) => {
     await open(page);
-    const gallery = page.getByRole("region", { name: "Viviendo la Experiencia CEIUM", exact: true }).last();
+    const gallery = page.getByRole("region", { name: "Viviendo la experiencia CEIUM", exact: true }).last();
     const items = gallery.locator(".home-gallery__item");
     await expect(items).toHaveCount(11);
     await items.first().scrollIntoViewIfNeeded();
@@ -221,8 +221,9 @@ test.describe("t3 home: diplomados y carruseles", () => {
     await gallery.getByRole("button", { name: "Siguiente" }).click();
     await expect.poll(() => scrollLeft(track)).toBe(isMobile(page) ? 150 : 532);
 
-    const closing = page.getByRole("region", { name: /Capacitación en\s+Ultrasonido a tu alcance/ });
-    const cta = closing.getByRole("link", { name: "Incríbete ya" });
-    expect(await box(cta)).toMatchObject({ w: 127, h: 52 });
+    const closing = page.getByRole("region", { name: /Capacitación en\s+ultrasonido a tu alcance/ });
+    const cta = closing.getByRole("link", { name: "Inscríbete ya" });
+    // 135 px con «Inscríbete»; la tienda original mide 127 con la errata «Incríbete».
+    expect(await box(cta)).toMatchObject({ w: 135, h: 52 });
   });
 });

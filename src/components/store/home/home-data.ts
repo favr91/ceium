@@ -65,7 +65,7 @@ export const DEFAULT_HOME: HomeConfig = {
   partners: {
     title: "Nuestros aliados",
     logos: [
-      { src: `${CDN}/UCLA_1.webp?v=1738166729`, alt: "Logo Universidad Centroocidental Lisandro Alvarado" },
+      { src: `${CDN}/UCLA_1.webp?v=1738166729`, alt: "Logo Universidad Centroccidental Lisandro Alvarado" },
       { src: `${CDN}/psj_f22f1bf9-5d59-4e98-9d1f-31d3eec276bc.svg?v=1738163656`, alt: "Logo Policlínica San Javier" },
       { src: `${CDN}/mediexpert_424764f5-8fe2-4153-afac-8208817d307e.svg?v=1738163630`, alt: "Logo Mediexpert" },
       { src: `${CDN}/yano_1f30da04-11aa-4e62-8084-5c5c97900f2a.svg?v=1738163568`, alt: "Logo Yano" },
@@ -88,16 +88,16 @@ export const DEFAULT_HOME: HomeConfig = {
     cta: { label: "Empieza ya", url: "/pages/cursos" },
     // Testimonios de la home de ceium.net (títulos de YouTube).
     videos: [
-      { id: "HdfLwA6L1Xs", title: "CEIUM: 24 años de Docencia Universitaria" },
-      { id: "7oAF6K-ho6o", title: "Testimonial Dr. Marcos Vásquez, médico urólogo" },
-      { id: "8x2ORKCBQuE", title: "Experiencia de Alumnos CEIUM" },
-      { id: "G23h1hDd4wk", title: "Testimonial Dr. Juan José Ramirez. Diplomado en Ecografía Integral para el Diagnóstico Médico" },
+      { id: "HdfLwA6L1Xs", title: "CEIUM: 24 años de docencia universitaria" },
+      { id: "7oAF6K-ho6o", title: "Testimonio del Dr. Marcos Vásquez, médico urólogo" },
+      { id: "8x2ORKCBQuE", title: "Experiencia de alumnos CEIUM" },
+      { id: "G23h1hDd4wk", title: "Testimonio del Dr. Juan José Ramirez. Diplomado en Ecografía Integral para el Diagnóstico Médico" },
       { id: "V-8bBbyhVUc", title: "Conocimiento y experiencia de los facilitadores de CEIUM" },
-      { id: "U1D6NK1Y-uc", title: "Superadas las expectativas. Testimonial Dr. Julio Peña" },
+      { id: "U1D6NK1Y-uc", title: "Superadas las expectativas. Testimonio del Dr. Julio Peña" },
     ],
   },
   gallery: {
-    title: "Viviendo la Experiencia CEIUM",
+    title: "Viviendo la experiencia CEIUM",
     images: [
       "galeria-_1.webp?v=1736283738",
       "galeria-_1_.1.webp?v=1736283755",
@@ -114,10 +114,10 @@ export const DEFAULT_HOME: HomeConfig = {
   },
   closing: {
     eyebrow: "¡Inscripciones abiertas!",
-    title: "Capacitación en\nUltrasonido a tu alcance",
+    title: "Capacitación en\nultrasonido a tu alcance",
     text: "Da el primer paso, inscríbete ahora.",
     image: `${CDN}/Frame_27.png?v=1732743002`,
-    cta: { label: "Incríbete ya", url: "/pages/cursos" },
+    cta: { label: "Inscríbete ya", url: "/pages/cursos" },
   },
 };
 

@@ -115,7 +115,7 @@ test.describe("c5 confirmación y correos", () => {
     const username = one<{ moodleUsername: string }>(`SELECT c.moodleUsername FROM Customer c JOIN "Order" o ON o.customerId = c.id WHERE o.id = ?`, o.id)!.moodleUsername;
     await expect(page.getByTestId("moodle-username")).toHaveText(username);
     await page.getByTestId("step-access").getByRole("button", { name: "Copiar usuario" }).click();
-    await expect(page.getByTestId("step-access").getByRole("button", { name: "Usuario copiado" })).toBeVisible();
+    await expect(page.getByTestId("step-access").getByRole("button", { name: "Copiado: Usuario" })).toBeVisible();
 
     // Cohorte: fechas, dirección de la sede (de la BD), sesiones, «Cómo llegar» y calendario .ics.
     const item = one<{ address: string; cohortName: string; sessions: string | null }>(

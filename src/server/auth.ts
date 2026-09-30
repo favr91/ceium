@@ -46,12 +46,12 @@ const DUMMY_HASH = bcrypt.hashSync("ceium-dummy-password", BCRYPT_ROUNDS);
 
 /**
  * Qué puede hacer cada rol (nombres y jerarquía en admin-roles.ts):
- *   ADMIN (super administrador): todo.
+ *   ADMIN (superadministrador): todo.
  *   COMMERCIAL (administrador comercial): la academia completa (catálogo, precios, colecciones, sedes, cohortes,
  *     matrículas, certificados) y la operación de pedidos y pagos; en el equipo, solo asistentes.
  *   STAFF (asistente): el día a día (pedidos, verificar pagos manuales, correos, notas, cohortes, matrículas).
  * El dinero que sale o se perdona (reembolsos, ajustes de saldo, aprobar un pago por más de lo calculado) y la
- * configuración de la tienda (métodos de pago, PayPal, tasa, reservas, seguridad) son solo del super administrador.
+ * configuración de la tienda (métodos de pago, PayPal, tasa, reservas, seguridad) son solo del superadministrador.
  */
 const ALL = ["ADMIN", "COMMERCIAL", "STAFF"] as const;
 const MANAGERS = ["ADMIN", "COMMERCIAL"] as const;

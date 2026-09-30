@@ -274,7 +274,7 @@ export async function resolveCart(d: { db: Db; now: () => Date }, lines: CartLin
       const rest = q.totalCents - q.dueNowCents;
       if (q.planKind === "HALF" && rest > 0) planNote = `Hoy pagas la mitad; el saldo de ${usd(rest)} se paga después.`;
       if (q.planKind === "MONTHLY" && q.installments.length > 1) {
-        planNote = `Pagas el primer curso ahora; luego ${q.installments.length - 1} cuotas mensuales de ${usd(q.installments[1].amountCents)} (un curso por mes).`;
+        planNote = `Pagas el primer curso ahora; luego ${q.installments.length - 1} ${q.installments.length - 1 === 1 ? "cuota mensual" : "cuotas mensuales"} de ${usd(q.installments[1].amountCents)} (un curso por mes).`;
       }
     } catch (e) {
       if (!isDomainError(e)) throw e;

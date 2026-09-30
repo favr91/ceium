@@ -88,7 +88,7 @@ export function ProductBuyForm({ config, title }: { config: BuyConfig; title: st
       const rest = formatUSD(amounts.totalCents - amounts.dueNowCents);
       summary = `Hoy pagas la mitad; el resto (${rest}) en un segundo pago. Total ${total}${amounts.discountCents > 0 ? `, ahorras ${formatUSD(amounts.discountCents)}` : ""}.`;
     } else if (amounts.discountCents > 0) {
-      summary = `Pago único. Ahorras ${formatUSD(amounts.discountCents)} (${plan.discountPct}% de descuento sobre ${formatUSD(amounts.listCents)}).`;
+      summary = `Pago único. Ahorras ${formatUSD(amounts.discountCents)} (${plan.discountPct} % de descuento sobre ${formatUSD(amounts.listCents)}).`;
     }
   }
 

@@ -11,7 +11,7 @@ export const SPECIALTIES = [
   "Medicina familiar",
   "Medicina interna",
   "Ginecología y obstetricia",
-  "Medicina materno fetal",
+  "Medicina materno-fetal",
   "Radiología e imágenes",
   "Pediatría",
   "Cardiología",

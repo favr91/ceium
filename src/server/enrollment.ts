@@ -337,10 +337,10 @@ export async function enrollOrder(d: Deps, orderId: string, opts: { force?: bool
           "ATTENTION",
           SYSTEM,
           permanent && userId == null && (error as { wsfunction?: unknown })?.wsfunction === "core_user_create_users"
-            ? `Moodle no dejó crear la cuenta de ${order.customer.email} y no se encontró ninguna con ese correo (${msg}). Reintentar no lo resuelve. Casi siempre el médico ya tiene cuenta en Moodle con ese correo escrito con otras mayúsculas y el token no puede usar core_user_get_users (habilítala en el servicio web para que se vincule sola). Arreglo: vincula su cuenta con «Vincular cuenta de Moodle» en la ficha del cliente (número, correo o usuario de Moodle; matricula en el acto), o en Moodle deja su correo exactamente como «${order.customer.email}» y usa «Rematricular».`
+            ? `Moodle no dejó crear la cuenta de ${order.customer.email} y no se encontró ninguna con ese correo (${msg}). Reintentar no lo resuelve. Casi siempre el médico ya tiene cuenta en Moodle con ese correo escrito con otras mayúsculas y el token no puede usar core_user_get_users (habilita esa función en el servicio web para que se vincule sola). Arreglo: vincula su cuenta con «Vincular cuenta de Moodle» en la ficha del cliente (número, correo o usuario de Moodle; matricula en el acto), o en Moodle deja su correo exactamente como «${order.customer.email}» y usa «Rematricular».`
             : permanent
             ? `Moodle rechazó la matrícula (${msg}). Reintentar no lo resuelve: corrige los datos (usuario/correo del cliente, curso) y usa «Rematricular».`
-            : `La matrícula en Moodle falló ${policy.maxAttempts} veces (${msg}). Revisa Moodle y usa «Rematricular».`,
+            : `La matrícula en Moodle falló ${policy.maxAttempts} ${policy.maxAttempts === 1 ? "vez" : "veces"} (${msg}). Revisa Moodle y usa «Rematricular».`,
           { courseIds },
         );
       }

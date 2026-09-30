@@ -2,7 +2,7 @@
 // Corre contra cualquier app sembrada: E2E_BASE_URL=http://localhost:3103 npx playwright test tests/e2e/a1-products.spec.ts
 import { expect, test, type Page } from "@playwright/test";
 
-const DIPLOMA = "Diplomado Universitario Avanzado de Medicina Materno Fetal";
+const DIPLOMA = "Diplomado Universitario Avanzado de Medicina Materno-Fetal";
 const PNG_1PX = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 async function login(page: Page, next = "/admin/products") {

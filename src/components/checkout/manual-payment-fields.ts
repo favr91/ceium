@@ -8,6 +8,10 @@ export type ManualErrors = Partial<Record<ManualField, string>>;
 
 export const MANUAL_FIELD_ORDER: readonly ManualField[] = ["reference", "bank", "amount", "paidAt", "proof"];
 
+/** Nombre del método dentro de una frase («paga por pago móvil», «recibimos tu pago por transferencia bancaria»). */
+const METHOD_IN_TEXT: Record<string, string> = { PAGO_MOVIL: "pago móvil", TRANSFERENCIA: "transferencia bancaria", ZELLE: "Zelle", PAYPAL: "PayPal", EFECTIVO: "efectivo" };
+export const methodInText = (method: string | null | undefined, fallback = ""): string => (method ? (METHOD_IN_TEXT[method] ?? fallback) : fallback);
+
 /** Bancos venezolanos (código SUDEBAN) para «Banco de origen» de pagos en bolívares. */
 export const VE_BANKS: readonly string[] = [
   "Banco de Venezuela (0102)",

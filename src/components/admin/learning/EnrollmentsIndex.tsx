@@ -11,7 +11,7 @@ import { Icon } from "../Icon";
 import { ExportButton } from "../ExportButton";
 import { exportOptions } from "../export-options";
 import { Spinner, useDismiss } from "../orders/bits";
-import { listDate } from "../orders/format";
+import { inSentenceDate, listDate } from "../orders/format";
 import { Avatar, StateBadge, ago, dm, useRun } from "./shared";
 
 export interface EnrollState {
@@ -118,7 +118,7 @@ export function EnrollmentsIndex({ rows, counts, views, sorts, programs, total, 
         {r.lastError ? ` · ${r.lastError.slice(0, 70)}` : ""}
       </span>
     ) : r.state === "PENDING" ? (
-      <span className="muted">{r.nextAttemptAt ? `Reintento ${listDate(r.nextAttemptAt, now).toLowerCase()}` : "En cola"}</span>
+      <span className="muted">{r.nextAttemptAt ? `Reintento ${inSentenceDate(r.nextAttemptAt, now)}` : "En cola"}</span>
     ) : (
       <span className="muted">Sin acceso al curso</span>
     );
@@ -185,7 +185,7 @@ export function EnrollmentsIndex({ rows, counts, views, sorts, programs, total, 
           <div className="oi-search">
             <form className="ix-search" role="search" onSubmit={(e) => { e.preventDefault(); go({ q: q.trim() }); }}>
               <Icon name="search" />
-              <input ref={inputRef} className="inp" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por médico, correo, cédula, curso, nº de pedido o id de Moodle" aria-label="Buscar matrículas" />
+              <input ref={inputRef} className="inp" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por médico, correo, cédula, curso, n.º de pedido o ID de Moodle" aria-label="Buscar matrículas" />
             </form>
             <button
               type="button"
@@ -231,7 +231,7 @@ export function EnrollmentsIndex({ rows, counts, views, sorts, programs, total, 
               </button>
             </>
           ) : null}
-          <ExportButton title="Exportar matrículas" endpoint="/admin/enrollments/export" className="btn" {...exportOptions({ noun: ["matrículas", "matrícula"], filters: "", filtered: false, total: 0, selected: [...sel] })}>
+          <ExportButton title="Exportar matrículas" endpoint="/admin/enrollments/export" className="btn" {...exportOptions({ noun: ["matrículas", "matrícula"], fem: true, filters: "", filtered: false, total: 0, selected: [...sel] })}>
             Exportar selección
           </ExportButton>
           <button type="button" className="btn btn-tertiary" onClick={() => setSel(new Set())}>Deseleccionar</button>

@@ -30,7 +30,7 @@ export default async function PrivacyPolicyPage() {
           </p>
           {emails.length ? (
             <p>
-              Para consultar, corregir o eliminar tus datos escríbenos a{" "}
+              Para consultar, corregir o eliminar tus datos, escríbenos a{" "}
               {emails.map((e, i) => (
                 <span key={e}>
                   {i > 0 ? " o " : ""}

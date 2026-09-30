@@ -109,7 +109,7 @@ export function CohortsIndex({
     if (!/^\d+$/.test(raw)) return "Número entero";
     const used = r.seats.confirmed + r.seats.held;
     if (Number(raw) < used) return `Mínimo ${used} (ocupados)`;
-    if (Number(raw) > 10000) return "Máximo 10000";
+    if (Number(raw) > 10000) return "Máximo 10 000";
     return null;
   };
   const dirty = changes.length > 0;
@@ -317,7 +317,7 @@ export function CohortsIndex({
             <button className="btn" disabled={pending} onClick={() => bulk("OPEN", "inscripciones abiertas")}>Abrir inscripciones</button>
             <button className="btn" disabled={pending} onClick={() => bulk("CLOSED", "inscripciones cerradas")}>Cerrar inscripciones</button>
             <button className="btn hide-sm" disabled={pending} onClick={() => bulk("IN_PROGRESS", "en curso")}>Marcar en curso</button>
-            <ExportButton title="Exportar cohortes" endpoint="/admin/cohorts/export" className="btn" {...exportOptions({ noun: ["cohortes", "cohorte"], filters: "", filtered: false, total: 0, selected: [...sel] })}>
+            <ExportButton title="Exportar cohortes" endpoint="/admin/cohorts/export" className="btn" {...exportOptions({ noun: ["cohortes", "cohorte"], fem: true, filters: "", filtered: false, total: 0, selected: [...sel] })}>
               Exportar selección
             </ExportButton>
           </div>
@@ -380,7 +380,7 @@ export function CohortsIndex({
                         </div>
                       </td>
                       <td className="num">{n(r.seats.confirmed)}</td>
-                      <td className="num">{n(r.seats.held)}{r.seats.stale ? <div className="sub" title="Reservas vencidas: el barrido las libera">+{r.seats.stale} vencidas</div> : null}</td>
+                      <td className="num">{n(r.seats.held)}{r.seats.stale ? <div className="sub" title="Reservas vencidas: el barrido las libera">+{r.seats.stale} {r.seats.stale === 1 ? "vencida" : "vencidas"}</div> : null}</td>
                       <td className="num">{n(r.seats.free, f === "full" ? "free-none" : f === "low" ? "free-low" : "")}</td>
                       <td className="num cap-cell" style={{ paddingRight: 16 }}>
                         {canEdit ? capInput(r) : <span className="mono">{r.seats.capacity}</span>}
@@ -404,9 +404,9 @@ export function CohortsIndex({
                     <span className="b"><StatusPill status={r.status} /><FillBadge seats={r.seats} status={r.status} /></span>
                     <div className="occ"><SeatBar seats={r.seats} /></div>
                     <div className="seat-line">
-                      <span><span className="sw c" /> <b>{r.seats.confirmed}</b> confirmados</span>
-                      <span><span className="sw h" /> <b>{r.seats.held}</b> reservados</span>
-                      <span><span className="sw f" /> <b>{r.seats.free}</b> libres</span>
+                      <span><span className="sw c" /> <b>{r.seats.confirmed}</b> {r.seats.confirmed === 1 ? "confirmado" : "confirmados"}</span>
+                      <span><span className="sw h" /> <b>{r.seats.held}</b> {r.seats.held === 1 ? "reservado" : "reservados"}</span>
+                      <span><span className="sw f" /> <b>{r.seats.free}</b> {r.seats.free === 1 ? "libre" : "libres"}</span>
                     </div>
                   </div>
                   <div className="cap-cell" style={{ textAlign: "right" }}>
@@ -420,7 +420,7 @@ export function CohortsIndex({
           </>
         )}
         <div className="card-foot">
-          <span>{total === allTotal ? `${total} cohortes` : `${total} de ${allTotal} cohortes`}{pages > 1 ? ` · página ${query.page} de ${pages}` : ""}</span>
+          <span>{total === allTotal ? `${total} ${total === 1 ? "cohorte" : "cohortes"}` : `${total} de ${allTotal} cohortes`}{pages > 1 ? ` · página ${query.page} de ${pages}` : ""}</span>
           {pages > 1 ? (
             <span className="adm-pager">
               {query.page > 1 ? <Link href={href(path, query, { page: query.page - 1 })} aria-label="Página anterior"><Icon name="prev" size={16} /></Link> : <span aria-hidden><Icon name="prev" size={16} /></span>}

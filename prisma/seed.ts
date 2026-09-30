@@ -10,6 +10,7 @@ import { createPrismaClient } from "../src/server/db";
 import type { Modality, PlanKind, ProductCategory, Prisma } from "../src/generated/prisma/client";
 import { computePlanAmounts, priceScopeKey } from "../src/server/pricing";
 import { SETTING_KEYS, type ManualMethodConfig } from "../src/server/settings";
+import { copyFixer } from "./seed-data/copy-fixes";
 
 const prisma = createPrismaClient();
 const REF = process.env.CEIUM_REF_DIR ?? path.resolve(__dirname, "../../ref");
@@ -38,15 +39,15 @@ const COLLECTIONS: { slug: string; title: string }[] = [
   { slug: "cursos-universitarios", title: "Cursos Universitarios Fundamentales" },
   { slug: "cursos-avanzados", title: "Cursos Avanzados" },
   { slug: "talleres-especializados", title: "Talleres Especializados" },
-  { slug: "cursos-y-talleres-de-marzo-a-junio-2026", title: "Cursos y talleres que inician de Marzo a Junio de 2026" },
+  { slug: "cursos-y-talleres-de-marzo-a-junio-2026", title: "Cursos y talleres que inician de marzo a junio de 2026" },
   { slug: "cursos-del-diplomado-universitario-de-ecografia-integral-en-el-diagnostico-medico", title: "Cursos del Diplomado Universitario de Ecografía Integral en el Diagnóstico Médico" },
-  { slug: "cursos-del-diplomado-universitario-avanzado-de-medicina-materno-fetal", title: "Cursos del Diplomado Universitario Avanzado de Medicina Materno Fetal" },
+  { slug: "cursos-del-diplomado-universitario-avanzado-de-medicina-materno-fetal", title: "Cursos del Diplomado Universitario Avanzado de Medicina Materno-Fetal" },
 ];
 
 const SEDES = [
-  { slug: "barquisimeto", name: "Barquisimeto", city: "Barquisimeto, Lara", address: "Av. Andrés Bello entre carreras 33 y 34, Edificio Policlínica San Javier y Centro Profesional Arca. Piso 1 Barquisimeto, Edo Lara, Venezuela." },
-  { slug: "caracas", name: "Caracas", city: "Caracas", address: "Centro Plaza entre la avenida Francisco de Miranda y 1era Transversal de Los Palos Grandes municipio Chacao, Torre A, piso 16, oficina D, Caracas." },
-  { slug: "maracaibo", name: "Maracaibo", city: "Maracaibo, Zulia", address: "Av. Universidad entre Av. 10 y 12, Urb. La Estrella Unimedica." },
+  { slug: "barquisimeto", name: "Barquisimeto", city: "Barquisimeto, Lara", address: "Av. Andrés Bello entre carreras 33 y 34, Edificio Policlínica San Javier y Centro Profesional Arca. Piso 1, Barquisimeto, Edo. Lara, Venezuela." },
+  { slug: "caracas", name: "Caracas", city: "Caracas", address: "Centro Plaza entre la avenida Francisco de Miranda y 1.ª Transversal de Los Palos Grandes, municipio Chacao, Torre A, piso 16, oficina D, Caracas." },
+  { slug: "maracaibo", name: "Maracaibo", city: "Maracaibo, Zulia", address: "Av. Universidad entre Av. 10 y 12, Urb. La Estrella, Unimedica." },
 ];
 
 // Hash determinista → capacidades/fechas estables entre ejecuciones.
@@ -54,6 +55,9 @@ function hash(s: string) { let h = 2166136261; for (const c of s) { h ^= c.charC
 const d = (iso: string) => new Date(iso + "T00:00:00-04:00"); // hora de Venezuela
 const addDays = (dt: Date, n: number) => new Date(dt.getTime() + n * 86400000);
 const isoDate = (dt: Date) => dt.toISOString().slice(0, 10);
+
+/** Etiqueta del plan con la errata de la tienda corregida («midad») y el espacio antes de «%». */
+const planLabel = (raw: string) => raw.replace(/\bmidad\b/, "mitad").replace(/(\d+)\s*%/, "$1\u00a0%");
 
 function planKindFromLabel(label: string): { kind: PlanKind; discountPct: number } {
   const pct = Number(label.match(/(\d+)\s*%/)?.[1] ?? 0);
@@ -143,6 +147,7 @@ async function main() {
   // Cursos de Moodle de las sub-opciones (p.ej. niveles del taller transfontanelar): después de los cursos.
   let choiceMoodleId = moodleId + products.filter((p) => categoryOf(p.handle) !== "DIPLOMA").length;
   const warnings: string[] = [];
+  const copy = copyFixer();
   let priceCount = 0, planCount = 0;
 
   for (const [pos, p] of products.entries()) {
@@ -159,20 +164,24 @@ async function main() {
     const sellable = p.variants.some((v) => v.available);
     const deadline = sellable ? null : det.enrollmentDeadlineText?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
 
+    // Texto del programa con las correcciones de ortografía (seed-data/copy-fixes.ts).
+    const text = copy.fields(p.handle, {
+      title: p.title, descriptionHtml: p.body_html ?? "", excerpt: det.intro?.join(" ") || null,
+      requirements: det.requirements, certificateTitle: det.certificateTitle, certificateText: det.certificateText,
+      endorsementTitle: det.endorsementTitle, endorsementText: det.endorsementText, audience: det.audience, duration: det.duration,
+      eventDateText: det.eventDateText, enrollmentNote: det.enrollmentNote, topics: det.topics, faculty: det.faculty, benefits: det.benefits,
+    });
+
     const product = await prisma.product.create({
       data: {
-        type, category, slug: p.handle, title: p.title, descriptionHtml: p.body_html ?? "",
-        excerpt: det.intro?.join(" ") || null,
+        type, category, slug: p.handle, ...text,
         offersOnline: modalities.has("Online"), offersSemipresencial: modalities.has("Semipresencial"),
-        requirements: det.requirements, certificateTitle: det.certificateTitle, certificateText: det.certificateText,
-        endorsementTitle: det.endorsementTitle, endorsementText: det.endorsementText, audience: det.audience, duration: det.duration,
-        eventDateText: det.eventDateText, enrollmentNote: det.enrollmentNote,
         enrollmentDeadline: deadline ? d(`${deadline[3]}-${deadline[2]}-${deadline[1]}`) : null,
-        syllabusUrl: det.syllabusUrl, topics: (det.topics as Prisma.InputJsonValue) ?? undefined,
-        faculty: det.faculty ?? undefined, benefits: det.benefits ?? undefined, detailsSource: det.source ? `ceium.net (${det.source})` : null,
+        syllabusUrl: det.syllabusUrl, topics: (text.topics as Prisma.InputJsonValue) ?? undefined,
+        faculty: text.faculty ?? undefined, benefits: text.benefits ?? undefined, detailsSource: det.source ? `ceium.net (${det.source})` : null,
         moodleCourseId: type === "COURSE" ? moodleId++ : null,
         published: true, publishedAt: p.published_at ? new Date(p.published_at) : null, position: pos, legacyShopifyId: String(p.id),
-        images: { create: p.images.map((im) => ({ url: im.src, alt: im.alt ?? p.title, width: im.width, height: im.height, position: im.position })) },
+        images: { create: p.images.map((im) => ({ url: im.src, alt: im.alt ?? text.title, width: im.width, height: im.height, position: im.position })) },
       },
     });
     productId[p.handle] = product.id;
@@ -193,7 +202,7 @@ async function main() {
 
     // Planes de pago (etiquetas reales)
     const planLabels = iPay >= 0 ? p.options[iPay].values : [];
-    const plans = planLabels.length ? planLabels.map((label) => ({ label, ...planKindFromLabel(label) })) : [{ label: "Pago único", kind: "FULL" as PlanKind, discountPct: 0 }];
+    const plans = planLabels.length ? planLabels.map((label) => ({ label: planLabel(label), ...planKindFromLabel(label) })) : [{ label: "Pago único", kind: "FULL" as PlanKind, discountPct: 0 }];
     // MONTHLY (solo diplomados, SPEC): una cuota por curso del diplomado (9), cada una al precio publicado
     // de la variante "Paga mes a mes" (180/230/150). quote() usa siempre el nº real de cursos; este valor
     // queda como referencia visible en el panel.
@@ -239,7 +248,7 @@ async function main() {
       // Verificación: los montos calculados deben reproducir el precio real de cada variante.
       if (iPay < 0) for (const v of g.vs) if (cents(v.price) !== list) warnings.push(`${p.handle} ${g.modality}/${g.sedeId ? "sede" : "-"}: precio ${list} ≠ real ${cents(v.price)} (${val(v, iMod)}/${val(v, iSede)})`);
       for (const v of iPay >= 0 ? g.vs : []) {
-        const pl = plans.find((x) => x.label === val(v, iPay))!;
+        const pl = plans.find((x) => x.label === planLabel(val(v, iPay)!))!;
         const amounts = computePlanAmounts({ priceCents: list, installmentCents: installment }, { ...pl, installments: pl.kind === "HALF" ? 2 : pl.kind === "MONTHLY" ? MONTHLY_INSTALLMENTS : 1 });
         if (pl.kind === "MONTHLY" && MONTHLY_INSTALLMENTS < 2) warnings.push(`${p.handle}: plan mes a mes sin cursos de diplomado`);
         if (amounts.dueNowCents !== cents(v.price)) warnings.push(`${p.handle} ${g.modality}/${g.sedeId ? "sede" : "-"} ${pl.label}: calculado ${amounts.dueNowCents} ≠ real ${cents(v.price)}`);
@@ -285,11 +294,11 @@ async function main() {
     } else if (prod.category === "WORKSHOP") {
       const off = hash(prod.slug) % 4;
       const start = addDays(d("2026-11-06"), off * 7);
-      specs.push({ name: "Edición Noviembre 2026", start, end: addDays(start, 1), status: "OPEN", sessions: [0, 1].map((i) => ({ date: isoDate(addDays(start, i)), title: `Día ${i + 1} de práctica` })) });
+      specs.push({ name: "Edición noviembre 2026", start, end: addDays(start, 1), status: "OPEN", sessions: [0, 1].map((i) => ({ date: isoDate(addDays(start, i)), title: `Día ${i + 1} de práctica` })) });
     } else {
       // Cursos: 2 cohortes mensuales (4 sábados) entre oct y dic 2026.
       const off = hash(prod.slug + sede.slug) % 3;
-      for (const [name, base] of [["Cohorte Octubre 2026", "2026-10-03"], ["Cohorte Noviembre 2026", "2026-11-07"]] as const) {
+      for (const [name, base] of [["Cohorte octubre 2026", "2026-10-03"], ["Cohorte noviembre 2026", "2026-11-07"]] as const) {
         const start = addDays(d(base), off * 7);
         specs.push({ name, start, end: addDays(start, 27), status: "OPEN", sessions: [0, 1, 2, 3].map((i) => ({ date: isoDate(addDays(start, i * 7)), title: `Sesión práctica ${i + 1}` })) });
       }
@@ -346,6 +355,7 @@ async function main() {
     diplomaCourses: await prisma.diplomaCourse.count(), cohorts: cohortCount, admins: await prisma.adminUser.count(), settings: await prisma.setting.count(),
   };
   console.log("Seed OK", counts);
+  for (const u of copy.unused(products.map((p) => p.handle))) warnings.push(`corrección de texto sin aplicar: ${u}`);
   if (warnings.length) console.log("Avisos:\n  " + warnings.join("\n  "));
 }
 

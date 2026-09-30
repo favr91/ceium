@@ -12,7 +12,7 @@ import { COUNTRIES } from "./checkout-fields";
 import { HoldCountdown } from "./HoldCountdown";
 import { CheckIcon, ClockIcon, FieldErrorIcon, LockIcon } from "./icons";
 import { ManualAmount, ManualFields, methodAmountCents, methodAmountLabel, PayeeDetails } from "./ManualPayment";
-import { formatAmount, MANUAL_FIELD_ORDER, validateManualPayment, type ManualErrors, type ManualField, type ManualValues } from "./manual-payment-fields";
+import { formatAmount, MANUAL_FIELD_ORDER, methodInText, validateManualPayment, type ManualErrors, type ManualField, type ManualValues } from "./manual-payment-fields";
 import { PaypalButton, PaypalRedirectNotice } from "./paypal";
 import { usd } from "./OrderSummary";
 import type { HoldCohort } from "./CheckoutForm";
@@ -147,7 +147,7 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
       ? `paga ${usd(pending.dueNowCents)} USD con PayPal y tu inscripción se confirma al instante.`
       : selected.method === "EFECTIVO"
         ? `paga ${methodAmountLabel(selected, pending.dueNowCents)} en efectivo en la sede; el personal registra tu pago y confirma tu inscripción.`
-        : `paga ${methodAmountLabel(selected, pending.dueNowCents)} por ${selected.label} y registra tu comprobante aquí abajo. Confirmamos tu inscripción al verificarlo.`;
+        : `paga ${methodAmountLabel(selected, pending.dueNowCents)} por ${methodInText(selected.method, selected.label)} y registra tu comprobante aquí abajo. Confirmamos tu inscripción al verificarlo.`;
 
   return (
     <div className="co-form co-pending">
@@ -288,7 +288,7 @@ export function PendingPayment({ pending, methods, holds, serverNow, justCreated
               {sending ? (
                 <>
                   <span className="co-spinner" aria-hidden="true" />
-                  <span>{progress !== null && progress < 100 ? `Enviando comprobante… ${progress}%` : "Registrando tu pago…"}</span>
+                  <span>{progress !== null && progress < 100 ? `Enviando comprobante… ${progress} %` : "Registrando tu pago…"}</span>
                 </>
               ) : (
                 "Enviar comprobante"

@@ -49,7 +49,7 @@ export default async function EnrollmentsPage({ searchParams }: { searchParams: 
           title="Exportar matrículas"
           endpoint="/admin/enrollments/export"
           {...exportOptions({
-            noun: ["matrículas", "matrícula"],
+            noun: ["matrículas", "matrícula"], fem: true,
             filters: exportQuery({ view: state.view !== "ALL" && state.view, q: state.q, program: state.program, sort: state.sort !== "recent" && state.sort, dir: state.dir !== "desc" && state.dir }),
             filtered: state.view !== "ALL" || !!state.q || !!state.program,
             total: idx.total,
@@ -64,7 +64,7 @@ export default async function EnrollmentsPage({ searchParams }: { searchParams: 
         <div className="banner critical lx-banner" role="alert">
           <Icon name="alert" />
           <span>
-            <b>{m.failed === 1 ? "1 matrícula no se pudo crear en Moodle" : `${m.failed} matrículas no se pudieron crear en Moodle`}.</b> El médico pagó pero aún no tiene acceso al curso. Revisa el error y reintenta.{" "}
+            <b>{m.failed === 1 ? "1 matrícula no se pudo crear en Moodle" : `${m.failed} matrículas no se pudieron crear en Moodle`}.</b> {m.failed === 1 ? "El médico pagó, pero aún no tiene acceso al curso." : "Los médicos pagaron, pero aún no tienen acceso a sus cursos."} Revisa el error y reintenta.{" "}
             <Link href="/admin/enrollments?view=FAILED" style={{ textDecoration: "underline" }}>Ver matrículas con error</Link>
           </span>
         </div>
@@ -82,7 +82,7 @@ export default async function EnrollmentsPage({ searchParams }: { searchParams: 
         <Link className="om-cell" href="/admin/enrollments?view=COMPLETED">
           <span className="l">Completados</span>
           <span className="v" data-testid="metric-completed">
-            {m.completed} <small>{Math.round(m.rate * 100)}% · {m.completed30} en 30 días</small>
+            {m.completed} <small>{Math.round(m.rate * 100)} % · {m.completed30} en 30 días</small>
           </span>
         </Link>
         <Link className={`om-cell${m.failed ? " alert" : ""}`} href="/admin/enrollments?view=FAILED">

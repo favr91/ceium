@@ -22,7 +22,7 @@ describe("pricing.quote", () => {
     const half = await quote(ctx.db, { ...base, planKind: "HALF" }, ctx.clock.now());
     expect([half.totalCents, half.dueNowCents]).toEqual([134900, 67450]);
     expect(half.installments.map((i) => i.amountCents)).toEqual([67450, 67450]);
-    expect(half.planLabel).toBe("Paga la midad (5% de descuento)");
+    expect(half.planLabel).toBe("Paga la mitad (5 % de descuento)");
     const monthly = await quote(ctx.db, { ...base, planKind: "MONTHLY" }, ctx.clock.now());
     expect(monthly.dueNowCents).toBe(18000);
     // SPEC: una cuota por curso del diplomado (9), cada una al precio publicado de "Paga mes a mes".

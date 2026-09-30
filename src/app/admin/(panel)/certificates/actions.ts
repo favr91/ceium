@@ -56,7 +56,7 @@ export async function sweepCertificatesAction(): Promise<LearnResult> {
   try {
     const r = await runCertificateSweepNow(services().deps, user);
     refresh();
-    const base = `Se revisaron ${r.checked} ${r.checked === 1 ? "diplomado en curso" : "diplomados en curso"} en Moodle`;
+    const base = `Se ${r.checked === 1 ? "revisó" : "revisaron"} ${r.checked} ${r.checked === 1 ? "diplomado en curso" : "diplomados en curso"} en Moodle`;
     return { ok: true, message: r.issued ? `${base}: ${r.issued} ${r.issued === 1 ? "certificado emitido" : "certificados emitidos"} (${r.codes.join(", ")}).` : `${base}. Ninguno completo todavía.` };
   } catch (e) {
     return failLearn(e, "No pudimos revisar los diplomados en Moodle.");

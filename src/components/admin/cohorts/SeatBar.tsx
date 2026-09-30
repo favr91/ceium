@@ -4,7 +4,7 @@ import type { Seats } from "./types";
 
 export function SeatBar({ seats, size }: { seats: Pick<Seats, "capacity" | "confirmed" | "held" | "free">; size?: "lg" }) {
   const { capacity, confirmed, held, free } = seats;
-  const label = capacity === 0 ? "Sin cupo" : `${confirmed} confirmados, ${held} reservados, ${free} libres de ${capacity}`;
+  const label = capacity === 0 ? "Sin cupo" : `${confirmed} ${confirmed === 1 ? "confirmado" : "confirmados"}, ${held} ${held === 1 ? "reservado" : "reservados"}, ${free} ${free === 1 ? "libre" : "libres"} de ${capacity}`;
   if (capacity === 0) return <div className={`seat-bar zero${size ? ` ${size}` : ""}`} role="img" aria-label={label} />;
   const pct = (n: number) => `${(n / capacity) * 100}%`;
   return (

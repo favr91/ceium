@@ -62,7 +62,7 @@ async function main() {
   const pendingView: T.OrderView = { ...sample, amountPaidCents: 0, balanceCents: sample.totalCents, paymentMethodLabel: "Pago móvil", expiresAt: new Date(Date.now() + 72 * 3600_000) };
   const halfView: T.OrderView = {
     ...sample,
-    items: [{ title: diploma.title, modalityLabel: "Online", planLabel: "Paga la mitad (5% de descuento)", totalCents: 128155, dueNowCents: 64078, listCents: 134900, imageUrl: abs(diploma.images[0]?.url) }],
+    items: [{ title: diploma.title, modalityLabel: "Online", planLabel: "Paga la mitad (5 % de descuento)", totalCents: 128155, dueNowCents: 64078, listCents: 134900, imageUrl: abs(diploma.images[0]?.url) }],
     subtotalCents: 134900,
     discountCents: 6745,
     totalCents: 128155,

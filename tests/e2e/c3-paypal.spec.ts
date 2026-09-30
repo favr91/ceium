@@ -118,7 +118,7 @@ test.describe("c3 pago con PayPal", () => {
     const confirm = page.getByTestId("order-confirmation");
     await expect(confirm.getByRole("heading", { name: "¡Pago recibido!" })).toBeVisible();
     await expect(confirm).toContainText(email);
-    await expect(confirm.getByTestId("step-payment")).toContainText(`${usd(o.dueNowCents)} con PayPal`);
+    await expect(confirm.getByTestId("step-payment")).toContainText(`${usd(o.dueNowCents)} por PayPal`);
     await expect(confirm.getByTestId("step-access")).toContainText("Acceso al aula virtual");
     await expect(confirm).toContainText("Cupo confirmado");
     await expect(confirm.getByRole("link", { name: "Ir al aula virtual" })).toBeVisible();
@@ -136,7 +136,7 @@ test.describe("c3 pago con PayPal", () => {
     await expect(page.getByTestId("order-title")).toHaveText("¡Gracias, María!");
     expect(paymentsOf(o.id)).toHaveLength(1);
     await page.goto("/cart");
-    await expect(page.getByText("Tu carrito esta vacío")).toBeVisible();
+    await expect(page.getByText("Tu carrito está vacío")).toBeVisible();
   });
 
   test("cancelar en PayPal vuelve al checkout con el pedido y el cupo intactos, sin cobro", async ({ page }) => {

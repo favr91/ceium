@@ -52,7 +52,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
           options={[
             { key: "all", label: `Todos los ${EXPORT_NOUN[state.view as CertificateView][0]}`, query: exportQuery({ view: state.view }) },
             ...(state.q || state.diploma
-              ? [{ key: "filtered", label: `${shown} ${shown === 1 ? EXPORT_NOUN[state.view as CertificateView][1] : EXPORT_NOUN[state.view as CertificateView][0]} que coinciden con los filtros actuales`, query: exportQuery({ view: state.view, q: state.q, diploma: state.diploma }) }]
+              ? [{ key: "filtered", label: `${shown} ${shown === 1 ? EXPORT_NOUN[state.view as CertificateView][1] : EXPORT_NOUN[state.view as CertificateView][0]} que ${shown === 1 ? "coincide" : "coinciden"} con los filtros actuales`, query: exportQuery({ view: state.view, q: state.q, diploma: state.diploma }) }]
               : []),
           ]}
         />
@@ -63,7 +63,7 @@ export default async function CertificatesPage({ searchParams }: { searchParams:
         <div className="banner attention lx-banner" role="status">
           <Icon name="alert" />
           <span>
-            <b>{data.stats.undelivered === 1 ? "1 certificado emitido aún no llegó al médico" : `${data.stats.undelivered} certificados emitidos aún no llegaron al médico`}.</b> Se reintenta automáticamente; también puedes reenviarlo desde la lista.
+            <b>{data.stats.undelivered === 1 ? "1 certificado emitido aún no llegó al médico" : `${data.stats.undelivered} certificados emitidos aún no llegaron a los médicos`}.</b> Se reintenta automáticamente; también puedes {data.stats.undelivered === 1 ? "reenviarlo" : "reenviarlos"} desde la lista.
           </span>
         </div>
       ) : null}

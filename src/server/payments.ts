@@ -377,7 +377,7 @@ async function recordManual(d: Deps, input: ManualPaymentInput, actor: Actor) {
   if (input.method !== "EFECTIVO" && !reference) throw new DomainError("VALIDATION", "Ingresa el número de referencia del pago.", { field: "reference" });
   if (isCustomer) {
     // Datos del pagador con largo razonable (se guardan y se muestran en el panel).
-    const tooLong = ([["bank", input.bank, 80, "El banco"], ["payerName", input.payerName, 120, "El nombre del titular"], ["payerPhone", input.payerPhone, 30, "El teléfono"], ["payerCedula", input.payerCedula, 20, "La cédula o RIF"]] as const).find(
+    const tooLong = ([["bank", input.bank, 80, "El banco"], ["payerName", input.payerName, 120, "El nombre del titular"], ["payerPhone", input.payerPhone, 30, "El teléfono"], ["payerCedula", input.payerCedula, 20, "El número de cédula o RIF"]] as const).find(
       ([, v, max]) => (v ?? "").length > max,
     );
     if (tooLong) throw new DomainError("VALIDATION", `${tooLong[3]} es demasiado largo.`, { field: tooLong[0] });
@@ -699,7 +699,7 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
     // que no está en el comprobante (equivale a ajustar el saldo): solo quien puede ajustar saldos.
     const raise = input.decision === "approve" && input.amountUsdCents != null ? input.amountUsdCents - p.amountUsdCents : 0;
     if (raise > Math.max(100, Math.round(p.amountUsdCents * 0.02)) && !can(admin, "orders.adjustBalance")) {
-      throw new DomainError("FORBIDDEN", "Subir el equivalente en USD por encima de lo calculado con la tasa solo lo puede hacer el super administrador. Apruébalo con el monto calculado o pídele que lo corrija.");
+      throw new DomainError("FORBIDDEN", "Subir el equivalente en USD por encima de lo calculado con la tasa solo lo puede hacer el superadministrador. Apruébalo con el monto calculado o pídele que lo corrija.");
     }
     const claimed = await tx.payment.updateMany({
       where: { id: p.id, status: "AWAITING_VERIFICATION" },

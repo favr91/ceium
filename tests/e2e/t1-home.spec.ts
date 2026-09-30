@@ -43,7 +43,7 @@ test.describe("t1 home", () => {
     await open(page);
     const main = page.locator("#MainContent");
     for (const title of [
-      "🥇 Cursos y talleres que inician de Marzo a Junio de 2026",
+      "🥇 Cursos y talleres que inician de marzo a junio de 2026",
       "🎓 Cursos Universitarios Fundamentales",
       "✨ Cursos Avanzados",
       "🧑‍🏫 Talleres Especializados",
@@ -98,8 +98,8 @@ test.describe("t1 home", () => {
 
   test("llamada final", async ({ page }) => {
     await open(page);
-    const closing = page.getByRole("region", { name: /Capacitación en\s+Ultrasonido a tu alcance/ });
+    const closing = page.getByRole("region", { name: /Capacitación en\s+ultrasonido a tu alcance/ });
     await expect(closing.getByText("¡Inscripciones abiertas!")).toBeVisible();
-    await expect(closing.getByRole("link", { name: "Incríbete ya" })).toHaveAttribute("href", "/pages/cursos");
+    await expect(closing.getByRole("link", { name: "Inscríbete ya" })).toHaveAttribute("href", "/pages/cursos");
   });
 });

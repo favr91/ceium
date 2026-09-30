@@ -51,7 +51,7 @@ export default async function CohortsPage({ searchParams }: PageProps<"/admin/co
             title="Exportar cohortes"
             endpoint="/admin/cohorts/export"
             {...exportOptions({
-              noun: ["cohortes", "cohorte"],
+              noun: ["cohortes", "cohorte"], fem: true,
               filters: exportQuery({ view: view !== "ALL" && view, sede: sede?.slug, product: productId, period, q, sort: sort !== "start-asc" && sort }),
               filtered: view !== "ALL" || !!sede || !!productId || !!period || !!q,
               total: rows.length,

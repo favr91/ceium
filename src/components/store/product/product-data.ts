@@ -43,13 +43,13 @@ export const DEFAULT_PRODUCT_PAGE: ProductPageConfig = {
   },
   certificate: {
     university: {
-      title: "Obtén tu Certificado Universitario de CEIUM",
-      text: "Al completar satisfactoriamente cada curso o diplomado, recibirás un certificado oficial CEIUM, respaldado por la Universidad Centrooccidental Lisandro Alvarado.",
+      title: "Obtén tu certificado universitario de CEIUM",
+      text: "Al completar satisfactoriamente cada curso o diplomado, recibirás un certificado oficial CEIUM, respaldado por la Universidad Centroccidental Lisandro Alvarado.",
       image: `${CDN}/diploma.jpg?v=1733155998`,
       items: CTA_ITEMS,
     },
     workshop: {
-      title: "Obtén tu Certificado avalado por CEIUM",
+      title: "Obtén tu certificado avalado por CEIUM",
       text: "Al completar satisfactoriamente cada curso o diplomado, recibirás un certificado oficial CEIUM.",
       image: `${CDN}/diploma.jpg?v=1733155998`,
       items: CTA_ITEMS,
@@ -270,7 +270,7 @@ export async function getProductPage(slug: string, now: Date = new Date()): Prom
     p.type === "DIPLOMA"
       ? p.cohorts
           .filter((c) => !seen.has(cohortKey(c.name)) && seen.add(cohortKey(c.name)))
-          .map((c) => ({ label: `Ver Cronograma ${c.name}`, href: cohortScheduleHref(p.slug, c.name) }))
+          .map((c) => ({ label: `Ver cronograma ${c.name}`, href: cohortScheduleHref(p.slug, c.name) }))
       : [];
 
   // Franja de datos: Requisitos · Certificado · Avalado (o Dirigido a) · Duración.
@@ -311,7 +311,7 @@ export async function getProductPage(slug: string, now: Date = new Date()): Prom
       highlights: strings(dc.highlights),
     })),
     topics: parseTopics(p.topics),
-    topicsTitle: p.category === "WORKSHOP" ? "Contenidos Académicos" : "Contenido del curso",
+    topicsTitle: p.category === "WORKSHOP" ? "Contenidos académicos" : "Contenido del curso",
     syllabusUrl: p.syllabusUrl?.trim() || null,
     faculty: strings(p.faculty),
     related: await getRelated(p, diploma?.id ?? null),

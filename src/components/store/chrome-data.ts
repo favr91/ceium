@@ -35,14 +35,14 @@ export const DEFAULT_NAVIGATION: NavConfigNode[] = [
     type: "dropdown",
     title: "Educación 2026",
     items: [
-      { type: "collection", slug: "cursos-y-talleres-de-marzo-a-junio-2026", title: "🥇 Cursos y talleres que inician de Marzo a Junio" },
+      { type: "collection", slug: "cursos-y-talleres-de-marzo-a-junio-2026", title: "🥇 Cursos y talleres que inician de marzo a junio" },
       { type: "collection-products", slug: "diplomados" },
       { type: "collection", slug: "cursos-universitarios" },
       { type: "collection", slug: "cursos-avanzados" },
     ],
   },
-  { type: "link", title: "Quiénes Somos", url: "/pages/quienes-somos" },
-  { type: "link", title: "Preguntas Frecuentes", url: "/pages/preguntas-frecuentes" },
+  { type: "link", title: "Quiénes somos", url: "/pages/quienes-somos" },
+  { type: "link", title: "Preguntas frecuentes", url: "/pages/preguntas-frecuentes" },
   { type: "link", title: "Contacto", url: "/pages/contacto" },
   { type: "campus", title: "🎓 Campus" },
 ];

@@ -40,7 +40,7 @@ export interface SettingsData {
 const DETAIL_LABELS: Record<string, string> = {
   banco: "Banco",
   telefono: "Teléfono",
-  cedulaRif: "Cédula / RIF",
+  cedulaRif: "Cédula/RIF",
   titular: "Titular",
   cuenta: "Número de cuenta",
   tipo: "Tipo de cuenta",
@@ -267,7 +267,7 @@ export function SettingsView({ data, canEdit, roleLabel }: { data: SettingsData;
       {ro ? (
         <div className="banner info" role="status">
           <Icon name="info" />
-          <span>Como {roleLabel.toLowerCase()} puedes ver la configuración (métodos de pago, PayPal, tasa, reservas y seguridad); solo el super administrador puede cambiarla.</span>
+          <span>Como {roleLabel.toLowerCase()} puedes ver la configuración (métodos de pago, PayPal, tasa, reservas y seguridad); solo el superadministrador puede cambiarla.</span>
         </div>
       ) : null}
       {data.warnings.length ? (
@@ -543,7 +543,7 @@ export function SettingsView({ data, canEdit, roleLabel }: { data: SettingsData;
           <p className="small muted" data-testid="team-2fa" style={{ marginTop: 8 }}>
             {data.security.without.length === 0
               ? `Todo el equipo (${data.security.team}) la tiene activada.`
-              : `${data.security.team - data.security.without.length} de ${data.security.team} usuarios la tienen activada. Falta: ${data.security.without.join(", ")}.`}
+              : `${data.security.team - data.security.without.length} de ${data.security.team} usuarios la tienen activada. ${data.security.without.length === 1 ? "Falta" : "Faltan"}: ${data.security.without.join(", ")}.`}
           </p>
         </div>
       </section>

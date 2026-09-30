@@ -21,7 +21,7 @@ import { usd } from "@/components/checkout/OrderSummary";
 import { PaypalButton } from "@/components/checkout/paypal";
 import { BankIcon, CalendarIcon, CheckIcon, ChevronDownIcon, ClockIcon, FieldErrorIcon, LockIcon, MailIcon, MapPinIcon, PayPalWordmark } from "@/components/checkout/icons";
 import { CopyButton } from "@/components/checkout/ManualPayment";
-import { PROOF_ACCEPT } from "@/components/checkout/manual-payment-fields";
+import { methodInText, PROOF_ACCEPT } from "@/components/checkout/manual-payment-fields";
 import { cohortSessions, directionsUrl, sessionDay } from "./cohort";
 import { DETAIL_LABELS } from "../../checkout/data";
 import { payOrderWithPaypal, reportManualPayment } from "./actions";
@@ -412,7 +412,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
             {pago === "error" ? <Banner tone="error">{motivo || "No pudimos procesar el pago. Intenta de nuevo."}</Banner> : null}
             {pago === "registrado" ? (
               <Banner tone="ok">
-                Recibimos tu pago{proof ? ` por ${methodLabel(proof.method)}` : ""} y su comprobante. Te enviamos la confirmación a {c.email}.
+                Recibimos tu pago{proof ? ` por ${methodInText(proof.method, methodLabel(proof.method))}` : ""} y su comprobante. Te enviamos la confirmación a {c.email}.
               </Banner>
             ) : null}
 
@@ -428,7 +428,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                   <Step state="done" title={lastIns ? `Cuota ${lastIns.sequence} pagada` : "Pago confirmado"} testId="step-payment">
                     {lastPaid ? (
                       <>
-                        {usd(lastPaid.amountUsdCents)} con {methodLabel(lastPaid.method)}
+                        {usd(lastPaid.amountUsdCents)} {lastPaid.method === "EFECTIVO" ? "en efectivo" : `por ${methodInText(lastPaid.method, methodLabel(lastPaid.method))}`}
                         {lastPaid.paidAt ? ` · ${formatDate(lastPaid.paidAt)}` : ""}
                         {lastIns?.course ? ` · ${lastIns.course.title}` : ""}
                       </>
@@ -532,7 +532,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                     El equipo de CEIUM revisa tu comprobante. Esta página se actualiza sola.
                   </Step>
                   <Step state="todo" title="Acceso al aula virtual">
-                    Al aprobar el pago te enviaremos tu usuario de Moodle y los datos para entrar a {c.email}.
+                    Al aprobar el pago, te enviaremos a {c.email} tu usuario de Moodle y los datos para entrar.
                   </Step>
                 </ol>
                 <LiveRefresh everyMs={20_000} forMs={30 * 60_000} />
@@ -551,8 +551,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/pe
                   {target ? `Cuota ${target.sequence}: pago en verificación` : "Pago en verificación"}
                 </h2>
                 <p className="co-card-text">
-                  Recibimos tu {methodLabel(proof.method)}
-                  {proof.reference ? <> ref. <strong>{proof.reference}</strong></> : null}. Lo confirmamos con el banco y te avisaremos por correo a <strong>{c.email}</strong>. No hace falta que pagues de nuevo.
+                  Recibimos tu pago por {methodInText(proof.method, methodLabel(proof.method))}
+                  {proof.reference ? <>, ref. <strong>{proof.reference}</strong></> : null}. Lo confirmamos con el banco y te avisaremos por correo a <strong>{c.email}</strong>. No hace falta que pagues de nuevo.
                 </p>
                 <LiveRefresh everyMs={20_000} forMs={30 * 60_000} />
               </section>

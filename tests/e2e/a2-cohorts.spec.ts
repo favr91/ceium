@@ -78,7 +78,7 @@ test.describe("panel · cohortes y cupos", () => {
 
     // Bajar el cupo por debajo de lo ocupado: el formulario lo impide.
     await page.getByLabel("Cupo máximo", { exact: true }).fill("0");
-    await expect(page.getByRole("alert").filter({ hasText: "No puede ser menor que los 1 cupos ocupados" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "No puede ser menor que el cupo ocupado" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Quitar un cupo" })).toBeDisabled();
     // Subirlo: vista previa en vivo y guardado.
     await page.getByLabel("Cupo máximo", { exact: true }).fill("5");

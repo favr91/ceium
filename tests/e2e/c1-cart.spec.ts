@@ -37,16 +37,16 @@ test.describe("c1 carrito", () => {
     await expect(course).toContainText("$150.00");
     await expect(course.getByTestId("cart-line-discount")).toHaveCount(0);
 
-    await expect(diploma.getByRole("link", { name: "Diplomado Universitario Avanzado de Medicina Materno Fetal" })).toHaveAttribute("href", `/products/${DIPLOMA}`);
+    await expect(diploma.getByRole("link", { name: "Diplomado Universitario Avanzado de Medicina Materno-Fetal" })).toHaveAttribute("href", `/products/${DIPLOMA}`);
     await expect(option(diploma, "Modalidad")).toHaveText("Semipresencial");
     await expect(option(diploma, "Sede")).toHaveText("Barquisimeto");
     await expect(option(diploma, "Cohorte")).toHaveText(/\S/);
     await expect(option(diploma, "Inicio")).toHaveText(/\d{4}$/);
     await expect(option(diploma, "Forma de pago")).toHaveText("Paga todo");
     await expect(diploma).toContainText("$1,278.00");
-    // El 10% del plan se muestra con su monto: precio de lista tachado + «Ahorras».
+    // El 10 % del plan se muestra con su monto: precio de lista tachado + «Ahorras».
     await expect(diploma.getByTestId("cart-unit-price").locator("s")).toHaveText("$1,420.00");
-    await expect(diploma.getByTestId("cart-line-discount")).toHaveText("Ahorras $142.00 (−10%)");
+    await expect(diploma.getByTestId("cart-line-discount")).toHaveText("Ahorras $142.00 (−10 %)");
     await expect(diploma.locator("img")).toHaveAttribute("src", /cdn\.shopify\.com/);
 
     await expect(page.getByTestId("cart-summary")).toContainText("Subtotal$1,570.00");
@@ -79,7 +79,7 @@ test.describe("c1 carrito", () => {
     await expect(page.getByTestId("cart-line")).toHaveCount(1);
     await page.getByRole("button", { name: /^Eliminar Diplomado/ }).click();
     await expect(page.getByTestId("cart-empty")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Tu carrito esta vacío" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tu carrito está vacío" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Seguir comprando" })).toBeVisible();
   });
 
@@ -88,7 +88,7 @@ test.describe("c1 carrito", () => {
     await add(page, `product=${DIPLOMA}&modality=SEMIPRESENCIAL&sede=barquisimeto&plan=MONTHLY`);
     const lines = page.getByTestId("cart-line");
     await expect(lines).toHaveCount(2);
-    const diploma = lines.filter({ hasText: "Medicina Materno Fetal" });
+    const diploma = lines.filter({ hasText: "Medicina Materno-Fetal" });
     await expect(option(diploma, "Forma de pago")).toHaveText("Paga mes a mes");
     await expect(diploma).toContainText(/cuotas mensuales de \$180\.00/);
     await expect(page.getByTestId("cart-total")).toHaveText("$330.00 USD");
@@ -118,7 +118,7 @@ test.describe("c1 carrito", () => {
   test("móvil: el título usa todo el ancho y el WhatsApp no tapa el ahorro", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await fillCart(page);
-    const diploma = page.getByTestId("cart-line").filter({ hasText: "Medicina Materno Fetal" });
+    const diploma = page.getByTestId("cart-line").filter({ hasText: "Medicina Materno-Fetal" });
     const name = diploma.locator(".ck-name");
     const lines = await name.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
     expect(lines).toBeLessThanOrEqual(3);

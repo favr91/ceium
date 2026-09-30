@@ -62,6 +62,8 @@ export interface PaymentView {
 
 export interface ManualInstructionsView {
   label: string;
+  /** Nombre del método dentro de una frase («pago móvil», «transferencia bancaria»). */
+  inText?: string;
   details: Record<string, string>;
   instructions: string;
   amountLabel: string;
@@ -78,7 +80,7 @@ export const METHOD_LABELS: Record<string, string> = {
 const DETAIL_LABELS: Record<string, string> = {
   banco: "Banco",
   telefono: "Teléfono",
-  cedulaRif: "Cédula / RIF",
+  cedulaRif: "Cédula/RIF",
   titular: "Titular",
   cuenta: "Cuenta",
   tipo: "Tipo de cuenta",
@@ -100,6 +102,8 @@ export function formatDate(d: Date | string | null | undefined): string {
   if (!d) return "";
   return new Date(d).toLocaleDateString("es-VE", { day: "numeric", month: "long", year: "numeric", timeZone: TZ });
 }
+/** Cierra la oración con punto, salvo que ya termine en uno (una fecha termina en «p. m.»). */
+const period = (s: string) => (s.endsWith(".") ? s : `${s}.`);
 export function formatDateTime(d: Date | string | null | undefined): string {
   if (!d) return "";
   return new Date(d).toLocaleString("es-VE", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ });
@@ -359,7 +363,7 @@ function itemsText(v: OrderView): string {
 /** Correo con corte permitido antes de «@» (evita partirlo a mitad de palabra en columnas estrechas). */
 const escEmail = (e: string) => esc(e).replace("@", "<wbr>@");
 const stripTags = (s: string) => s.replace(/<[^>]+>/g, "");
-const storeLink = (v: OrderView) => ({ href: v.storeUrl || base() || "https://ceium.net", label: "Visita la tienda" });
+const storeLink = (v: OrderView) => ({ href: v.storeUrl || base() || "https://ceium.net", label: "visita la tienda" });
 const orderTag = (n: number) => `Pedido #${n}`;
 const hasCohort = (v: OrderView) => v.items.some((i) => i.cohortName);
 
@@ -368,8 +372,8 @@ const hasCohort = (v: OrderView) => v.items.some((i) => i.cohortName);
 export function orderConfirmation(v: OrderView, opts: { paid: boolean; manual?: ManualInstructionsView }): RenderedEmail {
   const subject = opts.paid ? `Compra confirmada — Pedido #${v.number}` : `Recibimos tu pedido #${v.number}`;
   const intro = opts.paid
-    ? `Hola ${esc(v.customerFirstName)}, ¡gracias por tu compra! Recibimos tu pago y estamos activando tu acceso a la plataforma.`
-    : `Hola ${esc(v.customerFirstName)}, recibimos tu pedido. Para completar la inscripción realiza el pago y registra tu comprobante.`;
+    ? `Hola, ${esc(v.customerFirstName)}, ¡gracias por tu compra! Recibimos tu pago y estamos activando tu acceso a la plataforma.`
+    : `Hola, ${esc(v.customerFirstName)}, recibimos tu pedido. Para completar la inscripción, realiza el pago y registra tu comprobante.`;
   let body = p(intro);
   let manualText = "";
   if (opts.paid) {
@@ -392,14 +396,14 @@ export function orderConfirmation(v: OrderView, opts: { paid: boolean; manual?: 
       const m = opts.manual;
       const rows: [string, string][] = [["Monto a pagar", m.amountLabel], ...Object.entries(m.details).map(([k, val]) => [DETAIL_LABELS[k] ?? k, val] as [string, string])];
       const [amountMain, amountSub] = splitAmount(m.amountLabel);
-      body += `<div style="height:12px;"></div>` + bigAmount(`Monto a pagar por ${m.label}`, amountMain, amountSub ? esc(amountSub) : undefined);
-      body += `<h2 style="margin:0 0 12px;font-size:17px;line-height:24px;font-weight:700;color:${INK};">Datos para pagar con ${esc(m.label)}</h2>`;
-      body += kv(rows.slice(1), { boxed: true, mono: ["Cuenta", "Teléfono", "Cédula / RIF"] });
+      body += `<div style="height:12px;"></div>` + bigAmount(`Monto a pagar por ${m.inText ?? m.label}`, amountMain, amountSub ? esc(amountSub) : undefined);
+      body += `<h2 style="margin:0 0 12px;font-size:17px;line-height:24px;font-weight:700;color:${INK};">Datos para pagar por ${esc(m.inText ?? m.label)}</h2>`;
+      body += kv(rows.slice(1), { boxed: true, mono: ["Cuenta", "Teléfono", "Cédula/RIF"] });
       body += p(esc(m.instructions));
-      if (v.expiresAt) body += notice(`Tu cupo queda reservado hasta el ${strong(esc(formatDateTime(v.expiresAt)))}. Si no registramos tu pago antes, se liberará para otro médico.`);
-      manualText = `\n\nDatos para pagar con ${m.label}:\n${rows.map(([k, val]) => `${k}: ${val}`).join("\n")}\n${m.instructions}` + (v.expiresAt ? `\nCupo reservado hasta: ${formatDateTime(v.expiresAt)}` : "");
+      if (v.expiresAt) body += notice(`Tu cupo queda reservado hasta el ${strong(esc(period(formatDateTime(v.expiresAt))))} Si no registramos tu pago antes, se liberará para otro médico.`);
+      manualText = `\n\nDatos para pagar por ${m.inText ?? m.label}:\n${rows.map(([k, val]) => `${k}: ${val}`).join("\n")}\n${m.instructions}` + (v.expiresAt ? `\nTu cupo queda reservado hasta el ${period(formatDateTime(v.expiresAt))} Si no registramos tu pago antes, se liberará para otro médico.` : "");
     } else if (v.expiresAt) {
-      body += notice(`Tu cupo queda reservado hasta el ${strong(esc(formatDateTime(v.expiresAt)))}.`);
+      body += notice(`Tu cupo queda reservado hasta el ${strong(esc(period(formatDateTime(v.expiresAt))))}`);
     }
     body += button(v.statusUrl, "Registrar mi pago", { secondary: storeLink(v) });
   }
@@ -417,7 +421,7 @@ function splitAmount(label: string): [string, string | null] {
 
 export function paymentUnderVerification(v: OrderView, pay: PaymentView): RenderedEmail {
   const subject = `Estamos verificando tu pago — Pedido #${v.number}`;
-  const intro = `Hola ${esc(v.customerFirstName)}, recibimos el comprobante de tu pago. Nuestro equipo lo verificará y te avisaremos por este medio (normalmente en menos de 24 horas hábiles).`;
+  const intro = `Hola, ${esc(v.customerFirstName)}, recibimos el comprobante de tu pago. Nuestro equipo lo verificará y te avisaremos por este medio (normalmente en menos de 24 horas hábiles).`;
   const rows: [string, string][] = [["Método", pay.methodLabel], ["Monto", pay.amountLabel]];
   if (pay.reference) rows.push(["Referencia", pay.reference]);
   if (pay.date) rows.push(["Fecha del pago", formatDate(pay.date)]);
@@ -436,13 +440,13 @@ export function paymentUnderVerification(v: OrderView, pay: PaymentView): Render
     section("Resumen del pedido", itemsBlock(v)) +
     customerBlock(v, `${pay.methodLabel} · en verificación`);
   const html = layout({ title: "Estamos verificando tu pago", preheader: "Recibimos tu comprobante", tag: orderTag(v.number), body });
-  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${itemsText(v)}\n\nEstado: ${v.statusUrl}`;
+  const text = `${stripTags(intro)}\n\n${hasCohort(v) ? "Tu cupo sigue apartado mientras verificamos el pago. " : ""}No hace falta que pagues de nuevo.\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${itemsText(v)}\n\nEstado: ${v.statusUrl}`;
   return { subject, html, text };
 }
 
 export function paymentApproved(v: OrderView, pay: PaymentView): RenderedEmail {
   const subject = `Pago aprobado — Pedido #${v.number}`;
-  const intro = `Hola ${esc(v.customerFirstName)}, verificamos y aprobamos tu pago de ${esc(pay.amountLabel)}.`;
+  const intro = `Hola, ${esc(v.customerFirstName)}, verificamos y aprobamos tu pago de ${esc(pay.amountLabel)}.`;
   const rows: [string, string][] = [["Método", pay.methodLabel], ["Monto", pay.amountLabel]];
   if (pay.reference) rows.push(["Referencia", pay.reference]);
   const fully = v.balanceCents <= 0;
@@ -469,7 +473,7 @@ export function paymentApproved(v: OrderView, pay: PaymentView): RenderedEmail {
     installmentsBlock(v) +
     customerBlock(v, pay.methodLabel);
   const html = layout({ title: "Tu pago fue aprobado", preheader: "Tu pago fue aprobado", tag: orderTag(v.number), body });
-  const text = `${stripTags(intro)}${missing > 0 ? `\n\nAún faltan ${formatUSD(missing)} para completar el primer pago de tu pedido. Tu cupo sigue reservado; paga la diferencia desde la página de tu pedido.` : ""}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${itemsText(v)}\n\nPedido: ${v.statusUrl}`;
+  const text = `${stripTags(intro)}${missing > 0 ? `\n\nAún faltan ${formatUSD(missing)} para completar el primer pago de tu pedido. Tu cupo sigue reservado; paga la diferencia desde la página de tu pedido y te enviaremos el acceso al aula virtual en cuanto se confirme.` : `\n\nSi es tu primer pago de este pedido, en unos minutos recibirás tu acceso al aula virtual.${fully ? "" : ` Saldo pendiente: ${formatUSD(v.balanceCents)}.`}`}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n${itemsText(v)}\n\nPedido: ${v.statusUrl}`;
   return { subject, html, text };
 }
 
@@ -487,7 +491,7 @@ export type RejectedNextStep = "retry" | "released" | "closed" | "paid" | "other
 export function paymentRejected(v: OrderView, pay: PaymentView, reason: string | null | undefined, outcome: boolean | RejectedNextStep): RenderedEmail {
   const next: RejectedNextStep = outcome === true ? "released" : outcome === false ? "retry" : outcome;
   const subject = `No pudimos verificar tu pago — Pedido #${v.number}`;
-  const intro = `Hola ${esc(v.customerFirstName)}, revisamos el pago que registraste y no pudimos confirmarlo.`;
+  const intro = `Hola, ${esc(v.customerFirstName)}, revisamos el pago que registraste y no pudimos confirmarlo.`;
   const why = reason ? notice(`<strong style="font-weight:700;">Motivo:</strong> ${esc(reason)}`, "warn") : "";
   const debited = "Si este monto también se debitó de tu cuenta, responde a este correo con tu comprobante y te lo devolvemos.";
   const nextText = {
@@ -525,8 +529,8 @@ export interface PlatformAccessView {
 export function platformAccess(a: PlatformAccessView): RenderedEmail {
   const subject = a.tempPassword ? "Tus datos de acceso a la plataforma CEIUM" : "Ya tienes acceso a tus cursos en la plataforma CEIUM";
   const intro = a.activationPending
-    ? `Hola ${esc(a.firstName)}, creamos tu cuenta en la plataforma de CEIUM. Tus cursos se activarán en breve.`
-    : `Hola ${esc(a.firstName)}, ya estás inscrito. Ingresa a la plataforma para comenzar.`;
+    ? `Hola, ${esc(a.firstName)}, creamos tu cuenta en la plataforma de CEIUM. Tus cursos se activarán en breve.`
+    : `Hola, ${esc(a.firstName)}, ya estás inscrito. Ingresa a la plataforma para comenzar.`;
   const pwNote = a.tempPassword
     ? "Por seguridad, la plataforma te pedirá cambiar la contraseña temporal en tu primer ingreso."
     : "Usa la contraseña que ya tienes en la plataforma. Si no la recuerdas, usa la opción «¿Olvidó su nombre de usuario o contraseña?».";
@@ -573,7 +577,7 @@ export interface CohortView {
 
 export function cohortDetails(c: CohortView): RenderedEmail {
   const subject = `Tu cohorte en ${c.sedeName}: ${c.productTitle}`;
-  const intro = `Hola ${esc(c.firstName)}, estos son los datos de tu cohorte semipresencial.`;
+  const intro = `Hola, ${esc(c.firstName)}, estos son los datos de tu cohorte semipresencial.`;
   const rows: [string, string][] = [
     ["Programa", c.productTitle],
     ["Cohorte", c.cohortName],
@@ -608,7 +612,7 @@ ${maps ? `<div style="margin-top:8px;"><a href="${esc(maps)}" style="font-size:1
   const notes = c.notes ? notice(esc(c.notes)) : "";
   const body = p(intro) + `<div style="font-size:17px;line-height:24px;font-weight:700;color:${INK};margin:0 0 4px;">${esc(c.productTitle)}</div>` + dateCard + notes + sess;
   const html = layout({ title: `Tu cohorte en ${c.sedeName}`, preheader: `Cohorte ${c.cohortName} — ${c.sedeName}`, tag: orderTag(c.orderNumber), body });
-  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}${c.sessions.length ? `\n\nSesiones:\n${c.sessions.map((s) => `- ${formatDate(s.date + "T12:00:00-04:00")}${s.title ? ` — ${s.title}` : ""}`).join("\n")}` : ""}${c.notes ? `\n\n${c.notes}` : ""}`;
+  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}${c.sessions.length ? `\n\nSesiones:\n${c.sessions.map((s) => `- ${formatDate(s.date + "T12:00:00-04:00")}${s.startTime ? ` · ${s.startTime}${s.endTime ? `–${s.endTime}` : ""}` : ""}${s.title ? ` — ${s.title}` : ""}`).join("\n")}` : ""}${c.notes ? `\n\n${c.notes}` : ""}`;
   return { subject, html, text };
 }
 
@@ -623,7 +627,7 @@ export interface CertificateView {
 
 export function certificateIssued(c: CertificateView): RenderedEmail {
   const subject = `¡Felicitaciones! Tu certificado del ${c.diplomaTitle}`;
-  const intro = `Hola ${esc(c.firstName)}, completaste todos los cursos del <strong>${esc(c.diplomaTitle)}</strong>. Adjuntamos tu certificado en PDF.`;
+  const intro = `Hola, ${esc(c.firstName)}, completaste todos los cursos del <strong>${esc(c.diplomaTitle)}</strong>. Adjuntamos tu certificado en PDF.`;
   const rows: [string, string][] = [
     ["Titular", c.fullName],
     ["Código de verificación", c.code],
@@ -650,13 +654,13 @@ export function certificateIssued(c: CertificateView): RenderedEmail {
 
 export function refundIssued(v: OrderView, r: { amountCents: number; methodLabel: string; reason?: string | null; full: boolean }): RenderedEmail {
   const subject = `Reembolso procesado — Pedido #${v.number}`;
-  const intro = `Hola ${esc(v.customerFirstName)}, procesamos un reembolso ${r.full ? "total" : "parcial"} de <strong>${formatUSD(r.amountCents)}</strong> de tu pedido #${v.number}.`;
+  const intro = `Hola, ${esc(v.customerFirstName)}, procesamos un reembolso ${r.full ? "total" : "parcial"} de <strong>${formatUSD(r.amountCents)}</strong> de tu pedido #${v.number}.`;
   const rows: [string, string][] = [["Monto", formatUSD(r.amountCents)], ["Método", r.methodLabel]];
   if (r.reason) rows.push(["Motivo", r.reason]);
   const howText = r.methodLabel === "PayPal" ? "El dinero se acreditará en tu cuenta PayPal; puede tardar algunos días hábiles en reflejarse." : "El reembolso se realizó por el mismo medio de pago o el acordado con nuestro equipo.";
   const body =
     p(intro) +
-    bigAmount(r.full ? "Reembolso total" : "Reembolso parcial", `${formatUSD(r.amountCents)} USD`, `a tu ${esc(r.methodLabel)}`) +
+    bigAmount(r.full ? "Reembolso total" : "Reembolso parcial", `${formatUSD(r.amountCents)} USD`, `Por ${esc(r.methodLabel)}`) +
     kv(rows.slice(1), { boxed: true }) +
     p(howText) +
     button(v.statusUrl, "Ver mi pedido", { secondary: storeLink(v) }) +
@@ -695,7 +699,7 @@ export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
       ? `Paga tu próximo curso: ${r.courseTitle}`
       : `Recordatorio de pago — Pedido #${r.orderNumber}`;
   const when = r.dueDate ? (r.overdue ? `venció el <strong>${esc(formatDate(r.dueDate))}</strong>` : `vence el <strong>${esc(formatDate(r.dueDate))}</strong>`) : "está pendiente";
-  const intro = `Hola ${esc(r.firstName)}, la cuota ${r.sequence} de ${r.totalInstallments}${r.programTitle ? ` del <strong>${esc(r.programTitle)}</strong>` : ""} ${when}.`;
+  const intro = `Hola, ${esc(r.firstName)}, la cuota ${r.sequence} de ${r.totalInstallments}${r.programTitle ? ` del <strong>${esc(r.programTitle)}</strong>` : ""} ${when}.`;
   const rows: [string, string][] = [
     ["Pedido", `#${r.orderNumber}`],
     ["Cuota", `${r.sequence} de ${r.totalInstallments}`],
@@ -719,7 +723,7 @@ export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
   }
   if (!r.paypalUrl && !r.manualUrl) {
     buttons += p(`En este momento no hay métodos de pago en línea disponibles. Responde a este correo o revisa <a href="${esc(r.statusUrl)}" style="color:${TEAL_INK};font-weight:600;">tu pedido</a> y te indicaremos cómo pagar.`);
-    textPay.push("En este momento no hay métodos de pago en línea disponibles. Responde a este correo y te indicaremos cómo pagar.");
+    textPay.push(`En este momento no hay métodos de pago en línea disponibles. Responde a este correo o revisa tu pedido (${r.statusUrl}) y te indicaremos cómo pagar.`);
   }
   // Progreso del diplomado: una marca por cuota (pagadas = anteriores a esta).
   const dots = Array.from({ length: r.totalInstallments }, (_, i) => {
@@ -730,7 +734,7 @@ export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
   const track = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;table-layout:fixed;"><tr>${dots}</tr></table><p style="margin:0 0 20px;font-size:13px;line-height:18px;color:${MUTED};">${r.sequence - 1} de ${r.totalInstallments} cuotas pagadas</p>`;
   const body =
     p(intro) +
-    (r.courseTitle ? p(`Al confirmarse el pago te matricularemos en <strong style="color:${INK};">${esc(r.courseTitle)}</strong> en la plataforma y te avisaremos por correo.`) : "") +
+    (r.courseTitle ? p(`Al confirmarse el pago, te matricularemos en <strong style="color:${INK};">${esc(r.courseTitle)}</strong> en la plataforma y te avisaremos por correo.`) : "") +
     (r.totalInstallments > 1 ? track : "") +
     bigAmount(r.courseTitle ? `Cuota ${r.sequence} · ${r.courseTitle}` : `Cuota ${r.sequence} de ${r.totalInstallments}`, `${formatUSD(r.amountCents)} USD`, r.dueDate ? `${r.overdue ? "Venció" : "Vence"} el ${esc(formatDate(r.dueDate))}` : undefined) +
     buttons +
@@ -741,7 +745,7 @@ export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
     tag: orderTag(r.orderNumber),
     body,
   });
-  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n${r.courseTitle ? `\nAl confirmarse el pago te matricularemos en ${r.courseTitle}.\n` : ""}\n${textPay.join("\n")}\n\nPedido: ${r.statusUrl}`;
+  const text = `${stripTags(intro)}\n\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n${r.courseTitle ? `\nAl confirmarse el pago, te matricularemos en ${r.courseTitle} en la plataforma y te avisaremos por correo.\n` : ""}\n${textPay.join("\n")}\n\nPedido: ${r.statusUrl}`;
   return { subject, html, text };
 }
 
@@ -784,7 +788,7 @@ export function adminSecurityNotice(v: AdminSecurityView): RenderedEmail {
     ...(v.device ? [["Navegador", v.device] as [string, string]] : []),
   ];
   const left = v.event === "recovery_used" && v.recoveryLeft != null ? `Te ${v.recoveryLeft === 1 ? "queda 1 código" : `quedan ${v.recoveryLeft} códigos`} de recuperación.` : "";
-  const intro = `Hola ${esc(v.name)}, ${esc(what)}.`;
+  const intro = `Hola, ${esc(v.name)}, ${esc(what)}.`;
   const body =
     p(intro) +
     (left ? p(esc(left)) : "") +
@@ -792,7 +796,7 @@ export function adminSecurityNotice(v: AdminSecurityView): RenderedEmail {
     notice(`${strong("¿No fuiste tú?")} Cambia tu contraseña de inmediato desde Mi cuenta y avisa al administrador del panel.`, "warn") +
     button(v.accountUrl, "Ir a Mi cuenta");
   const html = layout({ title: c.subject, preheader: `${c.subject}.`, tag: "Seguridad", body });
-  const text = `${stripTags(intro)}\n${left ? `${left}\n` : ""}\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n¿No fuiste tú? Cambia tu contraseña desde Mi cuenta (${v.accountUrl}) y avisa al administrador.`;
+  const text = `${stripTags(intro)}\n${left ? `${left}\n` : ""}\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n¿No fuiste tú? Cambia tu contraseña de inmediato desde Mi cuenta (${v.accountUrl}) y avisa al administrador del panel.`;
   return { subject: c.subject, html, text };
 }
 
@@ -812,8 +816,8 @@ export function adminAccessLink(v: AdminAccessView): RenderedEmail {
   const invite = v.kind === "invite";
   const subject = invite ? "Te invitaron al panel de CEIUM" : "Restablece tu contraseña del panel de CEIUM";
   const intro = invite
-    ? `Hola ${esc(v.name)}, ${esc(v.by)} te dio acceso al panel de CEIUM como ${strong(esc(v.role))}. Para entrar, crea tu contraseña con este enlace.`
-    : `Hola ${esc(v.name)}, ${esc(v.by)} te envió un enlace para crear una contraseña nueva para el panel de CEIUM. Tu contraseña actual sigue funcionando hasta que la cambies.`;
+    ? `Hola, ${esc(v.name)}: ${esc(v.by)} te dio acceso al panel de CEIUM como ${strong(esc(v.role))}. Para entrar, crea tu contraseña con este enlace.`
+    : `Hola, ${esc(v.name)}: ${esc(v.by)} te envió un enlace para crear una contraseña nueva para el panel de CEIUM. Tu contraseña actual sigue funcionando hasta que la cambies.`;
   const when = `El enlace vence el ${formatDateTime(v.expiresAt)} y sirve una sola vez.`;
   const body =
     p(intro) +
@@ -821,6 +825,6 @@ export function adminAccessLink(v: AdminAccessView): RenderedEmail {
     p(esc(when)) +
     notice(`${strong("¿No esperabas este correo?")} Ignóralo: sin el enlace nadie puede ${invite ? "activar la cuenta" : "cambiar tu contraseña"}. No lo reenvíes a nadie.`, "info");
   const html = layout({ title: subject, preheader: when, tag: "Panel", body });
-  const text = `${stripTags(intro)}\n\n${invite ? "Crear mi contraseña" : "Crear contraseña nueva"}: ${v.link}\n\n${when}\n\n¿No esperabas este correo? Ignóralo. No reenvíes el enlace a nadie.`;
+  const text = `${stripTags(intro)}\n\n${invite ? "Crear mi contraseña" : "Crear contraseña nueva"}: ${v.link}\n\n${when}\n\n¿No esperabas este correo? Ignóralo: sin el enlace nadie puede ${invite ? "activar la cuenta" : "cambiar tu contraseña"}. No lo reenvíes a nadie.`;
   return { subject, html, text };
 }

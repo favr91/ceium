@@ -8,7 +8,7 @@ export function RefreshAllButton({ ids, label = "Consultar progreso", primary }:
   const { run, busy, toastNode } = useRun();
   return (
     <>
-      <button type="button" className={`btn ${primary ? "btn-primary" : "btn-gray"}`} disabled={!ids.length || !!busy} onClick={() => run("all", () => refreshProgressAction(ids))} title={ids.length ? `Consultar ${ids.length} cursos en Moodle` : "No hay cursos en curso en esta página"}>
+      <button type="button" className={`btn ${primary ? "btn-primary" : "btn-gray"}`} disabled={!ids.length || !!busy} onClick={() => run("all", () => refreshProgressAction(ids))} title={ids.length ? `Consultar ${ids.length} ${ids.length === 1 ? "curso" : "cursos"} en Moodle` : "No hay cursos en curso en esta página"}>
         {busy ? <Spinner /> : null} {label}
       </button>
       {toastNode}

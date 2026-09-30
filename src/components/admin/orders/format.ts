@@ -90,6 +90,11 @@ export function listDate(d: Date | string, now: Date | string = new Date()): str
   const day = l === "Hoy" || l === "Ayer" ? l : (fmt({ year: "numeric" }).format(new Date(d)) === fmt({ year: "numeric" }).format(new Date(now)) ? F_SHORT : F_SHORT_Y).format(new Date(d));
   return `${day} a las ${time(d)}`;
 }
+/** listDate para usar dentro de una frase: «hoy a las…», «ayer a las…» o «el 20 sept. a las…». */
+export function inSentenceDate(d: Date | string, now: Date | string = new Date()): string {
+  const s = listDate(d, now);
+  return /^(Hoy|Ayer) /.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : `el ${s}`;
+}
 export const longDate = (d: Date | string) => `${F_DAY_Y.format(new Date(d))} a las ${time(d)}`;
 export const shortDate = (d: Date | string) => F_SHORT_Y.format(new Date(d));
 /** Fechas de calendario guardadas a medianoche de Caracas o UTC (cohortes): se muestran en UTC. */
@@ -240,7 +245,7 @@ export function eventMessage(e: EventLike, ctx: { customerName: string }): strin
       return `Pago aprobado por ${who ?? "el panel"}${extra}.`;
     }
     case "PAYMENT_REJECTED":
-      return `Pago rechazado por ${who ?? "el panel"}${e.note ? `: «${e.note}»` : "."}`;
+      return `Pago rechazado por ${who ?? "el panel"}${e.note ? `: «${e.note}».` : "."}`;
     case "PAYMENT_RECEIVED": {
       const m = /^([^:]+):/.exec(e.note ?? "");
       return `Pago recibido${amount != null ? ` de ${usd(amount)}` : ""}${m ? ` por ${m[1]}` : ""}.`;
@@ -263,9 +268,9 @@ export function eventMessage(e: EventLike, ctx: { customerName: string }): strin
       return e.note ?? "";
     case "BALANCE_ADJUSTED":
     case "INSTALLMENT_WAIVED":
-      return `${eventTitle(e.type)}${who ? ` por ${who}` : ""}${e.note ? `: «${e.note}»` : "."}`;
+      return `${eventTitle(e.type)}${who ? ` por ${who}` : ""}${e.note ? `: «${e.note}».` : "."}`;
     case "COHORT_REASSIGNED":
-      return `Cohorte reasignada${who ? ` por ${who}` : ""}${e.note ? `: «${e.note}»` : "."}`;
+      return `Cohorte reasignada${who ? ` por ${who}` : ""}${e.note ? `: «${e.note}».` : "."}`;
     default: {
       if (!e.note) return eventTitle(e.type) + ".";
       const n = e.note.replace(/\.$/, "") + ".";

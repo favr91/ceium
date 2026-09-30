@@ -295,7 +295,7 @@ export function ProductEditor({ initial, ctx, canEdit }: { initial: ProductForm;
                           {monthlyBlocked ? "Agrega los cursos del diplomado para habilitar el pago mes a mes." : ex && on ? (
                             p.kind === "FULL" ? <>Ej.: {usd(minPrice!)} → <b className="mono">{usd(ex.totalCents)}</b> en un solo pago</>
                             : p.kind === "HALF" ? <>Ej.: <b className="mono">{usd(ex.dueNowCents)}</b> hoy y {usd(ex.totalCents - ex.dueNowCents)} después (total {usd(ex.totalCents)})</>
-                            : <>Ej.: <b className="mono">{ex.n} cuotas de {usd(ex.dueNowCents)}</b> · cada cuota pagada matricula el siguiente curso</>
+                            : <>Ej.: <b className="mono">{ex.n} cuotas de {usd(ex.dueNowCents)}</b> · cada cuota pagada matricula en el siguiente curso</>
                           ) : !on ? (p.id ? "Desactivada: no se ofrece en la tienda (los pedidos existentes no cambian)." : "No se ofrece.") : "Carga un precio para ver el ejemplo."}
                         </div>
                       </div>
@@ -315,7 +315,7 @@ export function ProductEditor({ initial, ctx, canEdit }: { initial: ProductForm;
               <div className="card-h"><h2>Ficha del programa</h2><span className="small muted">Se muestra en la página del programa</span></div>
               <div className="grid2">
                 {textField("duration", "Duración", { placeholder: isDip ? "1 mes por curso" : "1 mes" })}
-                {textField("eventDateText", "Fechas (texto)", { placeholder: "21 y 22 de noviembre 2025" })}
+                {textField("eventDateText", "Fechas (texto)", { placeholder: "21 y 22 de noviembre de 2025" })}
               </div>
               {textField("audience", "Dirigido a", { area: true })}
               {textField("requirements", "Requisitos", { area: true })}
@@ -387,7 +387,7 @@ export function ProductEditor({ initial, ctx, canEdit }: { initial: ProductForm;
                 <select className="inp" aria-label="Categoría" value={form.category} disabled={!isNew || ro} onChange={(e) => setCategory(e.target.value as Category)}>
                   {CATEGORY_ORDER.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
                 </select>
-                <span className="help">{isNew ? "Un diplomado agrupa cursos; cursos y talleres matriculan un curso de Moodle." : "La categoría se fija al crear el programa."}</span>
+                <span className="help">{isNew ? "Un diplomado agrupa cursos; cursos y talleres matriculan en un curso de Moodle." : "La categoría se fija al crear el programa."}</span>
               </label>
               <div className="field" ref={colRef}>
                 <span className="label">Colecciones</span>

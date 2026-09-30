@@ -67,7 +67,7 @@ async function notify(d: D, user: { id: string; email: string; name: string }, e
 /** Aviso por correo tras entrar con un código de recuperación. */
 export async function notifyRecoveryUsed(d: D, userId: string, recoveryLeft: number, meta: ClientMeta = {}) {
   const u = await me(d, userId);
-  await d.db.$transaction((tx) => recordAudit(tx, { actor: u, action: "admin_user.2fa_recovery_used", entityType: "AdminUser", entityId: userId, note: `Quedan ${recoveryLeft}`, force: true }));
+  await d.db.$transaction((tx) => recordAudit(tx, { actor: u, action: "admin_user.2fa_recovery_used", entityType: "AdminUser", entityId: userId, note: recoveryLeft === 1 ? "Queda 1" : `Quedan ${recoveryLeft}`, force: true }));
   await notify(d, u, "recovery_used", { ...meta, recoveryLeft });
 }
 
@@ -185,7 +185,7 @@ export async function resetTwoFactorFor(d: D, actor: SessionUser | null, targetU
   const u = await d.db.adminUser.findUnique({ where: { id: targetUserId }, select: { id: true, email: true, name: true, role: true, totpEnabledAt: true } });
   if (!u) throw new DomainError("NOT_FOUND", "El usuario no existe.");
   if (actor && u.id === actor.id) throw new DomainError("CONFLICT", "Tu propia verificación en dos pasos se gestiona en Mi cuenta.");
-  if (actor && !canManageRole(actor.role, u.role)) throw new DomainError("FORBIDDEN", `Solo el super administrador puede gestionar a un ${ROLE_LABEL[u.role].toLowerCase()}.`);
+  if (actor && !canManageRole(actor.role, u.role)) throw new DomainError("FORBIDDEN", `Solo el superadministrador puede gestionar a un ${ROLE_LABEL[u.role].toLowerCase()}.`);
   await d.db.$transaction(async (tx) => {
     await tx.adminUser.update({ where: { id: targetUserId }, data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: null, failedLogins: 0, lockedUntil: null } });
     await tx.adminSession.deleteMany({ where: { adminUserId: targetUserId } });

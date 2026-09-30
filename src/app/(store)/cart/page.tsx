@@ -29,7 +29,7 @@ export default async function CartPage({ searchParams }: PageProps<"/cart">) {
       <div className="ck-cart" data-testid="cart-empty">
         <div className="ck-empty">
           {addError ? <p className="ck-banner" role="alert"><ErrorIcon />{addError}</p> : null}
-          <h1 className="ck-empty-title">Tu carrito esta vacío</h1>
+          <h1 className="ck-empty-title">Tu carrito está vacío</h1>
           <Link href={CONTINUE_HREF} className="ck-btn">Seguir comprando</Link>
           <h2 className="ck-empty-sub">¿Ya hiciste una compra?</h2>
           <p className="ck-empty-p">Consulta el estado de tu pedido con el enlace que te enviamos por correo.</p>

@@ -206,7 +206,7 @@ export function RefundDialog({ o, p }: { o: O; p: P }) {
                       {paypal ? (
                         <>Vuelve a la cuenta PayPal del comprador{p.paypalCaptureId ? <> · captura {p.paypalCaptureId}</> : null}.</>
                       ) : (
-                        <>Registro manual: devuelve el dinero por {METHOD[p.method]?.toLowerCase()} y anótalo aquí.</>
+                        <>Registro manual: devuelve el dinero {p.method === "EFECTIVO" ? "en efectivo" : p.method === "ZELLE" ? "por Zelle" : `por ${METHOD[p.method]?.toLowerCase() ?? "el mismo medio"}`} y anótalo aquí.</>
                       )}
                     </span>
                   </div>

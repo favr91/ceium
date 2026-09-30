@@ -112,7 +112,7 @@ test.describe("t2 home: hero y aliados", () => {
     await partners.scrollIntoViewIfNeeded();
     const imgs = partners.getByRole("img");
     await expect(imgs).toHaveCount(5);
-    for (const alt of ["Universidad Centroocidental Lisandro Alvarado", "Policlínica San Javier", "Mediexpert", "Yano", "Midoctor24h"]) {
+    for (const alt of ["Universidad Centroccidental Lisandro Alvarado", "Policlínica San Javier", "Mediexpert", "Yano", "Midoctor24h"]) {
       await expect(partners.getByRole("img", { name: new RegExp(alt) })).toBeVisible();
     }
     await expect

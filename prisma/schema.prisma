@@ -130,7 +130,7 @@ enum ActorType {
 }
 
 /// Roles del panel, de mayor a menor (permisos en src/server/auth.ts → PERMISSIONS):
-/// ADMIN = super administrador (todo) · COMMERCIAL = administrador comercial (academia, pedidos y pagos; en el
+/// ADMIN = superadministrador (todo) · COMMERCIAL = administrador comercial (academia, pedidos y pagos; en el
 /// equipo solo gestiona asistentes) · STAFF = asistente (el día a día).
 enum AdminRole {
   ADMIN

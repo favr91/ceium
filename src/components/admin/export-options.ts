@@ -23,6 +23,8 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export function exportOptions(o: {
   /** Sustantivo en plural y singular: ["pedidos", "pedido"]. */
   noun: [string, string];
+  /** Sustantivo femenino («Todas las cohortes», «Seleccionadas»). */
+  fem?: boolean;
   filters: string;
   filtered: boolean;
   /** Cuántos coinciden con los filtros. */
@@ -34,8 +36,8 @@ export function exportOptions(o: {
   const [many, one] = o.noun;
   const options: ExportOption[] = [];
   if (o.pages && o.pages > 1 && o.page) options.push({ key: "page", label: "Página actual", query: [o.filters, `page=${o.page}`].filter(Boolean).join("&") });
-  options.push({ key: "all", label: `Todos los ${many}`, query: "" });
-  if (o.filtered) options.push({ key: "filtered", label: `${plural(o.total, one, many)} que coinciden con los filtros actuales`, query: o.filters });
-  if (o.selected?.length) options.push({ key: "selected", label: `Seleccionados: ${plural(o.selected.length, one, many)}`, query: `ids=${o.selected.join(",")}` });
+  options.push({ key: "all", label: `${o.fem ? "Todas las" : "Todos los"} ${many}`, query: "" });
+  if (o.filtered) options.push({ key: "filtered", label: `${plural(o.total, one, many)} que ${o.total === 1 ? "coincide" : "coinciden"} con los filtros actuales`, query: o.filters });
+  if (o.selected?.length) options.push({ key: "selected", label: `${o.fem ? "Seleccionadas" : "Seleccionados"}: ${plural(o.selected.length, one, many)}`, query: `ids=${o.selected.join(",")}` });
   return { options, initial: o.selected?.length ? "selected" : o.filtered ? "filtered" : "all" };
 }

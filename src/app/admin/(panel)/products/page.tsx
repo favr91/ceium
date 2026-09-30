@@ -48,7 +48,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
       </div>
       {!canEdit ? (
         <div className="banner info" role="status">
-          <span>Como asistente puedes consultar el catálogo; editar programas y precios es del administrador comercial o del super administrador.</span>
+          <span>Como asistente puedes consultar el catálogo; editar programas y precios es del administrador comercial o del superadministrador.</span>
         </div>
       ) : null}
       <ProductsIndex rows={rows} counts={counts} total={total} query={{ q, status, category, sort }} canEdit={canEdit} />

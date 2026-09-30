@@ -9,7 +9,7 @@ import { sendInstallmentReminderAction, verifyPayment, waiveInstallmentAction } 
 import type { OrderDetail } from "@/server/admin-order-views";
 import { Badge, MethodIcon, Spinner } from "./bits";
 import { useOrder } from "./context";
-import { INSTALLMENT_STATUS, METHOD, PAYMENT_STATUS, calDate, dayLabel, listDate, paymentBadge, shortDate, time, usd, ves } from "./format";
+import { INSTALLMENT_STATUS, METHOD, PAYMENT_STATUS, calDate, dayLabel, inSentenceDate, listDate, paymentBadge, shortDate, time, usd, ves } from "./format";
 import { RefundDialog } from "./RefundDialog";
 import { Lightbox, TextModal } from "./modals";
 
@@ -72,7 +72,7 @@ function VerifyPanel({ o, p }: { o: O; p: P }) {
   }
   if (p.payerCedula && o.customer.cedula && p.payerCedula.replace(/\W/g, "").toUpperCase() !== o.customer.cedula.replace(/\W/g, "").toUpperCase())
     checks.push({ tone: "warn", text: <>El titular ({p.payerCedula}) no es el médico ({o.customer.cedula}): confirma que es un pago de un tercero.</> });
-  if (hoursLeft != null) checks.push({ tone: hoursLeft < 12 ? "warn" : "ok", text: <>El cupo está reservado {hoursLeft > 0 ? `${hoursLeft} h más` : "por muy poco tiempo"} (hasta el {listDate(hold!.expiresAt, o.now).replace(/^Hoy/, "hoy").replace(/^Ayer/, "ayer")}).</> });
+  if (hoursLeft != null) checks.push({ tone: hoursLeft < 12 ? "warn" : "ok", text: <>El cupo está reservado {hoursLeft > 0 ? `${hoursLeft} h más` : "por muy poco tiempo"} (hasta {inSentenceDate(hold!.expiresAt, o.now)}).</> });
 
   return (
     <div className="vf" id={`verificar-${p.id}`}>

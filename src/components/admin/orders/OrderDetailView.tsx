@@ -10,7 +10,7 @@ import { adjustBalanceAction, cancelOrderAction, reassignCohortAction, reenrollA
 import type { OrderDetail } from "@/server/admin-order-views";
 import { Badge, Copy, Spinner, useDismiss } from "./bits";
 import { OrderProvider, useOrder, type Perms } from "./context";
-import { EMAIL_TEMPLATE, ENROLLMENT_STATUS, ORDER_STATUS, RELEASE_REASON, RESERVATION_STATUS, calDate, enrollmentBadge, listDate, longDate, usd } from "./format";
+import { EMAIL_TEMPLATE, ENROLLMENT_STATUS, ORDER_STATUS, RELEASE_REASON, RESERVATION_STATUS, calDate, enrollmentBadge, inSentenceDate, listDate, longDate, usd } from "./format";
 import { AdjustModal, ConfirmModal, EmailPreview, ReassignModal, TextModal } from "./modals";
 import { PaymentCard } from "./PaymentCard";
 import { Timeline } from "./Timeline";
@@ -390,7 +390,7 @@ function ItemsCard({ o, enrBadge, canReassign, canEnroll, onReassign, onReenroll
                 <div className="seat" data-testid="seat-status">
                   <span className="muted">Cupo</span>
                   <Badge spec={{ label: RESERVATION_STATUS[it.reservation.status] ?? it.reservation.status, tone: it.reservation.status === "CONFIRMED" ? "success" : it.reservation.status === "HELD" ? "attention" : "neutral", progress: it.reservation.status === "CONFIRMED" ? "complete" : it.reservation.status === "HELD" ? "partial" : "incomplete" }} />
-                  {it.reservation.status === "HELD" ? <span className="muted">hasta el {listDate(it.reservation.expiresAt, o.now).replace(/^Hoy/, "hoy").replace(/^Ayer/, "ayer")}</span> : null}
+                  {it.reservation.status === "HELD" ? <span className="muted">hasta {inSentenceDate(it.reservation.expiresAt, o.now)}</span> : null}
                   {it.reservation.status === "RELEASED" && it.reservation.releasedReason ? <span className="muted">({RELEASE_REASON[it.reservation.releasedReason] ?? it.reservation.releasedReason.toLowerCase()})</span> : null}
                 </div>
               ) : null}
@@ -460,7 +460,7 @@ function EnrollmentList({ o }: { o: O }) {
         <p className="small" style={{ marginBottom: 6 }}>
           {counts.ENROLLED} de {n} cursos matriculados
           {counts.FAILED ? <> · <span style={{ color: "#8e0b21" }}>{counts.FAILED} con error</span></> : null}
-          {counts.UNENROLLED ? <> · {counts.UNENROLLED} desmatriculados</> : null}
+          {counts.UNENROLLED ? <> · {counts.UNENROLLED} {counts.UNENROLLED === 1 ? "desmatriculado" : "desmatriculados"}</> : null}
           <span className="sr-only"> ({o.enrollments.map((e) => `${e.product.title}: ${ENROLLMENT_STATUS[e.status]?.label ?? e.status}`).join("; ")})</span>
         </p>
       ) : null}

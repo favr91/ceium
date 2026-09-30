@@ -135,8 +135,8 @@ const DEFAULT_PLANS: Record<ProductType, { kind: PlanKind; label: string; discou
     { kind: "HALF", label: "Paga la mitad", discountPct: 0 },
   ],
   DIPLOMA: [
-    { kind: "FULL", label: "Paga todo (10% de descuento)", discountPct: 10 },
-    { kind: "HALF", label: "Paga la mitad (5% de descuento)", discountPct: 5 },
+    { kind: "FULL", label: "Paga todo (10 % de descuento)", discountPct: 10 },
+    { kind: "HALF", label: "Paga la mitad (5 % de descuento)", discountPct: 5 },
     { kind: "MONTHLY", label: "Paga mes a mes", discountPct: 0 },
   ],
 };

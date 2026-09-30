@@ -131,7 +131,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
           </>
         )}
         <div className="card-foot">
-          <span>{rows.length === total ? `${total} clientes` : `${(page - 1) * PER_PAGE + 1}–${(page - 1) * PER_PAGE + rows.length} de ${total} clientes`}</span>
+          <span>{rows.length === total ? `${total} ${total === 1 ? "cliente" : "clientes"}` : `${(page - 1) * PER_PAGE + 1}–${(page - 1) * PER_PAGE + rows.length} de ${total} clientes`}</span>
           {pages > 1 ? (
             <nav className="adm-pager" aria-label="Paginación">
               {page > 1 ? <Link href={link(page - 1)} aria-label="Página anterior"><Icon name="prev" size={16} /></Link> : <span aria-disabled="true"><Icon name="prev" size={16} /></span>}

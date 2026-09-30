@@ -144,6 +144,6 @@ test.describe("panel · verificación en dos pasos", () => {
     await page.waitForURL(/\/admin\/settings/);
     await expect(page.getByRole("switch", { name: "Exigir la verificación en dos pasos a todo el equipo" })).toBeDisabled();
     await expect(page.getByText("Para exigirla, primero actívala en tu cuenta")).toBeVisible();
-    await expect(page.getByTestId("team-2fa")).toContainText("Falta:");
+    await expect(page.getByTestId("team-2fa")).toContainText(/Faltan?: /);
   });
 });

@@ -10,7 +10,7 @@ import { checkCertificateAction, resendCertificateAction, revokeCertificateActio
 import { Icon } from "../Icon";
 import { Modal } from "../ui";
 import { Badge, Copy, Spinner } from "../orders/bits";
-import { listDate, usd } from "../orders/format";
+import { inSentenceDate, listDate, usd } from "../orders/format";
 import { Avatar, Segments, ago, dm, useRun } from "./shared";
 
 export interface CertState { view: string; q: string; diploma: string }
@@ -115,7 +115,7 @@ export function CertificatesIndex({ data, state, now, perms }: { data: Data; sta
               : "No hay certificados revocados"}
           </h3>
           <p className="muted">
-            {state.view === "ISSUED" ? "El certificado se emite solo cuando Moodle reporta completados todos los cursos del diplomado y el saldo es cero." : state.view === "BLOCKED" ? "Aquí aparecen quienes completaron todos los cursos pero aún deben parte del diplomado." : ""}
+            {state.view === "ISSUED" ? "El certificado se emite solo cuando Moodle reporta completados todos los cursos del diplomado y el saldo es cero." : state.view === "BLOCKED" ? "Aquí aparecen quienes completaron todos los cursos, pero aún deben parte del diplomado." : ""}
           </p>
         </div>
       ) : isCert ? (
@@ -158,7 +158,7 @@ export function CertificatesIndex({ data, state, now, perms }: { data: Data; sta
                       ) : (
                         <span className="ce-deliv" data-testid="delivery">
                           <span className={c.hasPdf ? "ok" : "no"}><Icon name={c.hasPdf ? "check" : "alert"} size={14} /> PDF</span>
-                          <span className={c.emailedAt ? "ok" : "no"} title={c.emailedAt ? `Enviado ${listDate(c.emailedAt, now)}` : "Correo pendiente"}><Icon name={c.emailedAt ? "check" : "alert"} size={14} /> Correo</span>
+                          <span className={c.emailedAt ? "ok" : "no"} title={c.emailedAt ? `Enviado ${inSentenceDate(c.emailedAt, now)}` : "Correo pendiente"}><Icon name={c.emailedAt ? "check" : "alert"} size={14} /> Correo</span>
                         </span>
                       )}
                     </td>

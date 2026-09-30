@@ -109,7 +109,7 @@ export function CollectionsManager({ collections, products, canEdit }: { collect
       {!canEdit ? (
         <div className="banner info" role="status">
           <Icon name="info" />
-          <span>Como asistente puedes ver las colecciones; editarlas es del administrador comercial o del super administrador.</span>
+          <span>Como asistente puedes ver las colecciones; editarlas es del administrador comercial o del superadministrador.</span>
         </div>
       ) : null}
 
@@ -163,7 +163,7 @@ export function CollectionsManager({ collections, products, canEdit }: { collect
           </>
         )}
         <div className="card-foot">
-          <span>{collections.length} colecciones</span>
+          <span>{collections.length} {collections.length === 1 ? "colección" : "colecciones"}</span>
           <span>El orden de los programas es el de la tienda</span>
         </div>
       </div>

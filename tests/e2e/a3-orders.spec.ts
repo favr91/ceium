@@ -76,7 +76,7 @@ test.describe("panel · pedidos", () => {
       await expect(scope.locator("tbody tr")).toHaveCount(1);
       // Programas del pedido en un popover.
       await row.getByRole("button", { name: /1 programa/ }).click();
-      await expect(page.getByRole("dialog", { name: `Programas del pedido #${O.awaiting.number}` })).toContainText("Curso Universitario: Enfermedades Materno Fetales");
+      await expect(page.getByRole("dialog", { name: `Programas del pedido #${O.awaiting.number}` })).toContainText("Curso Universitario: Enfermedades Materno-Fetales");
     }
 
     // Vista «Por verificar»: solo pedidos con pago por verificar.

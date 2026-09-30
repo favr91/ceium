@@ -130,7 +130,7 @@ export async function upsertPrice(d: Deps, actor: SessionUser, input: UpsertPric
     if (p.modality === "SEMIPRESENCIAL" && !product.offersSemipresencial) throw new DomainError("VALIDATION", "Este programa no se ofrece semipresencial.");
     if (sedeId && !(await tx.sede.findUnique({ where: { id: sedeId }, select: { id: true } }))) throw new DomainError("NOT_FOUND", "La sede no existe.");
     if (p.choiceId && !(await tx.productChoice.findFirst({ where: { id: p.choiceId, productId: p.productId }, select: { id: true } }))) throw new DomainError("NOT_FOUND", "La opción no pertenece a este programa.");
-    if (p.installmentCents != null && product.type !== "DIPLOMA") throw new DomainError("VALIDATION", "La cuota mensual solo aplica a diplomados (plan «Paga mes a mes»).");
+    if (p.installmentCents != null && product.type !== "DIPLOMA") throw new DomainError("VALIDATION", "La cuota mensual solo se aplica a diplomados (plan «Paga mes a mes»).");
     const scopeKey = priceScopeKey({ modality: p.modality, sedeId, choiceId: p.choiceId ?? null });
     const before = await tx.priceEntry.findUnique({ where: { productId_scopeKey: { productId: p.productId, scopeKey } } });
     const data = { priceCents: p.priceCents, ...(p.installmentCents !== undefined ? { installmentCents: p.installmentCents } : {}), ...(p.active !== undefined ? { active: p.active } : {}) };
@@ -329,9 +329,9 @@ export async function setDiplomaCourses(d: Deps, actor: SessionUser, diplomaId: 
     const monthly = await tx.paymentPlan.findUnique({ where: { productId_kind: { productId: diplomaId, kind: "MONTHLY" } } });
     if (monthly && monthly.installments !== ids.length) {
       const updated = await tx.paymentPlan.update({ where: { id: monthly.id }, data: { installments: ids.length } });
-      await recordAudit(tx, { actor, action: "plan.update", entityType: "PaymentPlan", entityId: monthly.id, before: monthly, after: updated, note: "Cuotas = nº de cursos del diplomado" });
+      await recordAudit(tx, { actor, action: "plan.update", entityType: "PaymentPlan", entityId: monthly.id, before: monthly, after: updated, note: "Cuotas = n.º de cursos del diplomado" });
     }
-    const frozenNote = livePurchases ? `${livePurchases} compra(s) vigente(s) conservan la lista de cursos anterior` : undefined;
+    const frozenNote = livePurchases ? (livePurchases === 1 ? "1 compra vigente conserva" : `${livePurchases} compras vigentes conservan`) + " la lista de cursos anterior" : undefined;
     await recordAudit(tx, { actor, action: "diploma.courses", entityType: "DiplomaCourse", entityId: diplomaId, before: { courseIds: before }, after: { courseIds: ids }, note: [note, frozenNote].filter(Boolean).join(" · ") || undefined });
     return { courseIds: ids, livePurchases };
   });

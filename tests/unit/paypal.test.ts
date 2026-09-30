@@ -203,7 +203,7 @@ describe("Orders v2", () => {
     b = await r.json();
     expect(r.status).toBe(422);
     expect(b).toMatchObject({ name: "UNPROCESSABLE_ENTITY", details: [{ issue: "AMOUNT_MISMATCH" }] });
-    expect(() => PayPalClient.buildCreateOrderBody(orderInput({ amountCents: 100 }))).toThrow(/suma de items/);
+    expect(() => PayPalClient.buildCreateOrderBody(orderInput({ amountCents: 100 }))).toThrow(/suma de ítems/);
   });
 
   it("orden inexistente → RESOURCE_NOT_FOUND", async () => {

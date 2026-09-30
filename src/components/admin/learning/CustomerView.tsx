@@ -348,7 +348,7 @@ function CertificateStrip({ p, c, perms, run, busy }: { p: C["programs"][number]
       <span className="grow">
         {blocked
           ? <>Completó todos los cursos. El certificado se emite al cancelar el saldo de <b>{usd(p.order.balanceCents)}</b>.</>
-          : <>Certificado pendiente: faltan {p.courses.length - p.completed} {p.courses.length - p.completed === 1 ? "curso" : "cursos"}{p.order.balanceCents > 0 ? ` y un saldo de ${usd(p.order.balanceCents)}` : ""}.</>}
+          : <>Certificado pendiente: {p.courses.length - p.completed === 1 ? "falta" : "faltan"} {p.courses.length - p.completed} {p.courses.length - p.completed === 1 ? "curso" : "cursos"}{p.order.balanceCents > 0 ? ` y un saldo de ${usd(p.order.balanceCents)}` : ""}.</>}
       </span>
       {perms.manage ? (
         <button type="button" className="btn" disabled={!!busy} onClick={() => run(`chk:${p.orderItemId}`, () => checkCertificateAction(c.customer.id, p.product.id))}>

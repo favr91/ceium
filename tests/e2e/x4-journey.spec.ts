@@ -2,7 +2,7 @@
 // correo y panel), contra la app y los mocks de Moodle y PayPal del carril. La BD solo se LEE para verificar; los
 // mocks solo se usan como lo haría el mundo real (aprobar en PayPal, marcar un curso completado en Moodle).
 //   0. El admin configura Pago Móvil (datos bancarios reales) y la tasa BCV en /admin/settings.
-//   1. Doctor A: / → menú Educación 2026 → Diplomado Avanzado de Medicina Materno Fetal → Semipresencial +
+//   1. Doctor A: / → menú Educación 2026 → Diplomado Avanzado de Medicina Materno-Fetal → Semipresencial +
 //      Barquisimeto + cohorte con cupo + «Paga mes a mes» → carrito → checkout (cédula, especialidad) → Pago Móvil
 //      con comprobante. El admin lo ve en «Por verificar», abre el comprobante y aprueba → Moodle: cuenta nueva y
 //      SOLO el curso 1; cupo confirmado +1; correos: confirmación, en verificación, aprobado, acceso, cohorte.
@@ -32,7 +32,7 @@ test.beforeEach(({}, info) => {
 
 const APP_DIR = path.resolve(__dirname, "../..");
 const DIPLOMA = "diplomado-universitario-avanzado-de-medicina-materno-fetal";
-const DIPLOMA_TITLE = "Diplomado Universitario Avanzado de Medicina Materno Fetal";
+const DIPLOMA_TITLE = "Diplomado Universitario Avanzado de Medicina Materno-Fetal";
 const COURSE_B = "curso-universitario-enfermedades-materno-fetales";
 const COURSE_PRICE = "curso-universitario-ecografia-pediatrica";
 const RATE = "187,25";
@@ -208,7 +208,7 @@ test("0 · el admin activa Pago Móvil con los datos bancarios y fija la tasa BC
 
     await pm.getByLabel(/^Banco \(/).selectOption("Banco Nacional de Crédito, BNC (0191)");
     await pm.getByLabel(/^Teléfono \(/).fill("0412-0840407");
-    await pm.getByLabel(/^Cédula \/ RIF \(/).fill("J-50123456-0");
+    await pm.getByLabel(/^Cédula\/RIF \(/).fill("J-50123456-0");
     await pm.getByLabel(/^Titular \(/).fill("CEIUM, C.A.");
     await admin.getByRole("button", { name: "Guardar pagos manuales" }).click();
     await expect(admin.getByRole("status").filter({ hasText: "Métodos de pago manuales guardados" })).toBeVisible();
@@ -435,7 +435,7 @@ test("2 · Doctor B compra un curso online con PayPal de una vez → matriculado
   await expect.poll(() => templatesOf(B.orderId).sort(), { timeout: 30_000 }).toEqual(["order_confirmation", "platform_access"].sort());
   const done = page.getByRole("region", { name: "¡Pago recibido!" });
   await expect(done).toContainText("Acceso al aula virtual");
-  await expect(done).toContainText("Curso habilitado: Curso Universitario: Enfermedades Materno Fetales");
+  await expect(done).toContainText("Curso habilitado: Curso Universitario: Enfermedades Materno-Fetales");
 });
 
 test("3 · el admin reembolsa a B desde el panel → reembolso en PayPal, desmatriculado, rastro en la cronología", async ({ browser, request }) => {

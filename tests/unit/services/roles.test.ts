@@ -1,4 +1,4 @@
-// Roles del panel (super administrador, administrador comercial, asistente): permisos de cada uno, jerarquía del
+// Roles del panel (superadministrador, administrador comercial, asistente): permisos de cada uno, jerarquía del
 // equipo (el comercial solo gestiona asistentes), invitaciones y enlaces de acceso de un solo uso.
 import fs from "node:fs";
 import path from "node:path";
@@ -41,7 +41,7 @@ afterEach(async () => {
 });
 
 describe("permisos por rol", () => {
-  it("el comercial gestiona la academia y verifica pagos; el dinero que sale y la configuración son del super administrador", () => {
+  it("el comercial gestiona la academia y verifica pagos; el dinero que sale y la configuración son del superadministrador", () => {
     const yes: Permission[] = ["orders.view", "payments.verify", "catalog.manage", "cohorts.manage", "enrollments.manage", "certificates.revoke", "users.manage", "orders.cancel"];
     const no: Permission[] = ["settings.manage", "payments.refund", "orders.adjustBalance"];
     for (const p of yes) expect(can(commercial, p), p).toBe(true);
@@ -52,7 +52,7 @@ describe("permisos por rol", () => {
     expect(can(staff, "payments.verify")).toBe(true);
   });
 
-  it("jerarquía: el super administrador asigna cualquier rol; el comercial solo asistentes; el asistente ninguno", () => {
+  it("jerarquía: el superadministrador asigna cualquier rol; el comercial solo asistentes; el asistente ninguno", () => {
     expect(assignableRoles("ADMIN")).toEqual(["ADMIN", "COMMERCIAL", "STAFF"]);
     expect(assignableRoles("COMMERCIAL")).toEqual(["STAFF"]);
     expect(assignableRoles("STAFF")).toEqual([]);
@@ -80,7 +80,7 @@ describe("equipo", () => {
     expect(r.expiresAt.getTime() - ctx.clock.now().getTime()).toBe(INVITE_TTL_MS);
   });
 
-  it("el comercial no desactiva, no cambia de rol ni restablece a otro comercial o al super administrador; a un asistente sí", async () => {
+  it("el comercial no desactiva, no cambia de rol ni restablece a otro comercial o al superadministrador; a un asistente sí", async () => {
     for (const target of [commercial2, admin]) {
       await expect(updateAdminUser(ctx.d, commercial, target.id, { active: false })).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(updateAdminUser(ctx.d, commercial, target.id, { role: "STAFF" })).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -92,16 +92,16 @@ describe("equipo", () => {
     const off = await updateAdminUser(ctx.d, commercial, staff.id, { active: false });
     expect(off.active).toBe(false);
     await updateAdminUser(ctx.d, commercial, staff.id, { active: true });
-    // El super administrador sí gestiona a los comerciales.
+    // El superadministrador sí gestiona a los comerciales.
     expect((await updateAdminUser(ctx.d, admin, commercial2.id, { active: false })).active).toBe(false);
   });
 
-  it("nadie cambia su propio rol ni se desactiva; siempre queda un super administrador activo", async () => {
+  it("nadie cambia su propio rol ni se desactiva; siempre queda un superadministrador activo", async () => {
     await expect(updateAdminUser(ctx.d, commercial, commercial.id, { role: "ADMIN" })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(updateAdminUser(ctx.d, admin, admin.id, { active: false })).rejects.toMatchObject({ code: "CONFLICT" });
     // Su propio nombre sí.
     expect((await updateAdminUser(ctx.d, commercial, commercial.id, { name: "Ventas CEIUM" })).name).toBe("Ventas CEIUM");
-    // Un super administrador cambia el rol de otro; el que queda no puede quitárselo.
+    // Un superadministrador cambia el rol de otro; el que queda no puede quitárselo.
     const boss2 = await member("socio@ceium.net", "ADMIN");
     expect((await updateAdminUser(ctx.d, boss2, admin.id, { role: "COMMERCIAL" })).role).toBe("COMMERCIAL");
     await expect(updateAdminUser(ctx.d, boss2, boss2.id, { role: "STAFF" })).rejects.toMatchObject({ code: "CONFLICT" });

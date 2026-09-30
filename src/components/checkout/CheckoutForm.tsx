@@ -12,6 +12,7 @@ import { ChevronDownIcon, ClockIcon, FieldErrorIcon, HelpIcon, LockIcon, PayPalW
 import { PaypalButton, PaypalRedirectNotice, type PaypalHandoff } from "./paypal";
 import { usd } from "./OrderSummary";
 import { ManualAmount } from "./ManualPayment";
+import { methodInText } from "./manual-payment-fields";
 
 export interface HoldCohort {
   title: string;
@@ -233,7 +234,7 @@ export function CheckoutForm({ action, methods, initialMethod, ttl, holds, dueNo
         </div>
         <p className="co-sub">Escríbelos como aparecen en tu cédula: así irán en tu certificado.</p>
         <div className="co-grid">
-          <SelectField name="country" label="País / Región" value={v.country} error={errors.country} onChange={set}>
+          <SelectField name="country" label="País/región" value={v.country} error={errors.country} onChange={set}>
             {COUNTRIES.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.name}
@@ -318,7 +319,6 @@ export function CheckoutForm({ action, methods, initialMethod, ttl, holds, dueNo
 }
 
 /** Cómo se nombra cada método dentro de una frase («pagar por pago móvil»). */
-const METHOD_IN_TEXT: Record<string, string> = { PAGO_MOVIL: "pago móvil", TRANSFERENCIA: "transferencia bancaria", ZELLE: "Zelle" };
 
 function MethodBody({ m, dueNowCents, semi, holdLong }: { m: MethodView; dueNowCents: number; semi: boolean; holdLong: string }) {
   if (m.method === "PAYPAL") {
@@ -332,7 +332,7 @@ function MethodBody({ m, dueNowCents, semi, holdLong }: { m: MethodView; dueNowC
           <>Al confirmar, {reserve}te indicamos dónde pagar en efectivo. El personal de la sede registra tu pago y, al confirmarlo, recibes tu acceso a Moodle.</>
         ) : (
           <>
-            Al confirmar, {reserve}te mostramos los datos para pagar por {METHOD_IN_TEXT[m.method] ?? m.label}. Luego subes el comprobante y, al verificarlo, recibes tu acceso a Moodle.
+            Al confirmar, {reserve}te mostramos los datos para pagar por {methodInText(m.method, m.label)}. Luego subes el comprobante y, al verificarlo, recibes tu acceso a Moodle.
           </>
         )}
       </p>

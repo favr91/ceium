@@ -185,7 +185,7 @@ test.describe("t7 móvil — todas las páginas", () => {
     await toggle.click();
     const drawer = page.locator("#menu-drawer, .menu-drawer").first();
     await expect(drawer).toBeVisible();
-    await expect(drawer.getByRole("link", { name: "Preguntas Frecuentes" })).toBeVisible();
+    await expect(drawer.getByRole("link", { name: "Preguntas frecuentes" })).toBeVisible();
     await expect(drawer.getByRole("link", { name: "Contacto" })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(drawer).toBeHidden();

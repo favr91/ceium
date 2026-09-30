@@ -181,7 +181,7 @@ export async function checkDiplomaCompletion(d: Deps, customerId: string, diplom
         const live = await tx.enrollment.count({ where: { customerId, moodleCourseId: { in: courseIds }, status: "ENROLLED" } });
         if (live !== new Set(courseIds).size) return null;
         const c = await tx.certificate.create({ data: { customerId, diplomaId, orderItemId: purchase.id, code: generateCertificateCode(), status: "ISSUED", issuedAt: now } });
-        const prev = revoked.length ? ` (reemplaza al revocado ${revoked.map((r) => r.code).join(", ")})` : "";
+        const prev = revoked.length ? ` (reemplaza ${revoked.length === 1 ? "al revocado" : "a los revocados"} ${revoked.map((r) => r.code).join(", ")})` : "";
         if (opts.reissueNote) {
           await addOrderEvent(tx, purchase.orderId, "CERTIFICATE_ISSUED", opts.reissueNote.actor, `Certificado ${c.code} reemitido${prev}: ${opts.reissueNote.note}`, { certificateId: c.id, reissueOf: opts.reissueNote.revokedCertificateId });
         } else {
@@ -449,7 +449,7 @@ export async function renderCertificatePdf(c: CertificatePdfData): Promise<Uint8
     center(c.endorsement, y - 4, sans, 11, muted);
     y -= 22;
   }
-  const courseLine = `${c.courses.length} cursos: ${c.courses.join(" · ")}`;
+  const courseLine = `${c.courses.length} ${c.courses.length === 1 ? "curso" : "cursos"}: ${c.courses.join(" · ")}`;
   for (const line of wrap(courseLine, sans, 8.5, width - 160).slice(0, 4)) {
     center(line, y - 8, sans, 8.5, muted);
     y -= 12;
