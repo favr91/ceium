@@ -62,8 +62,8 @@ export default async function AboutPageRoute() {
           </div>
           <ul className="pg-team__grid list-unstyled" role="list">
             {page.team.members.map((m) => (
-              <li key={m.name} className="pg-member">
-                {/* eslint-disable-next-line @next/next/no-img-element -- fotos del CDN de Shopify */}
+              <li key={m.id} className="pg-member">
+                {/* eslint-disable-next-line @next/next/no-img-element -- fotos del CDN de Shopify o subidas desde el panel */}
                 <img className="pg-member__photo" src={sizedImage(m.photo, 550)} alt={m.name} width={316} height={316} loading="lazy" />
                 <h3 className="pg-member__name">{m.name}</h3>
                 <p className="pg-member__role">{m.role}</p>

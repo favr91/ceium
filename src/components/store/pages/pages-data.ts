@@ -2,14 +2,16 @@
 // /pages/contacto y /pages/cursos). Solo servidor.
 // Lo editorial (textos, fotos del equipo, preguntas frecuentes, pestañas de cursos) tiene valores por defecto
 // tomados de ceium.net y se puede sobreescribir por página con la Setting `store.pages`
-// ({ "<handle>": Partial<…Page> }). Lo que es dato del negocio sale SIEMPRE de la BD: teléfonos y correos
+// ({ "<handle>": Partial<…Page> }); el personal de «Quiénes somos» se edita desde el panel (team.ts,
+// server/about-team.ts). Lo que es dato del negocio sale SIEMPRE de la BD: teléfonos y correos
 // (`store.contact`), sedes y direcciones (tabla Sede), redes sociales (cromo) y los programas de cada pestaña
 // de /pages/cursos (colecciones, productos, orden, notas de inscripción).
 import { prisma } from "@/server/db";
 import { SETTING_KEYS } from "@/server/settings";
 import { getCollectionPage, type CollectionProduct } from "@/components/store/collection/collection-data";
+import { DEFAULT_TEAM, publicTeam, TEAM_PAGE, type TeamSection } from "@/components/store/pages/team";
 
-export const PAGES_SETTING_KEY = "store.pages";
+export const PAGES_SETTING_KEY = SETTING_KEYS.storePages;
 
 const CDN = "https://cdn.shopify.com/s/files/1/0653/7986/0524/files";
 
@@ -19,18 +21,14 @@ export interface PageLink {
 }
 
 /* ───────────── Quiénes somos ───────────── */
-export interface TeamMember {
-  name: string;
-  role: string;
-  photo: string;
-}
 export interface AboutPage {
   title: string;
   eyebrow: string;
   heading: string;
   hero: { image: string; youtubeId: string; videoTitle: string; playIcon: string };
   about: { title: string; text: string; image: string; imageAlt: string; cta: PageLink };
-  team: { title: string; text: string; members: TeamMember[] };
+  /** Personal: se edita en el panel (Tienda en línea › Quiénes somos), ver team.ts. */
+  team: TeamSection;
 }
 
 export const DEFAULT_ABOUT: AboutPage = {
@@ -51,20 +49,7 @@ export const DEFAULT_ABOUT: AboutPage = {
     imageAlt: "Clase práctica de ecografía en CEIUM",
     cta: { label: "Contáctanos", url: "/pages/contacto" },
   },
-  team: {
-    title: "Personal de CEIUM",
-    text: "Contamos con un grupo de expertos apasionados por la enseñanza, comprometidos con guiarte en cada paso de tu aprendizaje.",
-    members: [
-      { name: "Dr. Carlos Roa", role: "Director y fundador", photo: `${CDN}/Rectangle_46.jpg?v=1733449728` },
-      { name: "Dra. Mireya Montes de Oca", role: "Coordinadora académica", photo: `${CDN}/mireya-montes-de-oca.png?v=1736280676` },
-      { name: "Ing. Flor Montes de Oca", role: "Coordinadora de la plataforma tecnológica educativa", photo: `${CDN}/flor-montesdeoca.png?v=1736280804` },
-      { name: "Ing. William Polanco", role: "Asesor de tecnología de la información", photo: `${CDN}/william-polanco.png?v=1736280887` },
-      { name: "Prof. Nancy Montes de Oca", role: "Coordinadora de Control de Estudios", photo: `${CDN}/nancy-montes-de-oca.png?v=1736281414` },
-      { name: "Licda. Rosmary Pinto", role: "Asistente administrativa de Control de Estudios", photo: `${CDN}/rosmary-pinto.png?v=1736281260` },
-      { name: "Prof. Nerza Roa", role: "Asesor pedagógico", photo: `${CDN}/nersa-roa.png?v=1736281679` },
-      { name: "Licdo. David Toledo", role: "Asistente administrativo logístico", photo: `${CDN}/david-toledo.png?v=1736281162` },
-    ],
-  },
+  team: DEFAULT_TEAM,
 };
 
 /* ───────────── Preguntas frecuentes ───────────── */
@@ -215,7 +200,8 @@ function merge<T extends object>(base: T, over: Partial<T> | undefined): T {
 }
 
 export async function getAboutPage(): Promise<AboutPage> {
-  return merge(DEFAULT_ABOUT, (await overrides())["quienes-somos"]);
+  const over = (await overrides())[TEAM_PAGE];
+  return { ...merge(DEFAULT_ABOUT, over), team: publicTeam(over?.team) };
 }
 
 export async function getFaqPage(): Promise<FaqPage> {

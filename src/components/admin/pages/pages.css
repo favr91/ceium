@@ -1,0 +1,26 @@
+/* Tienda en línea › Quiénes somos (AboutTeamEditor): lista del personal y diálogo de una persona. */
+.ab-people li { padding-top: 10px; padding-bottom: 10px; }
+.ab-people li.off .ab-photo, .ab-people li.off .ab-name-btn, .ab-people li.off .ab-role { opacity: .55; }
+.ab-people .acts { align-items: center; gap: 4px; }
+.ab-toggle { margin: 0 6px; }
+
+.ab-photo { flex: none; display: block; border-radius: 10px; object-fit: cover; background: #f1f1f1; }
+.ab-photo--empty { display: grid; place-items: center; color: #616161; font-weight: 650; font-size: 13px; border: 1px dashed #c9c9c9; }
+
+.ab-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.ab-name-btn { padding: 0; border: 0; background: none; font: inherit; font-weight: 650; color: inherit; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.ab-name-btn:hover { text-decoration: underline; }
+.ab-role { overflow-wrap: anywhere; }
+
+.ab-photo-field { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.ab-photo-field .ab-photo { border-radius: 16px; }
+.ab-photo-field .ab-photo--empty { font-size: 22px; }
+.ab-photo-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.ab-photo-btns .btn { display: inline-flex; align-items: center; gap: 6px; }
+.ab-photo-field .help, .ab-photo-field .field-err { display: block; }
+
+@media (max-width: 640px) {
+  .ab-people li { padding-left: 12px; }
+  .ab-toggle { margin: 0 2px 0 4px; }
+  .ab-photo-field { align-items: flex-start; }
+}

@@ -28,6 +28,9 @@ export const SETTING_KEYS = {
   certificateJob: "certificates.job",
   /** { phones, emails, whatsapp, instagram } */
   storeContact: "store.contact",
+  /** { "<página>": Partial<…Page> } — contenido editorial de las páginas de la tienda (ver pages-data); el
+   *  personal de «Quiénes somos» se edita en el panel (server/about-team.ts) */
+  storePages: "store.pages",
   /** { cohortsAreSample: true, note } — marca que las cohortes sembradas son de ejemplo */
   sampleData: "seed.sampleData",
 } as const;

@@ -27,6 +27,9 @@ const NAV: NavItem[] = [
   { href: "/admin/certificates", label: "Certificados", icon: "certificate" },
 ];
 
+/** Páginas de la tienda editables desde el panel (debajo de «Tienda en línea», como en Shopify). */
+const STORE_PAGES = [{ href: "/admin/pages/quienes-somos", label: "Quiénes somos" }];
+
 function isActive(path: string, href: string) {
   return href === "/admin" ? path === "/admin" : path === href || path.startsWith(href + "/");
 }
@@ -124,6 +127,13 @@ export function AdminFrame({ user, children, weakPassword = false, canManageTeam
         <ul>
           <li>
             <a href="/" target="_blank" rel="noreferrer" className="adm-nav-item"><Icon name="globe" /> Tienda en línea</a>
+            <ul className="adm-nav-sub">
+              {STORE_PAGES.map((s) => (
+                <li key={s.href}>
+                  <Link href={s.href} className={isActive(path, s.href) ? "active" : undefined} aria-current={isActive(path, s.href) ? "page" : undefined}>{s.label}</Link>
+                </li>
+              ))}
+            </ul>
           </li>
         </ul>
         <ul className="adm-nav-bottom">

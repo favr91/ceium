@@ -68,7 +68,7 @@ export function RichText({ value, onChange, seed, label }: { value: string; onCh
 
 // ───────── Multimedia ─────────
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MB = (n: number) => `${(n / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
 
 /**
@@ -76,7 +76,7 @@ const MB = (n: number) => `${(n / 1024 / 1024).toFixed(1).replace(".", ",")} MB`
  * la conexión sea lenta. La optimización final (WebP en varios anchos, sin metadatos) la hace el servidor.
  * Solo JPG: un PNG puede tener transparencia, que el JPG perdería.
  */
-async function shrinkPhoto(f: File): Promise<File> {
+export async function shrinkPhoto(f: File): Promise<File> {
   if (f.type !== "image/jpeg" || f.size <= 1.5 * 1024 * 1024) return f;
   try {
     const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });

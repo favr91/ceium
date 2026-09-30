@@ -10,11 +10,12 @@ el rol leído de la BD). Olvidar `assertCan` en una ruta ya no abre nada: `refun
 `waiveInstallment`, `revokeCertificate` (solo ADMIN); `adminVerifyPayment`, `adminRecordManualPayment`,
 `reassignCohort`, `reenrollOrder`, `adminUnenrollOrder`, `cancelOrder`, `addNote`, `resendEmail` (ADMIN y STAFF).
 
-Escrituras de catálogo/configuración (siempre con `AuditLog` en la misma transacción; `services().cohorts|catalog|settings|adminUsers|audit`):
+Escrituras de catálogo/configuración (siempre con `AuditLog` en la misma transacción; `services().cohorts|catalog|settings|aboutTeam|adminUsers|audit`):
 - `audit.ts` — `recordAudit` (antes/después/campos cambiados, sin secretos), `listAuditLog`.
 - `cohorts.ts` — `createCohort`, `updateCohort` (cupo con UPDATE condicional: nunca < `seatsHeld + seatsConfirmed`; no cancela con cupos ocupados), `setCohortStatus`, `deleteCohort` (solo sin ventas).
 - `catalog.ts` — `createProduct` (nace sin publicar), `updateProduct`, `archiveProduct` (despublicar), `deleteProduct` (solo sin pedidos/matrículas/certificados), `upsertPrice` / `setPriceActive` / `deletePrice` (escribe `scopeKey`; ONLINE sin sede), `upsertPlan` / `deletePlan` (MONTHLY solo diplomados, cuotas = nº de cursos; un plan usado solo se desactiva), `upsertCollection` / `deleteCollection`, `upsertSede`, `setDiplomaCourses`, imágenes `addProductImage` (archivo → `public/uploads/products/<id>/`, tipo detectado por firma, ≤ 8 MB; o URL https), `updateProductImage`, `reorderProductImages`, `deleteProductImage` (borra el archivo), opciones de compra `upsertProductChoice` / `deleteProductChoice` (p.ej. «Cursos disponibles» del taller transfontanelar, con sus `moodleCourseIds`).
 - `admin-settings.ts` — `updateSetting` con esquema por clave (datos bancarios de pago móvil/transferencia, tasa BCV, TTL de reservas, PayPal, reintentos, recordatorios, contacto).
+- `about-team.ts` — Personal de /pages/quienes-somos (panel: *Tienda en línea › Quiénes somos*): `getTeamSection`, `saveTeamSection` (la sección completa en la Setting `store.pages` → «quienes-somos».team; orden, ocultas, nombre, cargo, foto; CONFLICT si otra persona guardó mientras tanto; borra las fotos que dejan de usarse), `uploadTeamPhoto` (→ `public/uploads/team/`, optimizada como las de los programas; `uploads.ts`). Edita quien tiene `catalog.manage`.
 - `admin-users.ts` — Equipo: `listTeam`, `inviteAdminUser` (enlace de un solo uso, `admin-access.ts`), `updateAdminUser`, `sendAccessLink`, `cancelInvitation`, `setPasswordWithAccessLink`. Jerarquía de `admin-roles.ts` (el comercial solo gestiona asistentes; nadie se cambia el rol a sí mismo; siempre queda un superadministrador activo).
 
 ## Servicios de dominio (compra → pago → matrícula → certificado)

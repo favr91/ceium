@@ -3,19 +3,15 @@
 // transacción. El panel no debe escribir estas tablas con prisma directamente.
 // Cubre: programas (alta, edición, archivo, baja), precios, planes, colecciones, sedes, cursos de diplomado,
 // imágenes (subidas a public/uploads) y opciones de compra (ProductChoice).
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdmin, type SessionUser } from "@/server/auth";
 import { recordAudit } from "@/server/audit";
 import { withTx, type Deps, type Tx } from "@/server/deps";
 import { DomainError, isUniqueViolation } from "@/server/errors";
-import { optimizeImage } from "@/server/images";
-import { IMAGE_TIERS } from "@/components/store/image-url";
 import { priceScopeKey } from "@/server/pricing";
 import { sanitizeRichText } from "@/server/rich-text";
+import { removeFiles, removeUploadedImage, storeOptimizedImage, UPLOADS_URL } from "@/server/uploads";
 
 /** Pedidos que siguen su curso (en pago, pagados o matriculados). */
 const LIVE_ORDER_STATES = ["PENDING_PAYMENT", "AWAITING_VERIFICATION", "PAID", "PARTIALLY_PAID", "ENROLLED"] as const;
@@ -461,59 +457,10 @@ export async function deleteCollection(d: Deps, actor: SessionUser, collectionId
 
 // ───────────── Imágenes de programa (public/uploads) ─────────────
 
-const IMAGE_TYPES: Record<string, { ext: string; sniff: (b: Uint8Array) => boolean }> = {
-  jpg: { ext: ".jpg", sniff: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
-  png: { ext: ".png", sniff: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 },
-  webp: { ext: ".webp", sniff: (b) => ascii(b, 0, 4) === "RIFF" && ascii(b, 8, 12) === "WEBP" },
-  gif: { ext: ".gif", sniff: (b) => ascii(b, 0, 4) === "GIF8" },
-  avif: { ext: ".avif", sniff: (b) => ascii(b, 4, 8) === "ftyp" && /^avi[fs]$/.test(ascii(b, 8, 12)) },
-};
-const ascii = (b: Uint8Array, from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
-/** Tope por archivo (el panel sube de a uno y reduce las fotos grandes en el navegador antes de enviarlas). */
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const UPLOADS_URL = "/uploads/";
-
-/** Detecta el tipo por la firma del archivo (no por el nombre): nada que no sea imagen llega a public/. */
-function sniffImage(bytes: Uint8Array): string {
-  for (const t of Object.values(IMAGE_TYPES)) if (t.sniff(bytes)) return t.ext;
-  throw new DomainError("VALIDATION", "La imagen debe ser JPG, PNG, WEBP, GIF o AVIF.");
-}
-
-function uploadPathFor(d: Deps, url: string): string | null {
-  if (!url.startsWith(UPLOADS_URL)) return null;
-  const root = path.resolve(d.config.publicUploadsDir);
-  const abs = path.resolve(root, url.slice(UPLOADS_URL.length));
-  return abs.startsWith(root + path.sep) ? abs : null;
-}
-
 const productDir = (productId: string) => productId.replace(/[^a-z0-9]/gi, "");
 
-/** Archivos de una imagen subida: la URL guardada y, si es optimizada (`…-w<ancho>.webp`), todos sus anchos y el JPG. */
-function uploadedFiles(d: Deps, url: string): string[] {
-  const abs = uploadPathFor(d, url);
-  if (!abs) return [];
-  const m = /^(.+)-w\d+\.webp$/.exec(abs);
-  return m ? [...IMAGE_TIERS.map((t) => `${m[1]}-w${t}.webp`), `${m[1]}-og.jpg`] : [abs];
-}
-
 /** Borra los archivos de una imagen subida, solo si están en la carpeta de ESTE programa (products/<id>/). */
-async function removeUploadedFile(d: Deps, url: string, productId: string) {
-  if (!url.startsWith(`${UPLOADS_URL}products/${productDir(productId)}/`)) return;
-  for (const abs of uploadedFiles(d, url)) {
-    try {
-      await fs.rm(abs, { force: true });
-    } catch (e) {
-      d.log.warn(`[catalog] no se pudo borrar ${abs}`, e);
-    }
-  }
-}
-
-/** Nombre de archivo descriptivo (ayuda a Google Imágenes): slug del programa, cortado en un guion. */
-function fileStem(slug: string): string {
-  const s = slug.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
-  const cut = s.length > 60 ? s.slice(0, 60).replace(/-[^-]*$/, "") : s;
-  return cut || "imagen";
-}
+const removeUploadedFile = (d: Deps, url: string, productId: string) => removeUploadedImage(d, url, `products/${productDir(productId)}`);
 
 export const productImageMetaSchema = z
   .object({
@@ -547,28 +494,11 @@ export async function addProductImage(d: Deps, actor: SessionUser, productId: st
   const product = await withTx(d, (tx) => mustProduct(tx, productId));
 
   let url = givenUrl ?? "";
-  const written: string[] = [];
+  let written: string[] = [];
   if (file) {
-    if (!file.bytes?.byteLength) throw new DomainError("VALIDATION", "El archivo está vacío.");
-    if (file.bytes.byteLength > MAX_IMAGE_BYTES) throw new DomainError("VALIDATION", "La imagen no puede superar 10 MB.");
-    sniffImage(file.bytes); // solo imágenes (por su firma, no por el nombre)
-    const img = await optimizeImage(file.bytes);
-    const dir = `products/${productDir(productId)}`;
-    const stem = `${fileStem(product.slug)}-${crypto.randomBytes(4).toString("hex")}`;
-    const abs = path.resolve(d.config.publicUploadsDir, dir);
-    await fs.mkdir(abs, { recursive: true });
-    try {
-      for (const v of img.variants) {
-        written.push(path.join(abs, `${stem}-w${v.tier}.webp`));
-        await fs.writeFile(written[written.length - 1], v.data);
-      }
-      written.push(path.join(abs, `${stem}-og.jpg`));
-      await fs.writeFile(written[written.length - 1], img.share);
-    } catch (e) {
-      for (const f of written) await fs.rm(f, { force: true }).catch(() => {});
-      throw e;
-    }
-    url = `${UPLOADS_URL}${dir}/${stem}-w${img.variants[img.variants.length - 1].tier}.webp`;
+    const img = await storeOptimizedImage(d, `products/${productDir(productId)}`, product.slug, file.bytes);
+    written = img.files;
+    url = img.url;
     meta.width ??= img.width;
     meta.height ??= img.height;
   }
@@ -581,7 +511,7 @@ export async function addProductImage(d: Deps, actor: SessionUser, productId: st
       return after;
     });
   } catch (e) {
-    for (const f of written) await fs.rm(f, { force: true }).catch(() => {});
+    await removeFiles(written);
     throw e;
   }
 }
