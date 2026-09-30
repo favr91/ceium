@@ -74,7 +74,7 @@ const fmtValueDate = (d: string | null) =>
 
 type MethodForm = ManualMethod & { hints: Record<string, string> };
 
-export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: boolean }) {
+export function SettingsView({ data, canEdit, roleLabel }: { data: SettingsData; canEdit: boolean; roleLabel: string }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
@@ -251,7 +251,7 @@ export function SettingsView({ data, canEdit }: { data: SettingsData; canEdit: b
       {ro ? (
         <div className="banner info" role="status">
           <Icon name="info" />
-          <span>Tu rol (personal) puede ver la configuración; solo un administrador puede cambiarla.</span>
+          <span>Como {roleLabel.toLowerCase()} puedes ver la configuración (métodos de pago, PayPal, tasa, reservas y seguridad); solo el super administrador puede cambiarla.</span>
         </div>
       ) : null}
       {data.warnings.length ? (

@@ -80,7 +80,7 @@ export function SedesManager({ sedes, canEdit }: { sedes: SedeRow[]; canEdit: bo
           {canEdit ? <button type="button" className="btn btn-primary" onClick={() => open()}>Agregar sede</button> : null}
         </div>
       </div>
-      {!canEdit ? <div className="banner info" role="status"><Icon name="info" /><span>Tu rol (personal) puede ver las sedes y sus cupos; solo un administrador puede editarlas.</span></div> : null}
+      {!canEdit ? <div className="banner info" role="status"><Icon name="info" /><span>Como asistente puedes ver las sedes y sus cupos; editarlas es del administrador comercial o del super administrador.</span></div> : null}
 
       <section className="card card-flush" aria-labelledby="h-sedes">
         <div className="card-h">

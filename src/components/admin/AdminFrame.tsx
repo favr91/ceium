@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { logoutAction } from "@/app/admin/auth-actions";
+import type { AdminRole } from "@/generated/prisma/client";
+import { ROLE_LABEL } from "@/server/admin-roles";
 import { Icon } from "./Icon";
 
 interface NavItem { href: string; label: string; icon: string; sub?: { href: string; label: string }[] }
@@ -29,7 +31,7 @@ function isActive(path: string, href: string) {
   return href === "/admin" ? path === "/admin" : path === href || path.startsWith(href + "/");
 }
 
-export function AdminFrame({ user, children, weakPassword = false }: { user: { name: string; email: string; role: string }; children: React.ReactNode; weakPassword?: boolean }) {
+export function AdminFrame({ user, children, weakPassword = false, canManageTeam = false }: { user: { name: string; email: string; role: AdminRole }; children: React.ReactNode; weakPassword?: boolean; canManageTeam?: boolean }) {
   const path = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -82,7 +84,7 @@ export function AdminFrame({ user, children, weakPassword = false }: { user: { n
             <div className="adm-user-menu" role="menu">
               <div className="who">
                 <b>{user.name}</b>
-                <span>{user.email} · {user.role === "ADMIN" ? "Administrador" : "Personal"}</span>
+                <span>{user.email} · {ROLE_LABEL[user.role]}</span>
               </div>
               <Link className="adm-menu-item" href="/admin/account" role="menuitem" onClick={() => setMenu(false)}><Icon name="shield" size={18} /> Mi cuenta y seguridad</Link>
               <a className="adm-menu-item" href="/" target="_blank" rel="noreferrer" role="menuitem"><Icon name="external" size={18} /> Ver tienda</a>
@@ -125,6 +127,11 @@ export function AdminFrame({ user, children, weakPassword = false }: { user: { n
           </li>
         </ul>
         <ul className="adm-nav-bottom">
+          {canManageTeam ? (
+            <li>
+              <Link href="/admin/team" className={`adm-nav-item${isActive(path, "/admin/team") ? " active" : ""}`}><Icon name="team" /> Equipo</Link>
+            </li>
+          ) : null}
           <li>
             <Link href="/admin/settings" className={`adm-nav-item${isActive(path, "/admin/settings") ? " active" : ""}`}><Icon name="settings" /> Configuración</Link>
           </li>

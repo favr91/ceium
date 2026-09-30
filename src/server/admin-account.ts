@@ -4,6 +4,7 @@
 // correo al usuario (si no fue él, se entera).
 import QRCode from "qrcode";
 import { changePassword as setPassword, hashPassword, requireAdmin, twoFactorRequired, verifyPassword, type SessionUser } from "@/server/auth";
+import { ROLE_LABEL, canManageRole } from "@/server/admin-roles";
 import { recordAudit } from "@/server/audit";
 import type { Deps } from "@/server/deps";
 import { sendEmail } from "@/server/email";
@@ -41,7 +42,7 @@ export function describeDevice(ua: string | null | undefined): string {
   return os ? `${browser} en ${os}` : browser;
 }
 
-async function notify(d: D, user: { id: string; email: string; name: string }, event: T.AdminSecurityEvent, meta: ClientMeta & { recoveryLeft?: number } = {}) {
+async function notify(d: D, user: { id: string; email: string; name: string }, event: T.AdminSecurityEvent, meta: ClientMeta & { recoveryLeft?: number; by?: string } = {}) {
   try {
     await sendEmail(d as Deps, {
       template: "admin_security",
@@ -53,6 +54,7 @@ async function notify(d: D, user: { id: string; email: string; name: string }, e
         ip: meta.ip,
         device: meta.userAgent ? describeDevice(meta.userAgent) : null,
         recoveryLeft: meta.recoveryLeft,
+        by: meta.by,
         accountUrl: `${d.config.appUrl}/admin/account`,
       }),
       actor: { type: "ADMIN", id: user.id },
@@ -174,13 +176,16 @@ export async function forgetTrustedDevices(d: Pick<Deps, "db">, userId: string) 
 }
 
 /**
- * Un administrador quita la verificación en dos pasos de otro usuario que perdió el teléfono y sus códigos
- * (script scripts/admin-reset-2fa.ts). Cierra sus sesiones: al entrar, la vuelve a configurar.
+ * Quita la verificación en dos pasos de otra persona del equipo que perdió el teléfono y sus códigos (desde Equipo,
+ * con la misma jerarquía que el resto de la gestión del equipo, o con scripts/admin-reset-2fa.ts: `actor` null).
+ * Cierra sus sesiones: al entrar, la vuelve a configurar. Se le avisa por correo.
  */
-export async function resetTwoFactorFor(d: Pick<Deps, "db">, actor: SessionUser | null, targetUserId: string, note?: string) {
+export async function resetTwoFactorFor(d: D, actor: SessionUser | null, targetUserId: string, note?: string) {
   if (actor) actor = await requireAdmin(d.db, actor, "users.manage");
-  const u = await d.db.adminUser.findUnique({ where: { id: targetUserId }, select: { id: true } });
+  const u = await d.db.adminUser.findUnique({ where: { id: targetUserId }, select: { id: true, email: true, name: true, role: true, totpEnabledAt: true } });
   if (!u) throw new DomainError("NOT_FOUND", "El usuario no existe.");
+  if (actor && u.id === actor.id) throw new DomainError("CONFLICT", "Tu propia verificación en dos pasos se gestiona en Mi cuenta.");
+  if (actor && !canManageRole(actor.role, u.role)) throw new DomainError("FORBIDDEN", `Solo el super administrador puede gestionar a un ${ROLE_LABEL[u.role].toLowerCase()}.`);
   await d.db.$transaction(async (tx) => {
     await tx.adminUser.update({ where: { id: targetUserId }, data: { totpSecret: null, totpPendingSecret: null, totpEnabledAt: null, totpLastStep: null, recoveryCodes: null, failedLogins: 0, lockedUntil: null } });
     await tx.adminSession.deleteMany({ where: { adminUserId: targetUserId } });
@@ -188,4 +193,5 @@ export async function resetTwoFactorFor(d: Pick<Deps, "db">, actor: SessionUser 
     await tx.adminLoginChallenge.deleteMany({ where: { adminUserId: targetUserId } });
     await recordAudit(tx, { actor, action: "admin_user.2fa_reset", entityType: "AdminUser", entityId: targetUserId, note, force: true });
   });
+  if (u.totpEnabledAt) await notify(d, u, "2fa_reset", { by: actor?.name ?? "Soporte técnico (desde el servidor)" });
 }

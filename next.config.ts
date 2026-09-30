@@ -23,6 +23,7 @@ const nextConfig: NextConfig = {
       // las Server Actions de la página (protección CSRF).
       { source: "/pedido/:path*", headers: [{ key: "Referrer-Policy", value: "same-origin" }] },
       { source: "/checkout/:path*", headers: [{ key: "Referrer-Policy", value: "same-origin" }] },
+      { source: "/admin/acceso/:path*", headers: [{ key: "Referrer-Policy", value: "same-origin" }] },
     ];
   },
   // Cada carril del gauntlet (tienda, compra, panel, e2e) corre su propio `next dev` en paralelo

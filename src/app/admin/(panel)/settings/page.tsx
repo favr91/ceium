@@ -1,6 +1,7 @@
 // Configuración (réplica de Configuración › Pagos de Shopify): métodos de pago manuales con los datos que recibe el
 // médico, PayPal, tasa BCV, tiempo de reserva del cupo y recordatorios de cuotas. Todo sale de la tabla Setting.
 import type { Metadata } from "next";
+import { ROLE_LABEL } from "@/server/admin-roles";
 import { can } from "@/server/auth";
 import { readSetting } from "@/server/deps";
 import type { ExchangeRateAutoSetting, RateSyncStatus } from "@/server/exchange-rate";
@@ -28,7 +29,7 @@ export default async function SettingsPage() {
     readSetting<ExchangeRateAutoSetting>(db, SETTING_KEYS.exchangeRateAuto, { enabled: true }),
     readSetting<RateSyncStatus | null>(db, SETTING_KEYS.exchangeRateSync, null),
     readSetting<{ enabled: boolean }>(db, SETTING_KEYS.require2fa, { enabled: false }),
-    db.adminUser.findMany({ where: { active: true }, select: { id: true, name: true, totpEnabledAt: true } }),
+    db.adminUser.findMany({ where: { active: true, invitePending: false }, select: { id: true, name: true, totpEnabledAt: true } }),
   ]);
   const st = exchangeRateStatus(rate, s.deps.now());
   const list = Array.isArray(methods) ? methods : [];
@@ -56,7 +57,7 @@ export default async function SettingsPage() {
   };
   return (
     <div className="adm-page">
-      <SettingsView data={data} canEdit={can(user, "settings.manage")} />
+      <SettingsView data={data} canEdit={can(user, "settings.manage")} roleLabel={ROLE_LABEL[user.role]} />
     </div>
   );
 }

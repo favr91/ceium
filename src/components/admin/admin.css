@@ -527,5 +527,49 @@
   .acc .card { margin-top: 12px; }
   .acc-code-list { grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 14px; }
 }
+/* ───────── Equipo (TeamView) ───────── */
+.tm-list { list-style: none; margin: 0; padding: 0; }
+.tm-list li { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--p-border-2); }
+.tm-list li.off .tm-main, .tm-list li.off .tm-avatar { opacity: .6; }
+.tm-avatar { flex: none; width: 36px; height: 36px; border-radius: 10px; background: #e3f1df; color: #0c5132; font-weight: 650; font-size: 13px; display: grid; place-items: center; }
+.tm-main { flex: 1; min-width: 0; }
+.tm-main .t { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tm-main .nm { font-weight: 600; }
+.tm-main .s { color: var(--p-text-2); font-size: 12px; line-height: 18px; margin-top: 2px; overflow-wrap: anywhere; }
+.tm-2fa { display: inline-flex; align-items: center; gap: 3px; vertical-align: -2px; }
+.tm-2fa.on { color: var(--p-success); }
+.tm-2fa.warn { color: #8a6116; font-weight: 550; }
+.tm-acts { flex: none; display: flex; gap: 8px; }
+.tm-matrix { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 18px; }
+.tm-matrix th, .tm-matrix td { padding: 10px 12px; border-top: 1px solid var(--p-border-2); }
+.tm-matrix thead th { font-weight: 600; color: var(--p-text-2); font-size: 12px; text-align: center; white-space: nowrap; border-top: 0; }
+.tm-matrix tbody th { text-align: left; font-weight: 450; min-width: 220px; }
+.tm-matrix td { text-align: center; width: 150px; }
+.tm-matrix .yes { color: var(--p-success); vertical-align: middle; }
+.tm-matrix .no { color: #b5b5b5; }
+.tm-matrix .view { color: var(--p-text-2); font-size: 12px; white-space: nowrap; }
+.tm-matrix thead .sm { display: none; }
+.tm-access { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--p-border-2); display: grid; gap: 12px; }
+.tm-access-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.tm-access-row > div { min-width: 0; }
+.tm-access-row .help { display: block; margin-top: 2px; }
+.tm-access-row .btn { flex: none; }
+.tm-link p { margin: 0 0 12px; }
+.tm-link .banner { margin: 0 0 12px; }
+.tm-link-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.tm-link-row .inp { flex: 1; min-width: 0; font: 13px/20px ui-monospace, SFMono-Regular, Menlo, monospace; }
+@media (max-width: 768px) {
+  .tm-list li { flex-wrap: wrap; align-items: flex-start; }
+  .tm-main { flex-basis: calc(100% - 48px); }
+  .tm-acts { width: 100%; padding-left: 48px; }
+  .tm-access-row { flex-direction: column; align-items: stretch; }
+  .tm-matrix thead .lg { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .tm-matrix thead .sm { display: inline; }
+  .tm-matrix th, .tm-matrix td { padding: 10px 6px; }
+  .tm-matrix tbody th { min-width: 0; padding-left: 16px; }
+  .tm-matrix td { width: 64px; }
+  .tm-matrix thead th { font-size: 11px; }
+  .tm-matrix .view { font-size: 11px; white-space: normal; }
+}
 .adm-weakpw { margin: 16px 24px 0; }
 @media (max-width: 768px) { .adm-weakpw { margin: 0; } }

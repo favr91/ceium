@@ -4,6 +4,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { AccountOverview } from "@/server/admin-account";
+import { ROLE_LABEL } from "@/server/admin-roles";
 import {
   beginTwoFactorAction,
   changePasswordAction,
@@ -20,7 +21,6 @@ import { Modal, useToast } from "../ui";
 
 const F = new Intl.DateTimeFormat("es-VE", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Caracas" });
 const when = (d: Date | string | null) => (d ? F.format(new Date(d)) : "—");
-const ROLE = { ADMIN: "Administrador", STAFF: "Personal" } as const;
 
 function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
   const [saved, setSaved] = useState(false);
@@ -93,7 +93,7 @@ export function AccountView({ data, prompt, recoveryLeft }: { data: AccountOverv
       <div className="adm-ph">
         <div className="grow">
           <h1>Mi cuenta</h1>
-          <div className="meta">{data.user.name} · {data.user.email} · {ROLE[data.user.role]}</div>
+          <div className="meta">{data.user.name} · {data.user.email} · {ROLE_LABEL[data.user.role]}</div>
         </div>
       </div>
 

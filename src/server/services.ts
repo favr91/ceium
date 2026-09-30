@@ -115,7 +115,7 @@ export function createServices(d: Deps) {
     ]),
     settings: bind(d, adminSettings, ["updateSetting", "getSettingsWarnings"]),
     rates: { sync: (opts?: exchangeRate.SyncOptions) => exchangeRate.syncExchangeRate(d, opts) },
-    adminUsers: bind(d, adminUsers, ["createAdminUser", "updateAdminUser", "resetAdminPassword"]),
+    adminUsers: bind(d, adminUsers, ["listTeam", "inviteAdminUser", "createAdminUser", "updateAdminUser", "sendAccessLink", "cancelInvitation", "resetAdminPassword", "setPasswordWithAccessLink"]),
     audit: { list: (q: audit.AuditQuery = {}) => audit.listAuditLog(d, q) },
   };
 }

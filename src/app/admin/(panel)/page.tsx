@@ -26,7 +26,7 @@ export default async function AdminHome({ searchParams }: { searchParams: Promis
         <div className="adm-page hm" style={{ paddingBottom: 0 }}>
           <div className="banner critical" role="alert">
             <Icon name="alert" />
-            <span>Tu rol no tiene permiso para abrir esa sección. Pide acceso a un administrador.</span>
+            <span>Tu rol no tiene permiso para abrir esa sección. Pide acceso al super administrador.</span>
           </div>
         </div>
       ) : null}

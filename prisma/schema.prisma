@@ -129,8 +129,12 @@ enum ActorType {
   WEBHOOK
 }
 
+/// Roles del panel, de mayor a menor (permisos en src/server/auth.ts → PERMISSIONS):
+/// ADMIN = super administrador (todo) · COMMERCIAL = administrador comercial (academia, pedidos y pagos; en el
+/// equipo solo gestiona asistentes) · STAFF = asistente (el día a día).
 enum AdminRole {
   ADMIN
+  COMMERCIAL
   STAFF
 }
 
@@ -764,6 +768,13 @@ model AdminUser {
   /// Intentos fallidos seguidos (contraseña o código); al llegar al límite se bloquea un rato (lockedUntil).
   failedLogins      Int       @default(0)
   lockedUntil       DateTime?
+
+  /// Enlace de un solo uso para crear la contraseña (invitación) o restablecerla (src/server/admin-users.ts):
+  /// sha256 del token del enlace; vence en setupTokenExpiresAt.
+  setupTokenHash      String?   @unique
+  setupTokenExpiresAt DateTime?
+  /// Invitado que todavía no creó su contraseña: no puede iniciar sesión.
+  invitePending       Boolean   @default(false)
 
   sessions         AdminSession[]
   loginChallenges  AdminLoginChallenge[]

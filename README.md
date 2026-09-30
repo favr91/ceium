@@ -9,7 +9,7 @@ npm install                 # postinstall = prisma generate
 npm run db:push             # crea/actualiza dev.db (SQLite) + genera cliente
 npm run db:seed             # BORRA y recrea catálogo real, sedes, cohortes de ejemplo, admin, settings
 npm run mocks               # mock Moodle :4010 + mock PayPal :4020 (protocolo real: REST de Moodle, Orders v2/Payments/Webhooks)
-npm run dev                 # http://localhost:3000   · panel: /admin (usuarios del seed: ADMIN_PASSWORD / STAFF_PASSWORD de .env)
+npm run dev                 # http://localhost:3000   · panel: /admin (usuarios del seed: ADMIN_PASSWORD / COMMERCIAL_PASSWORD / STAFF_PASSWORD de .env)
 ```
 Otros: `build`, `start`, `test` (vitest, `tests/unit`), `test:e2e` (playwright, `tests/e2e`: entorno aislado — BD `var/e2e/e2e.db` recreada y sembrada, app en :3100 con
 `APP_URL` = :3100, mocks Moodle :4110 / PayPal :4120 con webhooks → :3100; no reutiliza servidores salvo `E2E_REUSE=1`),
@@ -24,11 +24,17 @@ coinciden (> 0,5 %) o el valor salta > 30 %, se mantiene la anterior y el panel 
 fallo o al cambiar el día). Se apaga en Configuración (queda la carga manual) o con `EXCHANGE_RATE_SYNC=off` (carriles de prueba).
 
 **Seguridad** (ver también `src/server/config-check.ts`, que impide arrancar en producción con configuración de ejemplo):
+- Roles del panel (`src/server/admin-roles.ts`, permisos en `auth.ts → PERMISSIONS`): **super administrador** (todo),
+  **administrador comercial** (academia completa, pedidos y pagos; en el equipo solo gestiona asistentes) y **asistente**
+  (el día a día). Configuración, métodos de pago, reembolsos y ajustes de saldo son solo del super administrador. El
+  equipo se gestiona en *Equipo* (`/admin/team`): se invita con un enlace de un solo uso para crear la contraseña (el
+  token no se guarda: en BD va su sha256, y el correo lo lleva como secreto); las cuentas se desactivan, no se borran.
 - Panel: verificación en dos pasos (TOTP) desde *Mi cuenta y seguridad*; Configuración puede exigirla a todo el equipo.
   Si alguien pierde el teléfono y los códigos de recuperación: `npm run admin:reset-2fa -- correo@ceium.net` en el servidor.
 - Producción exige `APP_URL` https, `SESSION_SECRET` (32+ caracteres; cifra los secretos TOTP: si cambia, cada usuario
   entra con un código de recuperación y la vuelve a activar), `PAYPAL_BASE_URL` y `PAYPAL_WEBHOOK_ID` reales, y
-  `CRON_SECRET` de 24+ caracteres si se usa. El seed exige `ADMIN_PASSWORD`/`STAFF_PASSWORD` propias (12+).
+  `CRON_SECRET` de 24+ caracteres si se usa. El seed exige `ADMIN_PASSWORD`/`STAFF_PASSWORD` propias (12+);
+  el comercial de ejemplo solo se crea si defines `COMMERCIAL_PASSWORD`.
 - El proxy (nginx) debe enviar `X-Real-IP` (o agregar `X-Forwarded-For`): los límites por IP (inicio de sesión,
   pedidos, comprobantes, contacto) la usan. Sin esa cabecera se omiten y quedan solo los límites por cuenta/correo.
   Límite de cuerpo en el proxy: `client_max_body_size 12m`.

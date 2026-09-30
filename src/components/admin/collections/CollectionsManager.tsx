@@ -109,7 +109,7 @@ export function CollectionsManager({ collections, products, canEdit }: { collect
       {!canEdit ? (
         <div className="banner info" role="status">
           <Icon name="info" />
-          <span>Tu rol (personal) puede ver las colecciones; solo un administrador puede editarlas.</span>
+          <span>Como asistente puedes ver las colecciones; editarlas es del administrador comercial o del super administrador.</span>
         </div>
       ) : null}
 

@@ -7,6 +7,7 @@ import { formatUSD } from "@/server/pricing";
 import type { MailAttachment } from "@/server/email/mailer";
 import * as T from "@/server/email/templates";
 import { requireAdmin, type SessionUser } from "@/server/auth";
+import { issueAccessToken } from "@/server/admin-access";
 
 export type EmailTemplate =
   | "order_confirmation"
@@ -20,8 +21,10 @@ export type EmailTemplate =
   | "installment_reminder"
   /** Mensaje del formulario de /pages/contacto hacia el buzón de CEIUM (Setting `store.contact`.emails). */
   | "contact_message"
-  /** Aviso de seguridad al propio usuario del panel (verificación en dos pasos, contraseña). */
-  | "admin_security";
+  /** Aviso de seguridad al propio usuario del panel (verificación en dos pasos, contraseña, rol). */
+  | "admin_security"
+  /** Invitación al panel o enlace para restablecer la contraseña (el enlace viaja como secreto). */
+  | "admin_access";
 
 /**
  * Marcador que sustituye a la contraseña temporal de Moodle en el HTML/texto que se GUARDA.
@@ -29,11 +32,11 @@ export type EmailTemplate =
  */
 export const TEMP_PASSWORD_PLACEHOLDER = "[[CEIUM_TEMP_PASSWORD]]";
 
-/** Referencia a un secreto que no se persiste (se guarda en EmailOutbox.secretRef). */
-export interface SecretRef {
-  kind: "moodle_temp_password";
-  moodleUserId: number;
-}
+/**
+ * Referencia a un secreto que no se persiste (se guarda en EmailOutbox.secretRef): la contraseña temporal de Moodle
+ * o el token del enlace de acceso al panel. Va en el marcador TEMP_PASSWORD_PLACEHOLDER.
+ */
+export type SecretRef = { kind: "moodle_temp_password"; moodleUserId: number } | { kind: "admin_access_link"; adminUserId: string };
 
 export interface SendEmailInput {
   template: EmailTemplate;
@@ -46,8 +49,9 @@ export interface SendEmailInput {
   /** Se guardan (ruta/contenido) en EmailOutbox para que reintentos y reenvíos los incluyan. */
   attachments?: MailAttachment[];
   /**
-   * Contraseña temporal: se sustituye en el marcador SOLO al enviar y nunca se guarda (ni en BD ni en
-   * el .eml). En un reintento/reenvío ya no existe: se genera otra en Moodle (core_user_update_users).
+   * Contraseña temporal (o token del enlace de acceso): se sustituye en el marcador SOLO al enviar y nunca se guarda
+   * (ni en BD ni en el .eml). En un reintento/reenvío ya no existe: se genera otra en Moodle
+   * (core_user_update_users) o se emite otro enlace (admin-access.ts).
    */
   secret?: SecretRef & { value: string };
   /** Quién provoca el envío (para el historial del pedido). Por defecto SYSTEM. */
@@ -89,7 +93,18 @@ function loadAttachments(v: unknown): MailAttachment[] | undefined {
 
 function parseSecretRef(v: unknown): SecretRef | null {
   const r = v as SecretRef | null;
-  return r && r.kind === "moodle_temp_password" && Number.isInteger(r.moodleUserId) ? r : null;
+  if (r?.kind === "moodle_temp_password") return Number.isInteger(r.moodleUserId) ? r : null;
+  if (r?.kind === "admin_access_link") return typeof r.adminUserId === "string" && r.adminUserId ? r : null;
+  return null;
+}
+
+/** El secreto de un reintento o reenvío: otro, porque el original nunca se guardó. */
+async function regenerateSecret(d: Deps, ref: SecretRef): Promise<string> {
+  if (ref.kind === "moodle_temp_password") return d.moodle.resetTempPassword(ref.moodleUserId);
+  // Solo si el enlace anterior sigue pendiente (no se usó ni se anuló al desactivar la cuenta).
+  const u = await d.db.adminUser.findUnique({ where: { id: ref.adminUserId }, select: { active: true, setupTokenHash: true } });
+  if (!u?.active || !u.setupTokenHash) throw new Error("El enlace de acceso ya se usó o se anuló: no se reenvía.");
+  return (await issueAccessToken(d.db, ref.adminUserId, d.now())).token;
 }
 
 const scrub = (s: string, secret?: string | false) => (secret ? s.split(secret).join(TEMP_PASSWORD_PLACEHOLDER) : s);
@@ -99,8 +114,8 @@ export async function sendEmail(d: Deps, input: SendEmailInput): Promise<SendEma
     const existing = await d.db.emailOutbox.findUnique({ where: { dedupeKey: input.dedupeKey } });
     if (existing) return { id: existing.id, status: existing.status, duplicate: true };
   }
-  const secretValue = input.secret?.value;
-  const secretRef: SecretRef | null = input.secret ? { kind: input.secret.kind, moodleUserId: input.secret.moodleUserId } : null;
+  const { value: secretValue, ...ref } = input.secret ?? { value: undefined };
+  const secretRef = input.secret ? (ref as SecretRef) : null;
   let row;
   try {
     row = await d.db.emailOutbox.create({
@@ -150,7 +165,7 @@ async function deliver(d: Deps, id: string, opts: { secretValue?: string; actor?
   try {
     if (ref && !secret) {
       // La contraseña original no se guardó: se emite una nueva (Moodle obliga a cambiarla al entrar).
-      secret = await d.moodle.resetTempPassword(ref.moodleUserId);
+      secret = await regenerateSecret(d, ref);
       regenerated = true;
     }
     const fill = (s: string, escape: boolean) => (ref && secret ? s.split(TEMP_PASSWORD_PLACEHOLDER).join(escape ? T.esc(secret) : secret) : s);
@@ -159,9 +174,9 @@ async function deliver(d: Deps, id: string, opts: { secretValue?: string; actor?
       from: d.config.mailFrom,
       to: row.to,
       cc: row.cc ?? undefined,
-      // Sin copia oculta al equipo si lleva la contraseña temporal de Moodle (ni los avisos de seguridad del panel):
-      // quien lea ese buzón podría entrar al aula del médico antes que él.
-      bcc: ref || row.template === "admin_security" ? undefined : d.config.mailBcc,
+      // Sin copia oculta al equipo si lleva un secreto (contraseña temporal de Moodle, enlace de acceso al panel) ni en
+      // los avisos de seguridad del panel: quien lea ese buzón podría entrar antes que el destinatario.
+      bcc: ref || row.template === "admin_security" || row.template === "admin_access" ? undefined : d.config.mailBcc,
       subject: row.subject,
       html: fill(row.html, true),
       text: fill(row.text ?? "", false),

@@ -747,7 +747,7 @@ export function installmentReminder(r: InstallmentReminderView): RenderedEmail {
 
 // ───────────── Seguridad de la cuenta del panel ─────────────
 
-export type AdminSecurityEvent = "2fa_enabled" | "2fa_disabled" | "recovery_used" | "recovery_regenerated" | "password_changed";
+export type AdminSecurityEvent = "2fa_enabled" | "2fa_disabled" | "2fa_reset" | "recovery_used" | "recovery_regenerated" | "password_changed" | "role_changed";
 
 export interface AdminSecurityView {
   name: string;
@@ -756,23 +756,35 @@ export interface AdminSecurityView {
   ip?: string | null;
   device?: string | null;
   recoveryLeft?: number;
+  /** Quién hizo el cambio, si fue otra persona del equipo. */
+  by?: string | null;
+  /** Rol nuevo (role_changed). */
+  role?: string;
   accountUrl: string;
 }
 
-const SECURITY_COPY: Record<AdminSecurityEvent, { subject: string; what: string }> = {
+const SECURITY_COPY: Record<AdminSecurityEvent, { subject: string; what: string | ((v: AdminSecurityView) => string) }> = {
   "2fa_enabled": { subject: "Activaste la verificación en dos pasos", what: "se activó la verificación en dos pasos en tu cuenta del panel de CEIUM" },
   "2fa_disabled": { subject: "Se desactivó la verificación en dos pasos", what: "se desactivó la verificación en dos pasos de tu cuenta del panel de CEIUM" },
   recovery_used: { subject: "Se usó un código de recuperación", what: "se inició sesión en tu cuenta del panel de CEIUM con un código de recuperación" },
   recovery_regenerated: { subject: "Generaste nuevos códigos de recuperación", what: "se generaron nuevos códigos de recuperación para tu cuenta del panel de CEIUM (los anteriores ya no sirven)" },
   password_changed: { subject: "Cambiaste la contraseña del panel", what: "se cambió la contraseña de tu cuenta del panel de CEIUM" },
+  "2fa_reset": { subject: "Se quitó la verificación en dos pasos de tu cuenta", what: "se quitó la verificación en dos pasos de tu cuenta del panel de CEIUM. La próxima vez que entres podrás configurarla de nuevo" },
+  role_changed: { subject: "Cambió tu rol en el panel de CEIUM", what: (v) => `tu rol en el panel de CEIUM ahora es «${v.role ?? ""}»` },
 };
 
 /** Aviso al propio usuario del panel cuando cambia algo de la seguridad de su cuenta. */
 export function adminSecurityNotice(v: AdminSecurityView): RenderedEmail {
   const c = SECURITY_COPY[v.event];
-  const rows: [string, string][] = [["Fecha", formatDateTime(v.at)], ...(v.ip ? [["Desde la IP", v.ip] as [string, string]] : []), ...(v.device ? [["Navegador", v.device] as [string, string]] : [])];
+  const what = typeof c.what === "function" ? c.what(v) : c.what;
+  const rows: [string, string][] = [
+    ["Fecha", formatDateTime(v.at)],
+    ...(v.by ? [["Hecho por", v.by] as [string, string]] : []),
+    ...(v.ip ? [["Desde la IP", v.ip] as [string, string]] : []),
+    ...(v.device ? [["Navegador", v.device] as [string, string]] : []),
+  ];
   const left = v.event === "recovery_used" && v.recoveryLeft != null ? `Te ${v.recoveryLeft === 1 ? "queda 1 código" : `quedan ${v.recoveryLeft} códigos`} de recuperación.` : "";
-  const intro = `Hola ${esc(v.name)}, ${esc(c.what)}.`;
+  const intro = `Hola ${esc(v.name)}, ${esc(what)}.`;
   const body =
     p(intro) +
     (left ? p(esc(left)) : "") +
@@ -782,4 +794,33 @@ export function adminSecurityNotice(v: AdminSecurityView): RenderedEmail {
   const html = layout({ title: c.subject, preheader: `${c.subject}.`, tag: "Seguridad", body });
   const text = `${stripTags(intro)}\n${left ? `${left}\n` : ""}\n${rows.map(([k, x]) => `${k}: ${x}`).join("\n")}\n\n¿No fuiste tú? Cambia tu contraseña desde Mi cuenta (${v.accountUrl}) y avisa al administrador.`;
   return { subject: c.subject, html, text };
+}
+
+export interface AdminAccessView {
+  name: string;
+  kind: "invite" | "reset";
+  /** Enlace con el token (o TEMP_PASSWORD_PLACEHOLDER en su lugar: el token no se guarda). */
+  link: string;
+  expiresAt: Date;
+  /** Quién invita o envía el enlace. */
+  by: string;
+  role: string;
+}
+
+/** Invitación al panel (crear la contraseña) o enlace para restablecerla. */
+export function adminAccessLink(v: AdminAccessView): RenderedEmail {
+  const invite = v.kind === "invite";
+  const subject = invite ? "Te invitaron al panel de CEIUM" : "Restablece tu contraseña del panel de CEIUM";
+  const intro = invite
+    ? `Hola ${esc(v.name)}, ${esc(v.by)} te dio acceso al panel de CEIUM como ${strong(esc(v.role))}. Para entrar, crea tu contraseña con este enlace.`
+    : `Hola ${esc(v.name)}, ${esc(v.by)} te envió un enlace para crear una contraseña nueva para el panel de CEIUM. Tu contraseña actual sigue funcionando hasta que la cambies.`;
+  const when = `El enlace vence el ${formatDateTime(v.expiresAt)} y sirve una sola vez.`;
+  const body =
+    p(intro) +
+    button(v.link, invite ? "Crear mi contraseña" : "Crear contraseña nueva") +
+    p(esc(when)) +
+    notice(`${strong("¿No esperabas este correo?")} Ignóralo: sin el enlace nadie puede ${invite ? "activar la cuenta" : "cambiar tu contraseña"}. No lo reenvíes a nadie.`, "info");
+  const html = layout({ title: subject, preheader: when, tag: "Panel", body });
+  const text = `${stripTags(intro)}\n\n${invite ? "Crear mi contraseña" : "Crear contraseña nueva"}: ${v.link}\n\n${when}\n\n¿No esperabas este correo? Ignóralo. No reenvíes el enlace a nadie.`;
+  return { subject, html, text };
 }

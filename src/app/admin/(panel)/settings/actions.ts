@@ -40,7 +40,7 @@ export async function saveSettingsAction(entries: { key: string; value: unknown 
 /** «Consultar ahora»: busca la tasa oficial BCV de hoy (DolarApi, respaldo DolarVZLA) aunque no tocara. */
 export async function syncRateNowAction(): Promise<SettingsResult> {
   const user = await requireAdminAction();
-  if (!can(user, "settings.manage")) return { ok: false, error: "Solo un administrador puede actualizar la tasa." };
+  if (!can(user, "settings.manage")) return { ok: false, error: "Solo el super administrador puede actualizar la tasa." };
   try {
     const r = await services().rates.sync({ force: true });
     if ("skipped" in r) return { ok: false, error: `No se consultó: ${r.skipped}.` };

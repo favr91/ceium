@@ -45,24 +45,33 @@ const DUMMY_HASH = bcrypt.hashSync("ceium-dummy-password", BCRYPT_ROUNDS);
 // ───────────── Permisos ─────────────
 
 /**
- * STAFF opera el día a día (ver pedidos, verificar pagos manuales, reenviar correos, notas, cohortes).
- * Lo que mueve dinero o cambia el catálogo/configuración es solo ADMIN.
+ * Qué puede hacer cada rol (nombres y jerarquía en admin-roles.ts):
+ *   ADMIN (super administrador): todo.
+ *   COMMERCIAL (administrador comercial): la academia completa (catálogo, precios, colecciones, sedes, cohortes,
+ *     matrículas, certificados) y la operación de pedidos y pagos; en el equipo, solo asistentes.
+ *   STAFF (asistente): el día a día (pedidos, verificar pagos manuales, correos, notas, cohortes, matrículas).
+ * El dinero que sale o se perdona (reembolsos, ajustes de saldo, aprobar un pago por más de lo calculado) y la
+ * configuración de la tienda (métodos de pago, PayPal, tasa, reservas, seguridad) son solo del super administrador.
  */
+const ALL = ["ADMIN", "COMMERCIAL", "STAFF"] as const;
+const MANAGERS = ["ADMIN", "COMMERCIAL"] as const;
+const SUPER = ["ADMIN"] as const;
 export const PERMISSIONS = {
-  "orders.view": ["ADMIN", "STAFF"],
-  "orders.note": ["ADMIN", "STAFF"],
-  "orders.cancel": ["ADMIN", "STAFF"],
-  "payments.verify": ["ADMIN", "STAFF"],
-  "emails.resend": ["ADMIN", "STAFF"],
-  "enrollments.manage": ["ADMIN", "STAFF"],
-  "cohorts.manage": ["ADMIN", "STAFF"],
-  "orders.reassignCohort": ["ADMIN", "STAFF"],
-  "payments.refund": ["ADMIN"],
-  "orders.adjustBalance": ["ADMIN"],
-  "certificates.revoke": ["ADMIN"],
-  "catalog.manage": ["ADMIN"],
-  "settings.manage": ["ADMIN"],
-  "users.manage": ["ADMIN"],
+  "orders.view": ALL,
+  "orders.note": ALL,
+  "orders.cancel": ALL,
+  "payments.verify": ALL,
+  "emails.resend": ALL,
+  "enrollments.manage": ALL,
+  "cohorts.manage": ALL,
+  "orders.reassignCohort": ALL,
+  "catalog.manage": MANAGERS,
+  "certificates.revoke": MANAGERS,
+  /** Equipo: además, cada uno solo gestiona roles por debajo del suyo (admin-roles.ts → canManageRole). */
+  "users.manage": MANAGERS,
+  "payments.refund": SUPER,
+  "orders.adjustBalance": SUPER,
+  "settings.manage": SUPER,
 } as const satisfies Record<string, readonly AdminRole[]>;
 export type Permission = keyof typeof PERMISSIONS;
 

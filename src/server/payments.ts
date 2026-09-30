@@ -699,7 +699,7 @@ export async function adminVerifyPayment(d: Deps, user: SessionUser, input: Veri
     // que no está en el comprobante (equivale a ajustar el saldo): solo quien puede ajustar saldos.
     const raise = input.decision === "approve" && input.amountUsdCents != null ? input.amountUsdCents - p.amountUsdCents : 0;
     if (raise > Math.max(100, Math.round(p.amountUsdCents * 0.02)) && !can(admin, "orders.adjustBalance")) {
-      throw new DomainError("FORBIDDEN", "Subir el equivalente en USD por encima de lo calculado con la tasa solo lo puede hacer un administrador. Apruébalo con el monto calculado o pide a un administrador que lo corrija.");
+      throw new DomainError("FORBIDDEN", "Subir el equivalente en USD por encima de lo calculado con la tasa solo lo puede hacer el super administrador. Apruébalo con el monto calculado o pídele que lo corrija.");
     }
     const claimed = await tx.payment.updateMany({
       where: { id: p.id, status: "AWAITING_VERIFICATION" },

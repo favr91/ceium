@@ -62,13 +62,21 @@ function planKindFromLabel(label: string): { kind: PlanKind; discountPct: number
   return { kind: "FULL", discountPct: pct };
 }
 
-const EXAMPLE_PASSWORDS = new Set(["ceium-admin-2026", "ceium-staff-2026"]);
+const EXAMPLE_PASSWORDS = new Set(["ceium-admin-2026", "ceium-staff-2026", "ceium-comercial-2026"]);
 
-function initialPassword(env: "ADMIN_PASSWORD" | "STAFF_PASSWORD", devDefault: string): string {
+type PasswordEnv = "ADMIN_PASSWORD" | "STAFF_PASSWORD" | "COMMERCIAL_PASSWORD";
+
+function initialPassword(env: PasswordEnv, devDefault: string): string {
   const v = process.env[env] ?? "";
   if (process.env.NODE_ENV !== "production") return v || devDefault;
   if (v.length < 12 || EXAMPLE_PASSWORDS.has(v)) throw new Error(`${env} debe tener al menos 12 caracteres y no ser la de ejemplo para sembrar en producción.`);
   return v;
+}
+
+/** Usuario de ejemplo opcional en producción (el equipo real se invita desde Equipo): sin la variable, no se crea. */
+function optionalPassword(env: PasswordEnv, devDefault: string): string | null {
+  if (process.env.NODE_ENV === "production" && !process.env[env]) return null;
+  return initialPassword(env, devDefault);
 }
 
 async function wipe() {
@@ -108,6 +116,7 @@ async function main() {
   // públicas: están en .env.example y en las pruebas). Y el seed BORRA todo: con pedidos, solo con confirmación.
   const adminPass = initialPassword("ADMIN_PASSWORD", "ceium-admin-2026");
   const staffPass = initialPassword("STAFF_PASSWORD", "ceium-staff-2026");
+  const commercialPass = optionalPassword("COMMERCIAL_PASSWORD", "ceium-comercial-2026");
   if (process.env.NODE_ENV === "production" && process.env.SEED_ALLOW_WIPE !== "1" && (await prisma.order.count()) > 0) {
     throw new Error("La BD ya tiene pedidos y el seed la borraría entera. Si de verdad quieres empezar de cero: SEED_ALLOW_WIPE=1.");
   }
@@ -297,6 +306,7 @@ async function main() {
 
   // Admin (contraseñas validadas al empezar, antes de borrar nada)
   await prisma.adminUser.create({ data: { email: "admin@ceium.net", name: "Administrador CEIUM", role: "ADMIN", passwordHash: await bcrypt.hash(adminPass, 10) } });
+  if (commercialPass) await prisma.adminUser.create({ data: { email: "comercial@ceium.net", name: "Comercial CEIUM", role: "COMMERCIAL", passwordHash: await bcrypt.hash(commercialPass, 10) } });
   await prisma.adminUser.create({ data: { email: "staff@ceium.net", name: "Personal CEIUM", role: "STAFF", passwordHash: await bcrypt.hash(staffPass, 10) } });
 
   // Settings

@@ -20,7 +20,7 @@ const IP_WINDOW_MS = 15 * 60_000;
 const TOO_MANY = "Demasiados intentos desde esta conexión. Espera unos minutos e inténtalo de nuevo.";
 
 // Contraseñas de ejemplo del seed (públicas): el panel muestra un aviso fijo hasta cambiarla (ver AdminFrame).
-const EXAMPLE_PASSWORDS = new Set(["ceium-admin-2026", "ceium-staff-2026"]);
+const EXAMPLE_PASSWORDS = new Set(["ceium-admin-2026", "ceium-staff-2026", "ceium-comercial-2026"]);
 
 function safeNext(raw: FormDataEntryValue | null): string {
   const n = String(raw ?? "");
