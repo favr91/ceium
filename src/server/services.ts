@@ -124,7 +124,13 @@ export function createServices(d: Deps) {
 
 export type Services = ReturnType<typeof createServices>;
 
-const g = globalThis as unknown as { __ceiumServices?: Services };
+const g = globalThis as unknown as { __ceiumServices?: Services; __ceiumServicesBuild?: typeof createServices };
 export function services(): Services {
-  return (g.__ceiumServices ??= createServices(createDefaultDeps()));
+  // En desarrollo, al editar el código este módulo se vuelve a evaluar (HMR) pero globalThis sobrevive: la instancia
+  // de una versión anterior no tendría los servicios nuevos, así que se reconstruye. En producción se crea una vez.
+  if (!g.__ceiumServices || g.__ceiumServicesBuild !== createServices) {
+    g.__ceiumServices = createServices(createDefaultDeps());
+    g.__ceiumServicesBuild = createServices;
+  }
+  return g.__ceiumServices;
 }

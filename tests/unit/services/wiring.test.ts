@@ -78,7 +78,7 @@ beforeAll(async () => {
   const app = await import("@/server/services");
   // las rutas usan services(): se instala la instancia con la BD de test antes de llamarlas
   s = app.createServices(app.createDefaultDeps({ db: ctx.db }));
-  (globalThis as unknown as { __ceiumServices?: Services }).__ceiumServices = s;
+  Object.assign(globalThis, { __ceiumServices: s, __ceiumServicesBuild: app.createServices });
   returnRoute = await import("@/app/(checkout)/pedido/[token]/paypal/retorno/route");
 });
 
